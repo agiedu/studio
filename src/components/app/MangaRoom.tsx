@@ -51,6 +51,29 @@ export function MangaRoom() {
     LocalStorage.saveTTSSettings(ttsSettings);
   }, [ttsSettings]);
 
+  const stopSpeech = useCallback(() => {
+    if (ttsSettings.type === 'local' && typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    } else if (audioPlayerRef.current) {
+      audioPlayerRef.current.pause();
+      if (audioPlayerRef.current.src && audioPlayerRef.current.readyState >= HTMLMediaElement.HAVE_METADATA) { 
+         try {
+            audioPlayerRef.current.currentTime = 0;
+         } catch (e) {
+            // console.warn("Could not set audio currentTime on stop", e);
+         }
+      }
+    }
+    if (utteranceRef.current) {
+      utteranceRef.current.onend = null; 
+      utteranceRef.current.onboundary = null;
+    }
+    setIsSpeaking(false);
+    setIsLoadingTTS(false);
+    setCurrentSentenceIndex(-1);
+    setSentenceSegments([]);
+  }, [ttsSettings.type]);
+
   const populateVoiceList = useCallback(() => {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       const voices = window.speechSynthesis.getVoices().map(v => ({
@@ -70,28 +93,6 @@ export function MangaRoom() {
     }
   }, [ttsSettings.language, ttsSettings.voiceURI]);
 
-  const stopSpeech = useCallback(() => {
-    if (ttsSettings.type === 'local' && typeof window !== 'undefined' && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-    } else if (audioPlayerRef.current) {
-      audioPlayerRef.current.pause();
-      if (audioPlayerRef.current.src && audioPlayerRef.current.readyState >= 2) { 
-         try {
-            audioPlayerRef.current.currentTime = 0;
-         } catch (e) {
-            // console.warn("Could not set audio currentTime on stop", e);
-         }
-      }
-    }
-    if (utteranceRef.current) {
-      utteranceRef.current.onend = null; 
-      utteranceRef.current.onboundary = null;
-    }
-    setIsSpeaking(false);
-    setIsLoadingTTS(false);
-    setCurrentSentenceIndex(-1);
-    setSentenceSegments([]);
-  }, [ttsSettings.type]);
 
   useEffect(() => {
     populateVoiceList();
@@ -136,7 +137,7 @@ export function MangaRoom() {
             title: commonPageTitle,
           };
           setPages(prev => [...prev, newPage]);
-          setCurrentPageIndex(pages.length); 
+          setCurrentPageIndex(pages.length === 0 ? 0 : prev.length); // Corrected index setting
           toast({ title: "OCR Success", description: "Text extracted from page." });
         } else {
           toast({ variant: "destructive", title: "OCR Error", description: ocrResult.error });
@@ -160,12 +161,12 @@ export function MangaRoom() {
         const newPage: MangaPage = {
           id: commonPageId,
           imageDataUrl: pdfDataUrl, 
-          extractedText: "This is a PDF file. Direct OCR and viewing for PDF pages is not yet fully supported. You can select text from this box to read it.",
+          extractedText: "PDF Loaded. Automatic page viewing and full-document OCR are not yet available. TO READ ALOUD: Please MANUALLY SELECT text from this info box (or any text on your screen), then click 'Play Selected'.",
           title: commonPageTitle,
         };
         setPages(prev => [...prev, newPage]);
-        setCurrentPageIndex(pages.length);
-        toast({ title: "PDF Uploaded", description: "PDF file added. Viewing/OCR features for PDF are under development." });
+        setCurrentPageIndex(pages.length === 0 ? 0 : prev.length); // Corrected index setting
+        toast({ title: "PDF Uploaded", description: "PDF file added. Select text from info box to read." });
       };
       reader.onerror = () => {
         toast({ variant: "destructive", title: "File Read Error", description: "Could not read the PDF file." });
@@ -184,7 +185,10 @@ export function MangaRoom() {
   const textToRead = currentMangaPage?.extractedText || "";
 
   const playSpeech = async () => {
-    if (!textToRead || (currentMangaPage?.imageDataUrl && currentMangaPage.imageDataUrl.startsWith('data:application/pdf') && !selectedText)) {
+    const selectedText = typeof window !== 'undefined' ? window.getSelection()?.toString().trim() : '';
+    const effectiveTextToRead = selectedText || textToRead;
+
+    if (!effectiveTextToRead || (currentMangaPage?.imageDataUrl && currentMangaPage.imageDataUrl.startsWith('data:application/pdf') && !selectedText)) {
       toast({ variant: "destructive", title: "No Text", description: "No text available to read for this page type, or PDF page with no text selection." });
       return;
     }
@@ -210,10 +214,9 @@ export function MangaRoom() {
         if (browserVoice) utterance.voice = browserVoice;
       }
       
-      // Sentence highlighting logic
       const segments = effectiveTextToRead.match(/[^.!?]+[.!?]*|[^.!?]+/g) || [];
       setSentenceSegments(segments);
-      setCurrentSentenceIndex(0); // Highlight first sentence initially
+      setCurrentSentenceIndex(0);
 
       utterance.onboundary = (event) => {
         let cumulativeLength = 0;
@@ -234,7 +237,6 @@ export function MangaRoom() {
         setIsSpeaking(false);
         setIsLoadingTTS(false);
         setCurrentSentenceIndex(-1);
-        // setSentenceSegments([]); // Keep segments for display until next play
       };
       utterance.onerror = (event) => {
         toast({ variant: "destructive", title: "TTS Error", description: event.error || "Failed to play speech." });
@@ -246,8 +248,7 @@ export function MangaRoom() {
       utteranceRef.current = utterance;
       window.speechSynthesis.speak(utterance);
     } else { 
-      // Cloud TTS does not support onboundary events for highlighting
-      setSentenceSegments([]); // Clear segments if switching to cloud
+      setSentenceSegments([]); 
       setCurrentSentenceIndex(-1);
       const cloudResult = await getCloudSpeech(effectiveTextToRead, ttsSettings.language);
       if ('audioUrl' in cloudResult) {
@@ -284,11 +285,10 @@ export function MangaRoom() {
      if (ttsSettings.type === 'local' && window.speechSynthesis && utteranceRef.current && window.speechSynthesis.paused) {
       window.speechSynthesis.resume();
       setIsSpeaking(true);
-    } else if (audioPlayerRef.current) {
+    } else if (audioPlayerRef.current && audioPlayerRef.current.paused) {
       audioPlayerRef.current.play().catch(err => {
          toast({variant: "destructive", title: "Audio Playback Error", description: err.message});
-         setIsSpeaking(false); // Ensure loading state is reset on error
-         // No need to set isLoadingTTS here as it should be false if we are resuming
+         setIsSpeaking(false); 
       });
       setIsSpeaking(true);
     }
@@ -303,7 +303,7 @@ export function MangaRoom() {
       setIsLoadingTTS(false);
     };
     const handleAudioCanPlay = () => {
-      if (ttsSettings.type === 'cloud') { // Only manage isLoadingTTS for cloud here
+      if (ttsSettings.type === 'cloud' && isSpeaking) { 
          setIsLoadingTTS(false);
       }
     };
@@ -312,20 +312,11 @@ export function MangaRoom() {
       let errorMessage = "Failed to load or play audio.";
       if (audioElement.error) {
         switch (audioElement.error.code) {
-          case MediaError.MEDIA_ERR_ABORTED:
-            errorMessage = "Audio playback aborted.";
-            break;
-          case MediaError.MEDIA_ERR_NETWORK:
-            errorMessage = "A network error caused audio download to fail.";
-            break;
-          case MediaError.MEDIA_ERR_DECODE:
-            errorMessage = "Audio playback aborted due to a corruption problem or because the media used features your browser did not support.";
-            break;
-          case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-            errorMessage = "The audio could not be loaded, either because the server or network failed or because the format is not supported.";
-            break;
-          default:
-            errorMessage = "An unknown error occurred with the audio player.";
+          case MediaError.MEDIA_ERR_ABORTED: errorMessage = "Audio playback aborted."; break;
+          case MediaError.MEDIA_ERR_NETWORK: errorMessage = "A network error caused audio download to fail."; break;
+          case MediaError.MEDIA_ERR_DECODE: errorMessage = "Audio playback aborted due to a corruption problem or because the media used features your browser did not support."; break;
+          case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED: errorMessage = "The audio could not be loaded, either because the server or network failed or because the format is not supported."; break;
+          default: errorMessage = "An unknown error occurred with the audio player.";
         }
       }
       toast({variant: "destructive", title: "Audio Error", description: errorMessage});
@@ -334,16 +325,21 @@ export function MangaRoom() {
     };
     
     player.addEventListener('ended', handleAudioEnded);
-    player.addEventListener('canplay', handleAudioCanPlay); // Changed from canplaythrough for faster feedback
+    player.addEventListener('canplay', handleAudioCanPlay); 
     player.addEventListener('error', handleAudioError);
+    player.addEventListener('playing', () => { // Ensure loading is false when playing starts for cloud
+        if (ttsSettings.type === 'cloud') setIsLoadingTTS(false);
+    });
+
 
     return () => {
       player.removeEventListener('ended', handleAudioEnded);
       player.removeEventListener('canplay', handleAudioCanPlay);
       player.removeEventListener('error', handleAudioError);
+      player.removeEventListener('playing', () => {
+        if (ttsSettings.type === 'cloud') setIsLoadingTTS(false);
+      });
       
-      // stopSpeech(); // stopSpeech is now called more explicitly elsewhere (e.g. page navigation, new upload)
-
       if (player && player.src) {
         player.pause();
         player.src = ""; 
@@ -352,14 +348,13 @@ export function MangaRoom() {
         audioPlayerRef.current = null;
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ttsSettings.type, toast]); // Simplified deps, stopSpeech is memoized
+  }, [ttsSettings.type, toast, isSpeaking]);
 
 
   const handleSettingChange = <K extends keyof TTSSettings>(key: K, value: TTSSettings[K]) => {
-    stopSpeech(); // Stop speech when changing settings like voice or engine type
+    stopSpeech(); 
     setTtsSettings(prev => ({ ...prev, [key]: value }));
-    if (key === 'type') { // If switching TTS type, clear segments
+    if (key === 'type') { 
       setSentenceSegments([]);
       setCurrentSentenceIndex(-1);
     }
@@ -367,14 +362,16 @@ export function MangaRoom() {
 
   const navigatePage = (direction: 'next' | 'prev') => {
     stopSpeech();
-    setIsLoadingTTS(false); // Ensure TTS loading is reset
-    setIsSpeaking(false);   // Ensure speaking state is reset
+    setIsLoadingTTS(false); 
+    setIsSpeaking(false);   
 
+    let newIndex = currentPageIndex;
     if (direction === 'next' && currentPageIndex < pages.length - 1) {
-      setCurrentPageIndex(prev => prev + 1);
+      newIndex = currentPageIndex + 1;
     } else if (direction === 'prev' && currentPageIndex > 0) {
-      setCurrentPageIndex(prev => prev - 1);
+      newIndex = currentPageIndex - 1;
     }
+    setCurrentPageIndex(newIndex);
   };
   
   const removePage = (pageId: string) => {
@@ -385,7 +382,7 @@ export function MangaRoom() {
     const newPageIndex = Math.max(0, Math.min(currentPageIndex, newPages.length - 1));
     setPages(newPages);
     setCurrentPageIndex(newPages.length === 0 ? 0 : newPageIndex);
-     if (newPages.length === 0) { // If all pages removed
+     if (newPages.length === 0) { 
       setSentenceSegments([]);
       setCurrentSentenceIndex(-1);
     }
@@ -431,8 +428,8 @@ export function MangaRoom() {
                 <Image
                   src={currentMangaPage.imageDataUrl}
                   alt={`Manga Page ${currentPageIndex + 1}`}
-                  fill // Changed from layout="fill" to fill for Next 13+
-                  style={{ objectFit: "contain" }} // Replaced objectFit with style prop
+                  fill 
+                  style={{ objectFit: "contain" }} 
                   data-ai-hint="manga page"
                 />
               ) : currentMangaPage.imageDataUrl.startsWith('data:application/pdf') ? (
@@ -440,6 +437,7 @@ export function MangaRoom() {
                   <FileText className="w-16 h-16 text-primary mb-4" />
                   <p className="font-semibold">{currentMangaPage.title || 'PDF Document'}</p>
                   <p className="text-sm text-muted-foreground">PDF viewing and page-specific OCR coming soon.</p>
+                   <p className="text-xs text-muted-foreground mt-2">Select text in the box below to read aloud.</p>
                 </div>
               ) : (
                 <div className="flex items-center justify-center h-full text-center p-4">
@@ -466,7 +464,7 @@ export function MangaRoom() {
           </CardHeader>
           <CardContent>
             <div className="max-h-60 overflow-y-auto p-2 border rounded-md bg-muted/50 whitespace-pre-wrap text-sm">
-              {ttsSettings.type === 'local' && sentenceSegments.length > 0 ? (
+              {ttsSettings.type === 'local' && sentenceSegments.length > 0 && !currentMangaPage.imageDataUrl.startsWith('data:application/pdf') ? (
                 sentenceSegments.map((segment, index) => (
                   <span
                     key={index}
@@ -485,11 +483,11 @@ export function MangaRoom() {
         </Card>
       )}
 
-      {textToRead && ( 
+      {effectiveTextToRead && ( 
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Volume2 className="text-primary" /> Text-to-Speech Controls</CardTitle>
-            <CardDescription>Configure and play the text. For PDFs, only selected text can be played. Sentence highlighting only available for local TTS.</CardDescription>
+            <CardDescription>Configure and play the text. Sentence highlighting available for local TTS on image-extracted text. For PDFs, only selected text can be played.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -549,7 +547,7 @@ export function MangaRoom() {
                   <Play className="mr-2" /> Play {selectedText ? "Selected" : "All"}
                 </Button>
               )}
-              {isSpeaking && ttsSettings.type === 'local' && typeof window !== 'undefined' && window.speechSynthesis && (
+              {isSpeaking && !isLoadingTTS && ttsSettings.type === 'local' && typeof window !== 'undefined' && window.speechSynthesis && (
                 <Button onClick={pauseSpeech} variant="outline">
                   <Pause className="mr-2" /> Pause
                 </Button>
@@ -574,7 +572,7 @@ export function MangaRoom() {
         <Card className="text-center">
           <CardHeader>
             <CardTitle>No Manga Pages or PDFs</CardTitle>
-          </CardHeader>
+          </Header>
           <CardContent>
             <p className="text-muted-foreground">Upload a manga page image or a PDF document to get started.</p>
             <UploadCloud className="mx-auto my-4 h-12 w-12 text-muted-foreground" />
@@ -584,5 +582,3 @@ export function MangaRoom() {
     </div>
   );
 }
-
-    
