@@ -15,6 +15,7 @@ import { Progress } from '@/components/ui/progress';
 import Image from 'next/image';
 import { ChevronLeft, ChevronRight, Cloud, FileText, Loader2, Play, Pause, Smartphone, StopCircle, UploadCloud, Volume2, XCircle } from 'lucide-react';
 import * as LocalStorage from '@/lib/localStorageService';
+import { cn } from '@/lib/utils';
 
 export function MangaRoom() {
   const { toast } = useToast();
@@ -26,6 +27,9 @@ export function MangaRoom() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [availableVoices, setAvailableVoices] = useState<TTSVoice[]>([]);
   
+  const [sentenceSegments, setSentenceSegments] = useState<string[]>([]);
+  const [currentSentenceIndex, setCurrentSentenceIndex] = useState<number>(-1);
+
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
@@ -81,9 +85,12 @@ export function MangaRoom() {
     }
     if (utteranceRef.current) {
       utteranceRef.current.onend = null; 
+      utteranceRef.current.onboundary = null;
     }
     setIsSpeaking(false);
     setIsLoadingTTS(false);
+    setCurrentSentenceIndex(-1);
+    setSentenceSegments([]);
   }, [ttsSettings.type]);
 
   useEffect(() => {
@@ -103,6 +110,7 @@ export function MangaRoom() {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    stopSpeech();
     const commonPageTitle = file.name;
     const commonPageId = Date.now().toString();
     let fileInputTarget = event.target; 
@@ -152,7 +160,7 @@ export function MangaRoom() {
         const newPage: MangaPage = {
           id: commonPageId,
           imageDataUrl: pdfDataUrl, 
-          extractedText: "This is a PDF file. Direct OCR and viewing for PDF pages is not yet fully supported.",
+          extractedText: "This is a PDF file. Direct OCR and viewing for PDF pages is not yet fully supported. You can select text from this box to read it.",
           title: commonPageTitle,
         };
         setPages(prev => [...prev, newPage]);
@@ -176,7 +184,7 @@ export function MangaRoom() {
   const textToRead = currentMangaPage?.extractedText || "";
 
   const playSpeech = async () => {
-    if (!textToRead || (currentMangaPage?.imageDataUrl && currentMangaPage.imageDataUrl.startsWith('data:application/pdf') && !selectedText)) { // Added !selectedText for PDF guard
+    if (!textToRead || (currentMangaPage?.imageDataUrl && currentMangaPage.imageDataUrl.startsWith('data:application/pdf') && !selectedText)) {
       toast({ variant: "destructive", title: "No Text", description: "No text available to read for this page type, or PDF page with no text selection." });
       return;
     }
@@ -191,7 +199,7 @@ export function MangaRoom() {
         setIsSpeaking(false);
         return;
       }
-      const utterance = new SpeechSynthesisUtterance(effectiveTextToRead); // Use effectiveTextToRead
+      const utterance = new SpeechSynthesisUtterance(effectiveTextToRead);
       utterance.lang = ttsSettings.language;
       utterance.pitch = ttsSettings.pitch;
       utterance.rate = ttsSettings.rate;
@@ -202,19 +210,46 @@ export function MangaRoom() {
         if (browserVoice) utterance.voice = browserVoice;
       }
       
+      // Sentence highlighting logic
+      const segments = effectiveTextToRead.match(/[^.!?]+[.!?]*|[^.!?]+/g) || [];
+      setSentenceSegments(segments);
+      setCurrentSentenceIndex(0); // Highlight first sentence initially
+
+      utterance.onboundary = (event) => {
+        let cumulativeLength = 0;
+        let newIdx = -1;
+        for (let i = 0; i < segments.length; i++) {
+          if (event.charIndex >= cumulativeLength && event.charIndex < cumulativeLength + segments[i].length) {
+            newIdx = i;
+            break;
+          }
+          cumulativeLength += segments[i].length;
+        }
+        if (newIdx !== -1) {
+          setCurrentSentenceIndex(newIdx);
+        }
+      };
+      
       utterance.onend = () => {
         setIsSpeaking(false);
         setIsLoadingTTS(false);
+        setCurrentSentenceIndex(-1);
+        // setSentenceSegments([]); // Keep segments for display until next play
       };
       utterance.onerror = (event) => {
         toast({ variant: "destructive", title: "TTS Error", description: event.error || "Failed to play speech." });
         setIsSpeaking(false);
         setIsLoadingTTS(false);
+        setCurrentSentenceIndex(-1);
+        setSentenceSegments([]);
       };
       utteranceRef.current = utterance;
       window.speechSynthesis.speak(utterance);
     } else { 
-      const cloudResult = await getCloudSpeech(effectiveTextToRead, ttsSettings.language); // Use effectiveTextToRead
+      // Cloud TTS does not support onboundary events for highlighting
+      setSentenceSegments([]); // Clear segments if switching to cloud
+      setCurrentSentenceIndex(-1);
+      const cloudResult = await getCloudSpeech(effectiveTextToRead, ttsSettings.language);
       if ('audioUrl' in cloudResult) {
         if (audioPlayerRef.current) {
           audioPlayerRef.current.src = cloudResult.audioUrl;
@@ -252,8 +287,8 @@ export function MangaRoom() {
     } else if (audioPlayerRef.current) {
       audioPlayerRef.current.play().catch(err => {
          toast({variant: "destructive", title: "Audio Playback Error", description: err.message});
-         setIsSpeaking(false);
-         setIsLoadingTTS(false);
+         setIsSpeaking(false); // Ensure loading state is reset on error
+         // No need to set isLoadingTTS here as it should be false if we are resuming
       });
       setIsSpeaking(true);
     }
@@ -268,7 +303,7 @@ export function MangaRoom() {
       setIsLoadingTTS(false);
     };
     const handleAudioCanPlay = () => {
-      if (ttsSettings.type === 'cloud') {
+      if (ttsSettings.type === 'cloud') { // Only manage isLoadingTTS for cloud here
          setIsLoadingTTS(false);
       }
     };
@@ -299,7 +334,7 @@ export function MangaRoom() {
     };
     
     player.addEventListener('ended', handleAudioEnded);
-    player.addEventListener('canplay', handleAudioCanPlay);
+    player.addEventListener('canplay', handleAudioCanPlay); // Changed from canplaythrough for faster feedback
     player.addEventListener('error', handleAudioError);
 
     return () => {
@@ -307,7 +342,7 @@ export function MangaRoom() {
       player.removeEventListener('canplay', handleAudioCanPlay);
       player.removeEventListener('error', handleAudioError);
       
-      stopSpeech();
+      // stopSpeech(); // stopSpeech is now called more explicitly elsewhere (e.g. page navigation, new upload)
 
       if (player && player.src) {
         player.pause();
@@ -317,18 +352,23 @@ export function MangaRoom() {
         audioPlayerRef.current = null;
       }
     }
-  }, [ttsSettings.type, stopSpeech, toast]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ttsSettings.type, toast]); // Simplified deps, stopSpeech is memoized
 
 
   const handleSettingChange = <K extends keyof TTSSettings>(key: K, value: TTSSettings[K]) => {
+    stopSpeech(); // Stop speech when changing settings like voice or engine type
     setTtsSettings(prev => ({ ...prev, [key]: value }));
+    if (key === 'type') { // If switching TTS type, clear segments
+      setSentenceSegments([]);
+      setCurrentSentenceIndex(-1);
+    }
   };
 
   const navigatePage = (direction: 'next' | 'prev') => {
     stopSpeech();
-    // Explicitly ensure loading and speaking states are reset before changing page
-    setIsLoadingTTS(false);
-    setIsSpeaking(false);
+    setIsLoadingTTS(false); // Ensure TTS loading is reset
+    setIsSpeaking(false);   // Ensure speaking state is reset
 
     if (direction === 'next' && currentPageIndex < pages.length - 1) {
       setCurrentPageIndex(prev => prev + 1);
@@ -339,13 +379,16 @@ export function MangaRoom() {
   
   const removePage = (pageId: string) => {
     stopSpeech();
-    // Explicitly ensure loading and speaking states are reset
     setIsLoadingTTS(false);
     setIsSpeaking(false);
     const newPages = pages.filter(p => p.id !== pageId);
     const newPageIndex = Math.max(0, Math.min(currentPageIndex, newPages.length - 1));
     setPages(newPages);
     setCurrentPageIndex(newPages.length === 0 ? 0 : newPageIndex);
+     if (newPages.length === 0) { // If all pages removed
+      setSentenceSegments([]);
+      setCurrentSentenceIndex(-1);
+    }
   };
 
   const selectedText = typeof window !== 'undefined' ? window.getSelection()?.toString().trim() : '';
@@ -365,7 +408,7 @@ export function MangaRoom() {
             <Label htmlFor="manga-page-upload">Manga Page Image or PDF</Label>
             <Input id="manga-page-upload" type="file" accept="image/*,application/pdf" onChange={handleFileUpload} disabled={isLoadingOCR} />
           </div>
-          {isLoadingOCR && <Progress value={undefined} className="w-full mt-2" />}
+          {isLoadingOCR && <Progress value={isLoadingOCR ? undefined : 100} className="w-full mt-2" />}
         </CardContent>
       </Card>
 
@@ -388,8 +431,8 @@ export function MangaRoom() {
                 <Image
                   src={currentMangaPage.imageDataUrl}
                   alt={`Manga Page ${currentPageIndex + 1}`}
-                  layout="fill"
-                  objectFit="contain"
+                  fill // Changed from layout="fill" to fill for Next 13+
+                  style={{ objectFit: "contain" }} // Replaced objectFit with style prop
                   data-ai-hint="manga page"
                 />
               ) : currentMangaPage.imageDataUrl.startsWith('data:application/pdf') ? (
@@ -405,10 +448,10 @@ export function MangaRoom() {
               )}
             </div>
             <div className="flex justify-between items-center">
-              <Button onClick={() => navigatePage('prev')} disabled={currentPageIndex === 0 || isLoadingTTS}>
+              <Button onClick={() => navigatePage('prev')} disabled={currentPageIndex === 0 || isLoadingTTS || isSpeaking}>
                 <ChevronLeft /> Previous
               </Button>
-              <Button onClick={() => navigatePage('next')} disabled={currentPageIndex === pages.length - 1 || isLoadingTTS}>
+              <Button onClick={() => navigatePage('next')} disabled={currentPageIndex === pages.length - 1 || isLoadingTTS || isSpeaking}>
                 Next <ChevronRight />
               </Button>
             </div>
@@ -423,17 +466,30 @@ export function MangaRoom() {
           </CardHeader>
           <CardContent>
             <div className="max-h-60 overflow-y-auto p-2 border rounded-md bg-muted/50 whitespace-pre-wrap text-sm">
-              {currentMangaPage.extractedText}
+              {ttsSettings.type === 'local' && sentenceSegments.length > 0 ? (
+                sentenceSegments.map((segment, index) => (
+                  <span
+                    key={index}
+                    className={cn(
+                      index === currentSentenceIndex && "text-accent font-semibold"
+                    )}
+                  >
+                    {segment}
+                  </span>
+                ))
+              ) : (
+                currentMangaPage.extractedText
+              )}
             </div>
           </CardContent>
         </Card>
       )}
 
-      {textToRead && ( // Show TTS controls only if there's any text to read (extracted or selected)
+      {textToRead && ( 
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Volume2 className="text-primary" /> Text-to-Speech Controls</CardTitle>
-            <CardDescription>Configure and play the text. For PDFs, only selected text can be played.</CardDescription>
+            <CardDescription>Configure and play the text. For PDFs, only selected text can be played. Sentence highlighting only available for local TTS.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -469,7 +525,7 @@ export function MangaRoom() {
                   </SelectTrigger>
                   <SelectContent className="max-h-60">
                     {availableVoices.filter(v => v.lang.startsWith(ttsSettings.language.split('-')[0])).map(voice => (
-                      <SelectItem key={voice.voiceURI} value={voice.voiceURI}>
+                      <SelectItem key={voice.voiceURI || voice.name} value={voice.voiceURI}>
                         {voice.name} ({voice.lang}) {voice.default ? "[Default]" : ""}
                       </SelectItem>
                     ))}
@@ -489,11 +545,11 @@ export function MangaRoom() {
 
             <div className="flex items-center gap-2 flex-wrap">
               {!isSpeaking && !isLoadingTTS && (
-                <Button onClick={playSpeech} disabled={!canPlaySelectedText}>
+                <Button onClick={playSpeech} disabled={!canPlaySelectedText || isLoadingTTS}>
                   <Play className="mr-2" /> Play {selectedText ? "Selected" : "All"}
                 </Button>
               )}
-              {(isSpeaking || isLoadingTTS) && ttsSettings.type === 'local' && typeof window !== 'undefined' && window.speechSynthesis && (
+              {isSpeaking && ttsSettings.type === 'local' && typeof window !== 'undefined' && window.speechSynthesis && (
                 <Button onClick={pauseSpeech} variant="outline">
                   <Pause className="mr-2" /> Pause
                 </Button>
@@ -528,3 +584,5 @@ export function MangaRoom() {
     </div>
   );
 }
+
+    
