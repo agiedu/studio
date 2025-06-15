@@ -444,7 +444,7 @@ export function MangaRoom() {
                   <Pause className="mr-2" /> Pause
                 </Button>
               )}
-               {!isSpeaking && !isLoadingTTS && ttsSettings.type === 'local' && typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.paused() && (
+               {!isSpeaking && !isLoadingTTS && ttsSettings.type === 'local' && typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.paused && (
                  <Button onClick={resumeSpeech} variant="outline">
                   <Play className="mr-2" /> Resume
                 </Button>
