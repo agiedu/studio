@@ -1,9 +1,9 @@
-import type { MangaPage, TTSSettings } from '@/types';
+import type { MangaDocument, TTSSettings } from '@/types';
 
-const PAGES_KEY = 'mangaTalk_pages';
-const CURRENT_PAGE_INDEX_KEY = 'mangaTalk_currentPageIndex';
+const PAGES_KEY = 'mangaTalk_documents'; // Renamed key
+const CURRENT_DOCUMENT_INDEX_KEY = 'mangaTalk_currentDocumentIndex';
+const CURRENT_PDF_PAGE_INDEX_KEY = 'mangaTalk_currentPdfPageIndex';
 const TTS_SETTINGS_KEY = 'mangaTalk_ttsSettings';
-const NIGHT_MODE_KEY = 'mangaTalk_nightMode'; // Although theme is handled by AppHeader now
 
 // Helper to safely access localStorage
 const safeLocalStorageGet = <T>(key: string, defaultValue: T): T => {
@@ -26,11 +26,31 @@ const safeLocalStorageSet = (key: string, value: any): void => {
   }
 };
 
-export const loadPages = (): MangaPage[] => safeLocalStorageGet<MangaPage[]>(PAGES_KEY, []);
-export const savePages = (pages: MangaPage[]): void => safeLocalStorageSet(PAGES_KEY, pages);
+export const loadDocuments = (): MangaDocument[] => {
+  const docs = safeLocalStorageGet<MangaDocument[]>(PAGES_KEY, []);
+  // Ensure processedPages array is initialized for loaded PDF documents
+  return docs.map(doc => {
+    if (doc.type === 'pdf' && doc.numPages && !doc.processedPages) {
+      doc.processedPages = new Array(doc.numPages).fill(null);
+    } else if (doc.type === 'pdf' && doc.numPages && doc.processedPages.length !== doc.numPages) {
+      // Fix array length if mismatched
+      const newProcessedPages = new Array(doc.numPages).fill(null);
+      doc.processedPages.forEach((p, i) => {
+        if (i < doc.numPages) newProcessedPages[i] = p;
+      });
+      doc.processedPages = newProcessedPages;
+    }
+    return doc;
+  });
+};
+export const saveDocuments = (docs: MangaDocument[]): void => safeLocalStorageSet(PAGES_KEY, docs);
 
-export const loadCurrentPageIndex = (): number => safeLocalStorageGet<number>(CURRENT_PAGE_INDEX_KEY, 0);
-export const saveCurrentPageIndex = (index: number): void => safeLocalStorageSet(CURRENT_PAGE_INDEX_KEY, index);
+export const loadCurrentDocumentIndex = (): number => safeLocalStorageGet<number>(CURRENT_DOCUMENT_INDEX_KEY, 0);
+export const saveCurrentDocumentIndex = (index: number): void => safeLocalStorageSet(CURRENT_DOCUMENT_INDEX_KEY, index);
+
+export const loadCurrentPdfPageIndex = (): number => safeLocalStorageGet<number>(CURRENT_PDF_PAGE_INDEX_KEY, 0);
+export const saveCurrentPdfPageIndex = (index: number): void => safeLocalStorageSet(CURRENT_PDF_PAGE_INDEX_KEY, index);
+
 
 export const defaultTTSSettings: TTSSettings = {
   type: 'local',
@@ -41,7 +61,7 @@ export const defaultTTSSettings: TTSSettings = {
 export const loadTTSSettings = (): TTSSettings => safeLocalStorageGet<TTSSettings>(TTS_SETTINGS_KEY, defaultTTSSettings);
 export const saveTTSSettings = (settings: TTSSettings): void => safeLocalStorageSet(TTS_SETTINGS_KEY, settings);
 
-// Night mode is now primarily handled by AppHeader's theme toggle and system preference
-// These can be used if explicit night mode state outside of theme class is needed.
-export const loadNightMode = (): boolean => safeLocalStorageGet<boolean>(NIGHT_MODE_KEY, true); // Default true for dark
+// Night mode is handled by AppHeader, keeping these for potential future use if explicit state is needed.
+const NIGHT_MODE_KEY = 'mangaTalk_nightMode';
+export const loadNightMode = (): boolean => safeLocalStorageGet<boolean>(NIGHT_MODE_KEY, true);
 export const saveNightMode = (isNightMode: boolean): void => safeLocalStorageSet(NIGHT_MODE_KEY, isNightMode);

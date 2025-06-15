@@ -1,9 +1,30 @@
-export interface MangaPage {
-  id: string;
-  imageDataUrl: string;
+export interface MangaSubPage { // Represents a single visual page (image or rendered PDF page)
+  imageDataUrl: string; // This will be the image data URL for images, or rendered PDF page data URL
   extractedText?: string;
-  title?: string; // Optional: title for the page/image file name
 }
+
+export interface MangaFile {
+  id: string;
+  title?: string; // Original file name
+  type: 'image' | 'pdf';
+}
+
+export interface MangaImageFile extends MangaFile {
+  type: 'image';
+  imageDataUrl: string; // For direct image uploads
+  extractedText?: string;
+}
+
+export interface MangaPdfFile extends MangaFile {
+  type: 'pdf';
+  pdfDataUrl: string; // Store the original PDF data URL (e.g., from FileReader)
+  numPages: number;
+  // Stores pages as they are rendered and OCR'd. Indexed by page number (0-based).
+  // A page might be null if not yet processed.
+  processedPages: (MangaSubPage | null)[];
+}
+
+export type MangaDocument = MangaImageFile | MangaPdfFile;
 
 export interface TTSSettings {
   type: 'local' | 'cloud';
