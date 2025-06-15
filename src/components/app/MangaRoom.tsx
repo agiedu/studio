@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Slider } from '@/components/ui/slider';
 import { Progress } from '@/components/ui/progress';
 import Image from 'next/image';
-import { ChevronLeft, ChevronRight, Cloud, Loader2, Play, Pause, Smartphone, StopCircle, UploadCloud, Volume2, XCircle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Cloud, FileText, Loader2, Play, Pause, Smartphone, StopCircle, UploadCloud, Volume2, XCircle } from 'lucide-react';
 import * as LocalStorage from '@/lib/localStorageService';
 
 export function MangaRoom() {
@@ -57,7 +57,6 @@ export function MangaRoom() {
         default: v.default,
       }));
       setAvailableVoices(voices);
-      // Set default voice if none selected and voices are available
       if (!ttsSettings.voiceURI && voices.length > 0) {
         const defaultVoice = voices.find(v => v.lang === ttsSettings.language && v.default) || voices.find(v => v.lang === ttsSettings.language) || voices.find(v => v.default) || voices[0];
         if (defaultVoice) {
@@ -75,7 +74,7 @@ export function MangaRoom() {
     return () => {
       if (typeof window !== 'undefined' && window.speechSynthesis) {
         window.speechSynthesis.onvoiceschanged = null;
-        stopSpeech(); // Clean up speech synthesis on unmount
+        stopSpeech(); 
       }
     };
   }, [populateVoiceList]);
@@ -84,39 +83,84 @@ export function MangaRoom() {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    setIsLoadingOCR(true);
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const imageDataUrl = e.target?.result as string;
-      const ocrResult = await performOCR(imageDataUrl);
-      if ('extractedText' in ocrResult) {
+    const commonPageTitle = file.name;
+    const commonPageId = Date.now().toString();
+    let fileInputTarget = event.target; // To allow reset later
+
+    if (file.type.startsWith('image/')) {
+      setIsLoadingOCR(true);
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const imageDataUrl = e.target?.result as string;
+        if (!imageDataUrl || !imageDataUrl.startsWith('data:image')) {
+            toast({ variant: "destructive", title: "Upload Error", description: "Invalid or corrupted image file. Please try another image." });
+            setIsLoadingOCR(false);
+            if (fileInputTarget) fileInputTarget.value = '';
+            return;
+        }
+
+        const ocrResult = await performOCR(imageDataUrl);
+        if ('extractedText' in ocrResult) {
+          const newPage: MangaPage = {
+            id: commonPageId,
+            imageDataUrl,
+            extractedText: ocrResult.extractedText,
+            title: commonPageTitle,
+          };
+          setPages(prev => [...prev, newPage]);
+          setCurrentPageIndex(pages.length); 
+          toast({ title: "OCR Success", description: "Text extracted from page." });
+        } else {
+          toast({ variant: "destructive", title: "OCR Error", description: ocrResult.error });
+        }
+        setIsLoadingOCR(false);
+      };
+      reader.onerror = () => {
+        toast({ variant: "destructive", title: "File Read Error", description: "Could not read the image file." });
+        setIsLoadingOCR(false);
+      };
+      reader.readAsDataURL(file);
+    } else if (file.type === 'application/pdf') {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const pdfDataUrl = e.target?.result as string;
+         if (!pdfDataUrl || !pdfDataUrl.startsWith('data:application/pdf')) {
+            toast({ variant: "destructive", title: "Upload Error", description: "Invalid or corrupted PDF file. Please try another PDF." });
+            if (fileInputTarget) fileInputTarget.value = '';
+            return;
+        }
         const newPage: MangaPage = {
-          id: Date.now().toString(),
-          imageDataUrl,
-          extractedText: ocrResult.extractedText,
-          title: file.name,
+          id: commonPageId,
+          imageDataUrl: pdfDataUrl, 
+          extractedText: "This is a PDF file. Direct OCR and viewing for PDF pages is not yet fully supported.",
+          title: commonPageTitle,
         };
         setPages(prev => [...prev, newPage]);
-        setCurrentPageIndex(pages.length); // Go to new page
-        toast({ title: "OCR Success", description: "Text extracted from page." });
-      } else {
-        toast({ variant: "destructive", title: "OCR Error", description: ocrResult.error });
-      }
-      setIsLoadingOCR(false);
-    };
-    reader.readAsDataURL(file);
-    event.target.value = ''; // Reset file input
+        setCurrentPageIndex(pages.length);
+        toast({ title: "PDF Uploaded", description: "PDF file added. Viewing/OCR features for PDF are under development." });
+      };
+      reader.onerror = () => {
+        toast({ variant: "destructive", title: "File Read Error", description: "Could not read the PDF file." });
+      };
+      reader.readAsDataURL(file);
+    } else {
+      toast({ variant: "destructive", title: "Unsupported File Type", description: "Please upload an image (JPEG, PNG, etc.) or a PDF file." });
+    }
+    
+    if (fileInputTarget) {
+        fileInputTarget.value = '';
+    }
   };
 
   const currentMangaPage = pages[currentPageIndex];
   const textToRead = currentMangaPage?.extractedText || "";
 
   const playSpeech = async () => {
-    if (!textToRead) {
-      toast({ variant: "destructive", title: "No Text", description: "No text available to read." });
+    if (!textToRead || (currentMangaPage?.imageDataUrl && currentMangaPage.imageDataUrl.startsWith('data:application/pdf'))) {
+      toast({ variant: "destructive", title: "No Text", description: "No text available to read for this page type." });
       return;
     }
-    stopSpeech(); // Stop any current speech
+    stopSpeech(); 
     setIsLoadingTTS(true);
     setIsSpeaking(true);
 
@@ -134,7 +178,6 @@ export function MangaRoom() {
       
       const selectedVoice = availableVoices.find(v => v.voiceURI === ttsSettings.voiceURI);
       if (selectedVoice) {
-        // Find the actual SpeechSynthesisVoice object
         const browserVoice = window.speechSynthesis.getVoices().find(v => v.voiceURI === selectedVoice.voiceURI);
         if (browserVoice) utterance.voice = browserVoice;
       }
@@ -150,7 +193,7 @@ export function MangaRoom() {
       };
       utteranceRef.current = utterance;
       window.speechSynthesis.speak(utterance);
-    } else { // Cloud TTS
+    } else { 
       const cloudResult = await getCloudSpeech(textToRead, ttsSettings.language);
       if ('audioUrl' in cloudResult) {
         if (audioPlayerRef.current) {
@@ -171,7 +214,7 @@ export function MangaRoom() {
   const pauseSpeech = () => {
     if (ttsSettings.type === 'local' && window.speechSynthesis && utteranceRef.current) {
       window.speechSynthesis.pause();
-      setIsSpeaking(false); // Reflects paused state
+      setIsSpeaking(false); 
     } else if (audioPlayerRef.current) {
       audioPlayerRef.current.pause();
       setIsSpeaking(false);
@@ -197,13 +240,12 @@ export function MangaRoom() {
       audioPlayerRef.current.pause();
       audioPlayerRef.current.currentTime = 0;
     }
-    if (utteranceRef.current) utteranceRef.current.onend = null; // Prevent onend firing after explicit stop
+    if (utteranceRef.current) utteranceRef.current.onend = null; 
     setIsSpeaking(false);
     setIsLoadingTTS(false);
   };
   
   useEffect(() => {
-    // Setup for cloud audio player
     const player = new Audio();
     audioPlayerRef.current = player;
     player.onended = () => {
@@ -211,7 +253,6 @@ export function MangaRoom() {
       setIsLoadingTTS(false);
     };
     player.oncanplay = () => {
-       // Only set loading to false if it's cloud TTS and we are expecting to play
       if (ttsSettings.type === 'cloud' && isSpeaking) {
          setIsLoadingTTS(false);
       }
@@ -251,27 +292,24 @@ export function MangaRoom() {
     const newPageIndex = Math.max(0, Math.min(currentPageIndex, newPages.length - 1));
     setPages(newPages);
     setCurrentPageIndex(newPages.length === 0 ? 0 : newPageIndex);
-    if (newPages.length === 0) {
-      // Clear current page index if no pages left, to avoid issues.
-      // This state also implies no page is displayed.
-       setCurrentPageIndex(0); // Or handle as an "empty" state
-    }
   };
 
   const selectedText = typeof window !== 'undefined' ? window.getSelection()?.toString() : '';
   const effectiveTextToRead = selectedText || textToRead;
+  const canPlaySelectedText = !!effectiveTextToRead && !(currentMangaPage?.imageDataUrl && currentMangaPage.imageDataUrl.startsWith('data:application/pdf') && !selectedText);
+
 
   return (
     <div className="container mx-auto p-4 space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><UploadCloud className="text-primary" /> Upload Manga Page</CardTitle>
-          <CardDescription>Upload an image of a manga page. Text will be extracted using OCR.</CardDescription>
+          <CardTitle className="flex items-center gap-2"><UploadCloud className="text-primary" /> Upload Manga Page or PDF</CardTitle>
+          <CardDescription>Upload an image (for OCR) or a PDF document.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid w-full max-w-sm items-center gap-1.5">
-            <Label htmlFor="manga-page-upload">Manga Page Image</Label>
-            <Input id="manga-page-upload" type="file" accept="image/*" onChange={handleFileUpload} disabled={isLoadingOCR} />
+            <Label htmlFor="manga-page-upload">Manga Page Image or PDF</Label>
+            <Input id="manga-page-upload" type="file" accept="image/*,application/pdf" onChange={handleFileUpload} disabled={isLoadingOCR} />
           </div>
           {isLoadingOCR && <Progress value={undefined} className="w-full mt-2" />}
         </CardContent>
@@ -292,13 +330,25 @@ export function MangaRoom() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="relative aspect-[2/3] w-full max-w-md mx-auto bg-muted rounded-md overflow-hidden shadow-lg">
-              <Image
-                src={currentMangaPage.imageDataUrl}
-                alt={`Manga Page ${currentPageIndex + 1}`}
-                layout="fill"
-                objectFit="contain"
-                data-ai-hint="manga page"
-              />
+              {currentMangaPage.imageDataUrl.startsWith('data:image/') ? (
+                <Image
+                  src={currentMangaPage.imageDataUrl}
+                  alt={`Manga Page ${currentPageIndex + 1}`}
+                  layout="fill"
+                  objectFit="contain"
+                  data-ai-hint="manga page"
+                />
+              ) : currentMangaPage.imageDataUrl.startsWith('data:application/pdf') ? (
+                <div className="flex flex-col items-center justify-center h-full text-center p-4">
+                  <FileText className="w-16 h-16 text-primary mb-4" />
+                  <p className="font-semibold">{currentMangaPage.title || 'PDF Document'}</p>
+                  <p className="text-sm text-muted-foreground">PDF viewing and page-specific OCR coming soon.</p>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center h-full text-center p-4">
+                  <p>Unsupported file type or corrupted data.</p>
+                </div>
+              )}
             </div>
             <div className="flex justify-between items-center">
               <Button onClick={() => navigatePage('prev')} disabled={currentPageIndex === 0 || isLoadingTTS}>
@@ -315,7 +365,7 @@ export function MangaRoom() {
       {currentMangaPage?.extractedText && (
          <Card>
           <CardHeader>
-            <CardTitle>Extracted Text</CardTitle>
+            <CardTitle>Extracted Text / File Info</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="max-h-60 overflow-y-auto p-2 border rounded-md bg-muted/50 whitespace-pre-wrap text-sm">
@@ -329,7 +379,7 @@ export function MangaRoom() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Volume2 className="text-primary" /> Text-to-Speech Controls</CardTitle>
-            <CardDescription>Configure and play the extracted text.</CardDescription>
+            <CardDescription>Configure and play the extracted text (if available).</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -385,7 +435,7 @@ export function MangaRoom() {
 
             <div className="flex items-center gap-2 flex-wrap">
               {!isSpeaking && !isLoadingTTS && (
-                <Button onClick={playSpeech} disabled={!effectiveTextToRead}>
+                <Button onClick={playSpeech} disabled={!canPlaySelectedText}>
                   <Play className="mr-2" /> Play {selectedText ? "Selected" : "All"}
                 </Button>
               )}
@@ -394,7 +444,7 @@ export function MangaRoom() {
                   <Pause className="mr-2" /> Pause
                 </Button>
               )}
-               {!isSpeaking && !isLoadingTTS && ttsSettings.type === 'local' && window.speechSynthesis && window.speechSynthesis.paused() && (
+               {!isSpeaking && !isLoadingTTS && ttsSettings.type === 'local' && typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.paused() && (
                  <Button onClick={resumeSpeech} variant="outline">
                   <Play className="mr-2" /> Resume
                 </Button>
@@ -413,10 +463,10 @@ export function MangaRoom() {
       {pages.length === 0 && !isLoadingOCR && (
         <Card className="text-center">
           <CardHeader>
-            <CardTitle>No Manga Pages</CardTitle>
+            <CardTitle>No Manga Pages or PDFs</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-muted-foreground">Upload a manga page image to get started.</p>
+            <p className="text-muted-foreground">Upload a manga page image or a PDF document to get started.</p>
             <UploadCloud className="mx-auto my-4 h-12 w-12 text-muted-foreground" />
           </CardContent>
         </Card>
@@ -424,3 +474,4 @@ export function MangaRoom() {
     </div>
   );
 }
+
