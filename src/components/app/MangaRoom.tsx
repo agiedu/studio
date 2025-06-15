@@ -66,6 +66,27 @@ export function MangaRoom() {
     }
   }, [ttsSettings.language, ttsSettings.voiceURI]);
 
+  const stopSpeech = useCallback(() => {
+    if (ttsSettings.type === 'local' && typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    } else if (audioPlayerRef.current) {
+      audioPlayerRef.current.pause();
+      // Only try to set currentTime if src is loaded and player is in a ready state
+      if (audioPlayerRef.current.src && audioPlayerRef.current.readyState >= 2) { // HAVE_CURRENT_DATA or higher
+         try {
+            audioPlayerRef.current.currentTime = 0;
+         } catch (e) {
+            // console.warn("Could not set audio currentTime on stop", e);
+         }
+      }
+    }
+    if (utteranceRef.current) {
+      utteranceRef.current.onend = null; 
+    }
+    setIsSpeaking(false);
+    setIsLoadingTTS(false);
+  }, [ttsSettings.type]);
+
   useEffect(() => {
     populateVoiceList();
     if (typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.onvoiceschanged !== undefined) {
@@ -77,7 +98,7 @@ export function MangaRoom() {
         stopSpeech(); 
       }
     };
-  }, [populateVoiceList]);
+  }, [populateVoiceList, stopSpeech]);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -85,7 +106,7 @@ export function MangaRoom() {
 
     const commonPageTitle = file.name;
     const commonPageId = Date.now().toString();
-    let fileInputTarget = event.target; // To allow reset later
+    let fileInputTarget = event.target; 
 
     if (file.type.startsWith('image/')) {
       setIsLoadingOCR(true);
@@ -201,7 +222,11 @@ export function MangaRoom() {
           audioPlayerRef.current.play().catch(err => {
             toast({variant: "destructive", title: "Audio Playback Error", description: err.message});
             setIsSpeaking(false);
+            setIsLoadingTTS(false); // Ensure loading is false on play error
           });
+        } else {
+            setIsSpeaking(false); // audioPlayerRef is null
+            setIsLoadingTTS(false);
         }
       } else {
         toast({ variant: "destructive", title: "Cloud TTS Error", description: cloudResult.error });
@@ -228,49 +253,51 @@ export function MangaRoom() {
     } else if (audioPlayerRef.current) {
       audioPlayerRef.current.play().catch(err => {
          toast({variant: "destructive", title: "Audio Playback Error", description: err.message});
+         // If resume fails, ensure states are consistent
+         setIsSpeaking(false);
+         setIsLoadingTTS(false);
       });
-      setIsSpeaking(true);
+      setIsSpeaking(true); // Assume play will succeed, oncanplay/onerror will adjust
     }
-  };
-
-  const stopSpeech = () => {
-    if (ttsSettings.type === 'local' && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-    } else if (audioPlayerRef.current) {
-      audioPlayerRef.current.pause();
-      audioPlayerRef.current.currentTime = 0;
-    }
-    if (utteranceRef.current) utteranceRef.current.onend = null; 
-    setIsSpeaking(false);
-    setIsLoadingTTS(false);
   };
   
   useEffect(() => {
     const player = new Audio();
     audioPlayerRef.current = player;
-    player.onended = () => {
+
+    const handleAudioEnded = () => {
       setIsSpeaking(false);
       setIsLoadingTTS(false);
     };
-    player.oncanplay = () => {
-      if (ttsSettings.type === 'cloud' && isSpeaking) {
+    const handleAudioCanPlay = () => {
+      // If audio data is loaded for cloud TTS, it's no longer "loading"
+      if (ttsSettings.type === 'cloud') {
          setIsLoadingTTS(false);
       }
     };
-    player.onerror = () => {
+    const handleAudioError = () => {
       toast({variant: "destructive", title: "Audio Error", description: "Failed to load or play audio."});
       setIsSpeaking(false);
       setIsLoadingTTS(false);
     };
+    
+    player.addEventListener('ended', handleAudioEnded);
+    player.addEventListener('canplay', handleAudioCanPlay);
+    player.addEventListener('error', handleAudioError);
+
     return () => {
-      if (audioPlayerRef.current) {
+      player.removeEventListener('ended', handleAudioEnded);
+      player.removeEventListener('canplay', handleAudioCanPlay);
+      player.removeEventListener('error', handleAudioError);
+      
+      if (audioPlayerRef.current) { // Check if current is still this player
         audioPlayerRef.current.pause();
-        audioPlayerRef.current = null;
+        audioPlayerRef.current.src = ""; // Release resources
       }
-      stopSpeech();
+      audioPlayerRef.current = null;
+      stopSpeech(); // Call the memoized stopSpeech
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ttsSettings.type]);
+  }, [ttsSettings.type, stopSpeech, toast]);
 
 
   const handleSettingChange = <K extends keyof TTSSettings>(key: K, value: TTSSettings[K]) => {
@@ -439,7 +466,7 @@ export function MangaRoom() {
                   <Play className="mr-2" /> Play {selectedText ? "Selected" : "All"}
                 </Button>
               )}
-              {(isSpeaking || isLoadingTTS) && ttsSettings.type === 'local' && window.speechSynthesis && (
+              {(isSpeaking || isLoadingTTS) && ttsSettings.type === 'local' && typeof window !== 'undefined' && window.speechSynthesis && (
                 <Button onClick={pauseSpeech} variant="outline">
                   <Pause className="mr-2" /> Pause
                 </Button>
