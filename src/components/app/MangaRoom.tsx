@@ -71,8 +71,7 @@ export function MangaRoom() {
       window.speechSynthesis.cancel();
     } else if (audioPlayerRef.current) {
       audioPlayerRef.current.pause();
-      // Only try to set currentTime if src is loaded and player is in a ready state
-      if (audioPlayerRef.current.src && audioPlayerRef.current.readyState >= 2) { // HAVE_CURRENT_DATA or higher
+      if (audioPlayerRef.current.src && audioPlayerRef.current.readyState >= 2) { 
          try {
             audioPlayerRef.current.currentTime = 0;
          } catch (e) {
@@ -95,8 +94,8 @@ export function MangaRoom() {
     return () => {
       if (typeof window !== 'undefined' && window.speechSynthesis) {
         window.speechSynthesis.onvoiceschanged = null;
-        stopSpeech(); 
       }
+      stopSpeech(); 
     };
   }, [populateVoiceList, stopSpeech]);
 
@@ -177,8 +176,8 @@ export function MangaRoom() {
   const textToRead = currentMangaPage?.extractedText || "";
 
   const playSpeech = async () => {
-    if (!textToRead || (currentMangaPage?.imageDataUrl && currentMangaPage.imageDataUrl.startsWith('data:application/pdf'))) {
-      toast({ variant: "destructive", title: "No Text", description: "No text available to read for this page type." });
+    if (!textToRead || (currentMangaPage?.imageDataUrl && currentMangaPage.imageDataUrl.startsWith('data:application/pdf') && !selectedText)) { // Added !selectedText for PDF guard
+      toast({ variant: "destructive", title: "No Text", description: "No text available to read for this page type, or PDF page with no text selection." });
       return;
     }
     stopSpeech(); 
@@ -192,7 +191,7 @@ export function MangaRoom() {
         setIsSpeaking(false);
         return;
       }
-      const utterance = new SpeechSynthesisUtterance(textToRead);
+      const utterance = new SpeechSynthesisUtterance(effectiveTextToRead); // Use effectiveTextToRead
       utterance.lang = ttsSettings.language;
       utterance.pitch = ttsSettings.pitch;
       utterance.rate = ttsSettings.rate;
@@ -215,17 +214,17 @@ export function MangaRoom() {
       utteranceRef.current = utterance;
       window.speechSynthesis.speak(utterance);
     } else { 
-      const cloudResult = await getCloudSpeech(textToRead, ttsSettings.language);
+      const cloudResult = await getCloudSpeech(effectiveTextToRead, ttsSettings.language); // Use effectiveTextToRead
       if ('audioUrl' in cloudResult) {
         if (audioPlayerRef.current) {
           audioPlayerRef.current.src = cloudResult.audioUrl;
           audioPlayerRef.current.play().catch(err => {
             toast({variant: "destructive", title: "Audio Playback Error", description: err.message});
             setIsSpeaking(false);
-            setIsLoadingTTS(false); // Ensure loading is false on play error
+            setIsLoadingTTS(false);
           });
         } else {
-            setIsSpeaking(false); // audioPlayerRef is null
+            setIsSpeaking(false);
             setIsLoadingTTS(false);
         }
       } else {
@@ -247,17 +246,16 @@ export function MangaRoom() {
   };
   
   const resumeSpeech = () => {
-     if (ttsSettings.type === 'local' && window.speechSynthesis && utteranceRef.current) {
+     if (ttsSettings.type === 'local' && window.speechSynthesis && utteranceRef.current && window.speechSynthesis.paused) {
       window.speechSynthesis.resume();
       setIsSpeaking(true);
     } else if (audioPlayerRef.current) {
       audioPlayerRef.current.play().catch(err => {
          toast({variant: "destructive", title: "Audio Playback Error", description: err.message});
-         // If resume fails, ensure states are consistent
          setIsSpeaking(false);
          setIsLoadingTTS(false);
       });
-      setIsSpeaking(true); // Assume play will succeed, oncanplay/onerror will adjust
+      setIsSpeaking(true);
     }
   };
   
@@ -270,13 +268,32 @@ export function MangaRoom() {
       setIsLoadingTTS(false);
     };
     const handleAudioCanPlay = () => {
-      // If audio data is loaded for cloud TTS, it's no longer "loading"
       if (ttsSettings.type === 'cloud') {
          setIsLoadingTTS(false);
       }
     };
-    const handleAudioError = () => {
-      toast({variant: "destructive", title: "Audio Error", description: "Failed to load or play audio."});
+    const handleAudioError = (e: Event) => {
+      const audioElement = e.target as HTMLAudioElement;
+      let errorMessage = "Failed to load or play audio.";
+      if (audioElement.error) {
+        switch (audioElement.error.code) {
+          case MediaError.MEDIA_ERR_ABORTED:
+            errorMessage = "Audio playback aborted.";
+            break;
+          case MediaError.MEDIA_ERR_NETWORK:
+            errorMessage = "A network error caused audio download to fail.";
+            break;
+          case MediaError.MEDIA_ERR_DECODE:
+            errorMessage = "Audio playback aborted due to a corruption problem or because the media used features your browser did not support.";
+            break;
+          case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+            errorMessage = "The audio could not be loaded, either because the server or network failed or because the format is not supported.";
+            break;
+          default:
+            errorMessage = "An unknown error occurred with the audio player.";
+        }
+      }
+      toast({variant: "destructive", title: "Audio Error", description: errorMessage});
       setIsSpeaking(false);
       setIsLoadingTTS(false);
     };
@@ -290,12 +307,15 @@ export function MangaRoom() {
       player.removeEventListener('canplay', handleAudioCanPlay);
       player.removeEventListener('error', handleAudioError);
       
-      if (audioPlayerRef.current) { // Check if current is still this player
-        audioPlayerRef.current.pause();
-        audioPlayerRef.current.src = ""; // Release resources
+      stopSpeech();
+
+      if (player && player.src) {
+        player.pause();
+        player.src = ""; 
       }
-      audioPlayerRef.current = null;
-      stopSpeech(); // Call the memoized stopSpeech
+      if (audioPlayerRef.current === player) {
+        audioPlayerRef.current = null;
+      }
     }
   }, [ttsSettings.type, stopSpeech, toast]);
 
@@ -306,6 +326,10 @@ export function MangaRoom() {
 
   const navigatePage = (direction: 'next' | 'prev') => {
     stopSpeech();
+    // Explicitly ensure loading and speaking states are reset before changing page
+    setIsLoadingTTS(false);
+    setIsSpeaking(false);
+
     if (direction === 'next' && currentPageIndex < pages.length - 1) {
       setCurrentPageIndex(prev => prev + 1);
     } else if (direction === 'prev' && currentPageIndex > 0) {
@@ -315,13 +339,16 @@ export function MangaRoom() {
   
   const removePage = (pageId: string) => {
     stopSpeech();
+    // Explicitly ensure loading and speaking states are reset
+    setIsLoadingTTS(false);
+    setIsSpeaking(false);
     const newPages = pages.filter(p => p.id !== pageId);
     const newPageIndex = Math.max(0, Math.min(currentPageIndex, newPages.length - 1));
     setPages(newPages);
     setCurrentPageIndex(newPages.length === 0 ? 0 : newPageIndex);
   };
 
-  const selectedText = typeof window !== 'undefined' ? window.getSelection()?.toString() : '';
+  const selectedText = typeof window !== 'undefined' ? window.getSelection()?.toString().trim() : '';
   const effectiveTextToRead = selectedText || textToRead;
   const canPlaySelectedText = !!effectiveTextToRead && !(currentMangaPage?.imageDataUrl && currentMangaPage.imageDataUrl.startsWith('data:application/pdf') && !selectedText);
 
@@ -402,11 +429,11 @@ export function MangaRoom() {
         </Card>
       )}
 
-      {textToRead && (
+      {textToRead && ( // Show TTS controls only if there's any text to read (extracted or selected)
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Volume2 className="text-primary" /> Text-to-Speech Controls</CardTitle>
-            <CardDescription>Configure and play the extracted text (if available).</CardDescription>
+            <CardDescription>Configure and play the text. For PDFs, only selected text can be played.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -501,4 +528,3 @@ export function MangaRoom() {
     </div>
   );
 }
-
