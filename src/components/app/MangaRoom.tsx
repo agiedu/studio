@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Slider } from '@/components/ui/slider';
 import { Progress } from '@/components/ui/progress';
 import Image from 'next/image';
-import { ChevronLeft, ChevronRight, Cloud, Loader2, Play, Pause, Smartphone, Stop, UploadCloud, Volume2, XCircle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Cloud, Loader2, Play, Pause, Smartphone, StopCircle, UploadCloud, Volume2, XCircle } from 'lucide-react';
 import * as LocalStorage from '@/lib/localStorageService';
 
 export function MangaRoom() {
@@ -401,7 +401,7 @@ export function MangaRoom() {
                )}
               {(isSpeaking || isLoadingTTS) && (
                 <Button onClick={stopSpeech} variant="destructive">
-                  <Stop className="mr-2" /> Stop
+                  <StopCircle className="mr-2" /> Stop
                 </Button>
               )}
               {isLoadingTTS && <Loader2 className="animate-spin" />}
