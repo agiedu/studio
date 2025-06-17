@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Slider } from '@/components/ui/slider';
 import { Progress } from '@/components/ui/progress';
 import Image from 'next/image';
-import { ChevronLeft, ChevronRight, Cloud, FileText, Loader2, Play, Pause, Smartphone, StopCircle, UploadCloud, Volume2, XCircle, BookOpen } from 'lucide-react';
+import { Cloud, FileText, Loader2, Play, Pause, Smartphone, StopCircle, UploadCloud, Volume2, XCircle, BookOpen, ChevronLeft, ChevronRight } from 'lucide-react';
 import * as LocalStorage from '@/lib/localStorageService';
 import { cn } from '@/lib/utils';
 
@@ -41,6 +41,8 @@ export function MangaRoom() {
   const [mangaDocuments, setMangaDocuments] = useState<MangaDocument[]>([]);
   const [currentDocumentIndex, setCurrentDocumentIndex] = useState(0);
   const [currentPdfInternalPageIndex, setCurrentPdfInternalPageIndex] = useState(0); 
+  const [jumpToPageInput, setJumpToPageInput] = useState('');
+
 
   const [ttsSettings, setTtsSettings] = useState<TTSSettings>(LocalStorage.defaultTTSSettings);
   const [isLoadingDocument, setIsLoadingDocument] = useState(false); 
@@ -63,8 +65,10 @@ export function MangaRoom() {
   }, []);
 
   useEffect(() => {
-    setMangaDocuments(LocalStorage.loadDocuments());
-    setCurrentDocumentIndex(LocalStorage.loadCurrentDocumentIndex());
+    const loadedDocs = LocalStorage.loadDocuments();
+    setMangaDocuments(loadedDocs);
+    const loadedDocIndex = LocalStorage.loadCurrentDocumentIndex();
+    setCurrentDocumentIndex(loadedDocIndex < loadedDocs.length ? loadedDocIndex : 0);
     setCurrentPdfInternalPageIndex(LocalStorage.loadCurrentPdfPageIndex());
     setTtsSettings(LocalStorage.loadTTSSettings());
   }, []);
@@ -155,6 +159,7 @@ export function MangaRoom() {
 
     if (pdfDocToProcess.processedPages[pageNumToRender]?.imageDataUrl && pdfDocToProcess.processedPages[pageNumToRender]?.extractedText) {
        setIsLoadingPdfPage(false);
+       setJumpToPageInput((pageNumToRender + 1).toString());
        return;
     }
     
@@ -231,6 +236,7 @@ export function MangaRoom() {
           }
           return doc;
         }));
+        setJumpToPageInput((pageNumToRender + 1).toString());
         toast({ title: "PDF Page Processed", description: `Page ${pageNumToRender + 1} text extracted.` });
       } else {
         throw new Error("Canvas context not available for PDF page rendering.");
@@ -259,12 +265,15 @@ export function MangaRoom() {
   useEffect(() => {
     const currentDoc = mangaDocuments[currentDocumentIndex];
     if (currentDoc?.type === 'pdf' && currentDoc.numPages > 0 && currentPdfInternalPageIndex < currentDoc.numPages) {
+      setJumpToPageInput((currentPdfInternalPageIndex + 1).toString());
       if (!currentDoc.processedPages[currentPdfInternalPageIndex]?.imageDataUrl &&
           !currentDoc.processedPages[currentPdfInternalPageIndex]?.extractedText &&
           !isLoadingPdfPage
          ) {
          renderAndProcessPdfPage(currentDoc.id, currentPdfInternalPageIndex);
       }
+    } else if (currentDoc?.type === 'image') {
+      setJumpToPageInput(''); // No page input for images
     }
   }, [currentDocumentIndex, currentPdfInternalPageIndex, mangaDocuments, renderAndProcessPdfPage, isLoadingPdfPage]);
 
@@ -299,6 +308,7 @@ export function MangaRoom() {
         setMangaDocuments(prev => {
             const newDocs = [...prev, newImageDoc];
             setCurrentDocumentIndex(newDocs.length -1);
+            setCurrentPdfInternalPageIndex(0);
             return newDocs;
         });
         toast({ title: "Image OCR Success", description: "Text extracted." });
@@ -586,69 +596,76 @@ export function MangaRoom() {
     }
   };
 
-  const navigatePage = (direction: 'next' | 'prev') => {
+  const navigatePdfPage = (direction: 'next' | 'prev') => {
     stopSpeech();
-    setIsLoadingTTS(false); 
-    setIsSpeaking(false);   
-    setSentenceSegments([]);
-    setCurrentSentenceIndex(-1);
-
     const doc = mangaDocuments[currentDocumentIndex];
-    if (!doc) return;
+    if (!doc || doc.type !== 'pdf') return;
 
-    if (doc.type === 'pdf') {
-      let newPdfPage = currentPdfInternalPageIndex;
-      if (direction === 'next') {
-        if (currentPdfInternalPageIndex < doc.numPages - 1) {
-          newPdfPage = currentPdfInternalPageIndex + 1;
-        } else if (currentDocumentIndex < mangaDocuments.length - 1) { 
-          setCurrentDocumentIndex(currentDocumentIndex + 1);
-          setCurrentPdfInternalPageIndex(0); 
-          return;
-        } else { return; } 
-      } else { 
-        if (currentPdfInternalPageIndex > 0) {
-          newPdfPage = currentPdfInternalPageIndex - 1;
-        } else if (currentDocumentIndex > 0) { 
-          const prevDocIndex = currentDocumentIndex -1;
-          const prevDoc = mangaDocuments[prevDocIndex];
-          setCurrentDocumentIndex(prevDocIndex);
-          setCurrentPdfInternalPageIndex(prevDoc.type === 'pdf' ? prevDoc.numPages - 1 : 0);
-          return;
-        } else { return; } 
+    let newPdfPage = currentPdfInternalPageIndex;
+    if (direction === 'next') {
+      if (currentPdfInternalPageIndex < doc.numPages - 1) {
+        newPdfPage = currentPdfInternalPageIndex + 1;
       }
+    } else {
+      if (currentPdfInternalPageIndex > 0) {
+        newPdfPage = currentPdfInternalPageIndex - 1;
+      }
+    }
+    if (newPdfPage !== currentPdfInternalPageIndex) {
       setCurrentPdfInternalPageIndex(newPdfPage);
-    } else { 
-      let newDocIndex = currentDocumentIndex;
-      if (direction === 'next' && currentDocumentIndex < mangaDocuments.length - 1) {
-        newDocIndex = currentDocumentIndex + 1;
-      } else if (direction === 'prev' && currentDocumentIndex > 0) {
-        newDocIndex = currentDocumentIndex - 1;
-      } else { return; }
+      setJumpToPageInput((newPdfPage + 1).toString());
+    }
+  };
+
+  const navigateDocument = (direction: 'next' | 'prev') => {
+    stopSpeech();
+    let newDocIndex = currentDocumentIndex;
+    if (direction === 'next' && currentDocumentIndex < mangaDocuments.length - 1) {
+      newDocIndex = currentDocumentIndex + 1;
+    } else if (direction === 'prev' && currentDocumentIndex > 0) {
+      newDocIndex = currentDocumentIndex - 1;
+    }
+
+    if (newDocIndex !== currentDocumentIndex) {
       setCurrentDocumentIndex(newDocIndex);
-      setCurrentPdfInternalPageIndex(0); 
+      setCurrentPdfInternalPageIndex(0); // Reset PDF page to first when changing document
+      const newDoc = mangaDocuments[newDocIndex];
+      if (newDoc?.type === 'pdf') {
+        setJumpToPageInput('1');
+      } else {
+        setJumpToPageInput('');
+      }
+    }
+  };
+
+  const handleJumpToPage = () => {
+    const doc = mangaDocuments[currentDocumentIndex];
+    if (!doc || doc.type !== 'pdf') return;
+    
+    const pageNum = parseInt(jumpToPageInput, 10) -1;
+    if (!isNaN(pageNum) && pageNum >= 0 && pageNum < doc.numPages && pageNum !== currentPdfInternalPageIndex) {
+      stopSpeech();
+      setCurrentPdfInternalPageIndex(pageNum);
+    } else {
+      // Reset input if invalid or same as current
+      setJumpToPageInput((currentPdfInternalPageIndex + 1).toString());
     }
   };
   
   const removeDocument = (docId: string) => {
     stopSpeech();
-    setIsLoadingTTS(false);
-    setIsSpeaking(false);
-    setSentenceSegments([]);
-    setCurrentSentenceIndex(-1);
-
     delete pdfDocCacheRef.current[docId]; 
 
+    const oldIndex = mangaDocuments.findIndex(d => d.id === docId);
     const newDocs = mangaDocuments.filter(d => d.id !== docId);
     setMangaDocuments(newDocs);
 
     if (newDocs.length === 0) {
       setCurrentDocumentIndex(0);
       setCurrentPdfInternalPageIndex(0);
+      setJumpToPageInput('');
     } else {
-      const oldIndex = mangaDocuments.findIndex(d => d.id === docId);
       let newCurrentDocIndex = currentDocumentIndex;
-
       if (oldIndex < currentDocumentIndex) {
         newCurrentDocIndex = currentDocumentIndex - 1;
       } else if (oldIndex === currentDocumentIndex) {
@@ -662,26 +679,32 @@ export function MangaRoom() {
       
       const newCurrentActiveDoc = newDocs[newCurrentDocIndex];
       if (newCurrentActiveDoc && newCurrentActiveDoc.type === 'pdf') {
-         setCurrentPdfInternalPageIndex(Math.min(currentPdfInternalPageIndex, newCurrentActiveDoc.numPages - 1));
+         const newPdfPageIndex = Math.min(currentPdfInternalPageIndex, newCurrentActiveDoc.numPages - 1);
+         setCurrentPdfInternalPageIndex(newPdfPageIndex);
+         setJumpToPageInput((newPdfPageIndex + 1).toString());
       } else {
          setCurrentPdfInternalPageIndex(0); 
+         setJumpToPageInput('');
+      }
+    }
+  };
+
+  const selectDocument = (docId: string) => {
+    const docIndex = mangaDocuments.findIndex(d => d.id === docId);
+    if (docIndex !== -1 && docIndex !== currentDocumentIndex) {
+      stopSpeech();
+      setCurrentDocumentIndex(docIndex);
+      setCurrentPdfInternalPageIndex(0);
+      const newDoc = mangaDocuments[docIndex];
+      if (newDoc?.type === 'pdf') {
+        setJumpToPageInput('1');
+      } else {
+        setJumpToPageInput('');
       }
     }
   };
 
   const canPlaySelectedText = !!(typeof window !== 'undefined' ? window.getSelection()?.toString().trim() : '') || !!textToRead;
-
-
-  const getPageInfo = () => {
-    if (!currentDoc) return "No document loaded";
-    if (currentDoc.type === 'image') {
-      return `Image ${currentDocumentIndex + 1} of ${mangaDocuments.length}`;
-    }
-    if (currentDoc.type === 'pdf') {
-      return `Page ${currentPdfInternalPageIndex + 1} of ${currentDoc.numPages} (Document ${currentDocumentIndex + 1} of ${mangaDocuments.length})`;
-    }
-    return "";
-  };
 
   const effectiveTextToReadForControls = (typeof window !== 'undefined' ? window.getSelection()?.toString().trim() : '') || textToRead;
 
@@ -702,22 +725,16 @@ export function MangaRoom() {
       </Card>
 
       <div className="flex flex-col lg:flex-row gap-6">
-        <div className="flex-grow space-y-6 lg:w-2/3">
+        <div className="flex-grow space-y-6">
           {mangaDocuments.length > 0 && currentDoc && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
                   <span>Viewing: {currentDoc.title || `Document ${currentDocumentIndex + 1}`}</span>
-                  <Button variant="ghost" size="icon" onClick={() => removeDocument(currentDoc.id)} aria-label="Remove document" disabled={isLoadingDocument || isLoadingPdfPage || isLoadingTTS || isSpeaking}>
-                    <XCircle className="h-5 w-5 text-destructive" />
-                  </Button>
                 </CardTitle>
-                <CardDescription>
-                  {getPageInfo()}
-                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="relative aspect-[2/3] w-full max-w-md mx-auto bg-muted rounded-md overflow-hidden shadow-lg">
+                <div className="relative aspect-[2/3] w-full mx-auto bg-muted rounded-md overflow-hidden shadow-lg">
                   {isLoadingPdfPage && !currentSubPage?.imageDataUrl && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 z-10">
                         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -749,25 +766,6 @@ export function MangaRoom() {
                       <p>No content to display for this page, or document is not an image/PDF.</p>
                     </div>
                   )}
-                </div>
-                <div className="flex justify-between items-center">
-                  <Button onClick={() => navigatePage('prev')} 
-                    disabled={
-                        (currentDoc?.type === 'image' && currentDocumentIndex === 0) ||
-                        (currentDoc?.type === 'pdf' && currentDocumentIndex === 0 && currentPdfInternalPageIndex === 0) ||
-                        isLoadingTTS || isSpeaking || isLoadingPdfPage || isLoadingDocument
-                    }>
-                    <ChevronLeft /> Previous
-                  </Button>
-                  <Button onClick={() => navigatePage('next')} 
-                    disabled={
-                        (currentDoc?.type === 'image' && currentDocumentIndex === mangaDocuments.length - 1) ||
-                        (currentDoc?.type === 'pdf' && currentDoc.numPages > 0 && currentDocumentIndex === mangaDocuments.length - 1 && currentPdfInternalPageIndex === currentDoc.numPages - 1) ||
-                        (currentDoc?.type === 'pdf' && currentDoc.numPages === 0 && currentDocumentIndex === mangaDocuments.length -1 ) || 
-                        isLoadingTTS || isSpeaking || isLoadingPdfPage || isLoadingDocument
-                    }>
-                    Next <ChevronRight />
-                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -802,94 +800,196 @@ export function MangaRoom() {
           )}
         </div>
 
-        {effectiveTextToReadForControls && ( 
-          <div className="lg:w-36 lg:sticky lg:top-16 h-fit">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Volume2 className="text-primary" /> TTS Controls</CardTitle>
-                <CardDescription>Configure and play the text. Highlighting for local TTS.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex flex-col gap-4">
-                  <div>
-                    <Label htmlFor="tts-type">TTS Engine</Label>
-                    <Select value={ttsSettings.type} onValueChange={(v) => handleSettingChange('type', v as 'local' | 'cloud')} disabled={isSpeaking || isLoadingTTS}>
-                      <SelectTrigger id="tts-type">
-                        <SelectValue placeholder="Select TTS type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="local"><div className="flex items-center gap-2"><Smartphone /> Local Browser TTS</div></SelectItem>
-                        <SelectItem value="cloud"><div className="flex items-center gap-2"><Cloud /> Cloud TTS</div></SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label htmlFor="tts-language">Language</Label>
+        
+        <div className="lg:w-36 lg:sticky lg:top-16 h-fit">
+          <Card>
+            <CardHeader className="p-4">
+              <Label htmlFor="document-select" className="mb-1 text-sm font-medium">Documents</Label>
+              {mangaDocuments.length > 0 ? (
+                <Select 
+                  onValueChange={(docId) => selectDocument(docId)} 
+                  value={currentDoc?.id || ""}
+                  disabled={isLoadingDocument || isLoadingPdfPage || isLoadingTTS || isSpeaking}
+                >
+                  <SelectTrigger id="document-select">
+                    <SelectValue placeholder="Select a document" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {mangaDocuments.map(doc => (
+                      <SelectItem key={doc.id} value={doc.id}>
+                        <div className="flex justify-between items-center w-full text-xs">
+                          <span className="truncate " title={doc.title}>{doc.title}</span>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            onClick={(e) => { 
+                              e.stopPropagation(); 
+                              removeDocument(doc.id); 
+                            }} 
+                            className="h-5 w-5 ml-1 flex-shrink-0"
+                            aria-label={`Remove ${doc.title}`}
+                            disabled={isLoadingDocument || isLoadingPdfPage || isLoadingTTS || isSpeaking}
+                          >
+                            <XCircle className="h-3 w-3 text-destructive" />
+                          </Button>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <p className="text-xs text-muted-foreground">No documents uploaded.</p>
+              )}
+            </CardHeader>
+            <CardContent className="p-4 space-y-3">
+              {currentDoc?.type === 'pdf' && currentDoc.numPages > 0 && (
+                <div className="space-y-2">
+                  <Label htmlFor="pdf-page-jump" className="text-sm">Page (PDF)</Label>
+                  <div className="flex items-center gap-1">
+                    <Button 
+                      onClick={() => navigatePdfPage('prev')} 
+                      disabled={currentPdfInternalPageIndex === 0 || isLoadingPdfPage || isLoadingTTS || isSpeaking}
+                      size="sm"
+                      variant="outline"
+                      className="px-2"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
                     <Input 
-                        id="tts-language" 
-                        value={ttsSettings.language} 
-                        onChange={(e) => handleSettingChange('language', e.target.value)}
-                        placeholder="e.g. en-US, ja-JP"
-                        disabled={isSpeaking || isLoadingTTS}
-                      />
+                      id="pdf-page-jump"
+                      type="text" 
+                      inputMode="numeric"
+                      className="h-8 w-12 text-center text-sm px-1"
+                      value={jumpToPageInput}
+                      onChange={(e) => setJumpToPageInput(e.target.value)}
+                      onBlur={handleJumpToPage}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleJumpToPage(); }}
+                      disabled={isLoadingPdfPage || isLoadingTTS || isSpeaking}
+                    />
+                     <Button 
+                      onClick={() => navigatePdfPage('next')} 
+                      disabled={currentPdfInternalPageIndex >= currentDoc.numPages - 1 || isLoadingPdfPage || isLoadingTTS || isSpeaking}
+                      size="sm"
+                      variant="outline"
+                      className="px-2"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
                   </div>
+                  <p className="text-xs text-muted-foreground text-center">of {currentDoc.numPages}</p>
                 </div>
+              )}
 
-                {ttsSettings.type === 'local' && availableVoices.length > 0 && (
-                  <div>
-                    <Label htmlFor="tts-voice">Voice (Local)</Label>
-                    <Select value={ttsSettings.voiceURI} onValueChange={(v) => handleSettingChange('voiceURI', v)} disabled={isSpeaking || isLoadingTTS}>
-                      <SelectTrigger id="tts-voice">
-                        <SelectValue placeholder="Select voice" />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-60">
-                        {availableVoices.filter(v => v.lang.startsWith(ttsSettings.language.split('-')[0])).map(voice => (
-                          <SelectItem key={voice.voiceURI || voice.name} value={voice.voiceURI}>
-                            {voice.name} ({voice.lang}) {voice.default ? "[Default]" : ""}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+              {currentDoc?.type === 'image' && mangaDocuments.length > 1 && (
+                 <div className="space-y-2">
+                  <Label className="text-sm">Document Navigation</Label>
+                   <div className="flex items-center gap-2">
+                      <Button 
+                        onClick={() => navigateDocument('prev')} 
+                        disabled={currentDocumentIndex === 0 || isLoadingTTS || isSpeaking || isLoadingDocument}
+                        size="sm"
+                        variant="outline"
+                      >
+                        <ChevronLeft className="mr-1 h-4 w-4" /> Prev Doc
+                      </Button>
+                      <Button 
+                        onClick={() => navigateDocument('next')} 
+                        disabled={currentDocumentIndex === mangaDocuments.length - 1 || isLoadingTTS || isSpeaking || isLoadingDocument}
+                        size="sm"
+                        variant="outline"
+                      >
+                        Next Doc <ChevronRight className="ml-1 h-4 w-4" />
+                      </Button>
+                    </div>
+                 </div>
+              )}
+              
+              {effectiveTextToReadForControls && (
+                <>
+                  <hr className="my-3 border-border" />
+                  <Label className="text-sm block mb-1">TTS Settings</Label>
+                  <div className="flex flex-col gap-3">
+                    <div>
+                      <Label htmlFor="tts-type" className="text-xs">Engine</Label>
+                      <Select value={ttsSettings.type} onValueChange={(v) => handleSettingChange('type', v as 'local' | 'cloud')} disabled={isSpeaking || isLoadingTTS}>
+                        <SelectTrigger id="tts-type" className="h-8 text-xs">
+                          <SelectValue placeholder="Select TTS type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="local"><div className="flex items-center gap-1 text-xs"><Smartphone className="h-3 w-3" /> Local</div></SelectItem>
+                          <SelectItem value="cloud"><div className="flex items-center gap-1 text-xs"><Cloud className="h-3 w-3"/> Cloud</div></SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="tts-language" className="text-xs">Language</Label>
+                      <Input 
+                          id="tts-language" 
+                          value={ttsSettings.language} 
+                          onChange={(e) => handleSettingChange('language', e.target.value)}
+                          placeholder="e.g. en-US"
+                          disabled={isSpeaking || isLoadingTTS}
+                          className="h-8 text-xs"
+                        />
+                    </div>
                   </div>
-                )}
-                
-                <div className="space-y-2">
-                  <Label htmlFor="tts-rate">Rate: {ttsSettings.rate.toFixed(1)}</Label>
-                  <Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isSpeaking || isLoadingTTS}/>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="tts-pitch">Pitch: {ttsSettings.pitch.toFixed(1)}</Label>
-                  <Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isSpeaking || isLoadingTTS}/>
-                </div>
 
-                <div className="flex flex-col items-start gap-2">
-                  {!isSpeaking && !isLoadingTTS && (
-                    <Button onClick={playSpeech} disabled={!canPlaySelectedText || isLoadingPdfPage || isLoadingDocument} className="w-full">
-                      <Play className="mr-2" /> Play {(typeof window !== 'undefined' && window.getSelection()?.toString().trim()) ? "Selected" : "All"}
-                    </Button>
+                  {ttsSettings.type === 'local' && availableVoices.length > 0 && (
+                    <div>
+                      <Label htmlFor="tts-voice" className="text-xs">Voice (Local)</Label>
+                      <Select value={ttsSettings.voiceURI} onValueChange={(v) => handleSettingChange('voiceURI', v)} disabled={isSpeaking || isLoadingTTS}>
+                        <SelectTrigger id="tts-voice" className="h-8 text-xs">
+                          <SelectValue placeholder="Select voice" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-48">
+                          {availableVoices.filter(v => v.lang.startsWith(ttsSettings.language.split('-')[0])).map(voice => (
+                            <SelectItem key={voice.voiceURI || voice.name} value={voice.voiceURI} className="text-xs">
+                              {voice.name} ({voice.lang}) {voice.default ? "[Def]" : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   )}
-                  {isSpeaking && !isLoadingTTS && ttsSettings.type === 'local' && typeof window !== 'undefined' && window.speechSynthesis && !window.speechSynthesis.paused &&(
-                    <Button onClick={pauseSpeech} variant="outline" className="w-full">
-                      <Pause className="mr-2" /> Pause
-                    </Button>
-                  )}
-                  {!isSpeaking && !isLoadingTTS && ttsSettings.type === 'local' && typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.paused && (
-                    <Button onClick={resumeSpeech} variant="outline" className="w-full">
-                      <Play className="mr-2" /> Resume
-                    </Button>
-                  )}
-                  {(isSpeaking || isLoadingTTS) && (
-                    <Button onClick={stopSpeech} variant="destructive" className="w-full">
-                      <StopCircle className="mr-2" /> Stop
-                    </Button>
-                  )}
-                  {(isLoadingTTS || isLoadingDocument || isLoadingPdfPage) && <Loader2 className="animate-spin" />}
-                </div>
-                {(typeof window !== 'undefined' && window.getSelection()?.toString().trim()) && <p className="text-sm text-muted-foreground italic">Reading selected: "{(window.getSelection()?.toString().trim() || "").substring(0,50)}..."</p>}
-              </CardContent>
-            </Card>
-          </div>
-        )}
+                  
+                  <div className="space-y-1">
+                    <Label htmlFor="tts-rate" className="text-xs">Rate: {ttsSettings.rate.toFixed(1)}</Label>
+                    <Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isSpeaking || isLoadingTTS}/>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="tts-pitch" className="text-xs">Pitch: {ttsSettings.pitch.toFixed(1)}</Label>
+                    <Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isSpeaking || isLoadingTTS}/>
+                  </div>
+
+                  <div className="flex flex-col items-start gap-2 pt-2">
+                    {!isSpeaking && !isLoadingTTS && (
+                      <Button onClick={playSpeech} disabled={!canPlaySelectedText || isLoadingPdfPage || isLoadingDocument} className="w-full h-8 text-xs">
+                        <Play className="mr-1 h-3 w-3" /> Play {(typeof window !== 'undefined' && window.getSelection()?.toString().trim()) ? "Selected" : "All"}
+                      </Button>
+                    )}
+                    {isSpeaking && !isLoadingTTS && ttsSettings.type === 'local' && typeof window !== 'undefined' && window.speechSynthesis && !window.speechSynthesis.paused &&(
+                      <Button onClick={pauseSpeech} variant="outline" className="w-full h-8 text-xs">
+                        <Pause className="mr-1 h-3 w-3" /> Pause
+                      </Button>
+                    )}
+                    {!isSpeaking && !isLoadingTTS && ttsSettings.type === 'local' && typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.paused && (
+                      <Button onClick={resumeSpeech} variant="outline" className="w-full h-8 text-xs">
+                        <Play className="mr-1 h-3 w-3" /> Resume
+                      </Button>
+                    )}
+                    {(isSpeaking || isLoadingTTS) && (
+                      <Button onClick={stopSpeech} variant="destructive" className="w-full h-8 text-xs">
+                        <StopCircle className="mr-1 h-3 w-3" /> Stop
+                      </Button>
+                    )}
+                    {(isLoadingTTS || isLoadingDocument || isLoadingPdfPage) && <Loader2 className="animate-spin h-4 w-4 self-center" />}
+                  </div>
+                  {(typeof window !== 'undefined' && window.getSelection()?.toString().trim()) && <p className="text-xs text-muted-foreground italic">Reading: "{(window.getSelection()?.toString().trim() || "").substring(0,30)}..."</p>}
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
       
       {mangaDocuments.length === 0 && !isLoadingDocument && (
@@ -906,4 +1006,3 @@ export function MangaRoom() {
     </div>
   );
 }
-
