@@ -587,9 +587,6 @@ export function MangaRoom() {
     setSentenceSegments([]);
     setCurrentSentenceIndex(-1);
 
-    // No need to revoke `docToRemove.pdfDataUrl` if it's a Base64 Data URL.
-    // Blob URLs for individual audio tracks or temporary canvas images might still need cleanup if applicable,
-    // but the main PDF data is now a data URL.
     delete pdfDocCacheRef.current[docId]; 
 
     const newDocs = mangaDocuments.filter(d => d.id !== docId);
@@ -654,190 +651,199 @@ export function MangaRoom() {
         </CardContent>
       </Card>
 
-      {mangaDocuments.length > 0 && currentDoc && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>Viewing: {currentDoc.title || `Document ${currentDocumentIndex + 1}`}</span>
-              <Button variant="ghost" size="icon" onClick={() => removeDocument(currentDoc.id)} aria-label="Remove document" disabled={isLoadingDocument || isLoadingPdfPage || isLoadingTTS || isSpeaking}>
-                <XCircle className="h-5 w-5 text-destructive" />
-              </Button>
-            </CardTitle>
-             <CardDescription>
-              {getPageInfo()}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="relative aspect-[2/3] w-full max-w-md mx-auto bg-muted rounded-md overflow-hidden shadow-lg">
-              {isLoadingPdfPage && !currentSubPage?.imageDataUrl && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 z-10">
-                    <Loader2 className="h-12 w-12 animate-spin text-primary" />
-                    <p className="mt-2 text-muted-foreground">Loading PDF page...</p>
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Left Column: Reading Area + Extracted Text */}
+        <div className="flex-grow space-y-6 lg:w-2/3">
+          {mangaDocuments.length > 0 && currentDoc && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span>Viewing: {currentDoc.title || `Document ${currentDocumentIndex + 1}`}</span>
+                  <Button variant="ghost" size="icon" onClick={() => removeDocument(currentDoc.id)} aria-label="Remove document" disabled={isLoadingDocument || isLoadingPdfPage || isLoadingTTS || isSpeaking}>
+                    <XCircle className="h-5 w-5 text-destructive" />
+                  </Button>
+                </CardTitle>
+                <CardDescription>
+                  {getPageInfo()}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="relative aspect-[2/3] w-full max-w-md mx-auto bg-muted rounded-md overflow-hidden shadow-lg">
+                  {isLoadingPdfPage && !currentSubPage?.imageDataUrl && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 z-10">
+                        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+                        <p className="mt-2 text-muted-foreground">Loading PDF page...</p>
+                    </div>
+                  )}
+                  {currentSubPage?.imageDataUrl ? (
+                    <Image
+                      src={currentSubPage.imageDataUrl}
+                      alt={currentDoc.title || `Page content`}
+                      fill 
+                      style={{ objectFit: "contain" }} 
+                      data-ai-hint="manga page comic"
+                      priority={true}
+                      key={currentSubPage.imageDataUrl} // Add key for re-renders
+                    />
+                  ) : currentDoc.type === 'pdf' && !isLoadingPdfPage ? (
+                    <div className="flex flex-col items-center justify-center h-full text-center p-4">
+                      <BookOpen className="w-16 h-16 text-primary mb-4" />
+                      <p className="font-semibold">{currentDoc.title || 'PDF Document'}</p>
+                      <p className="text-sm text-muted-foreground">
+                        { currentDoc.numPages > 0 ? `Processing page ${currentPdfInternalPageIndex + 1}...` : "Empty PDF or error loading."}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-2">If this takes too long, the page might be complex or an error occurred.</p>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-center p-4">
+                      <FileText className="w-16 h-16 text-primary mb-4" />
+                      <p>No content to display for this page, or document is not an image/PDF.</p>
+                    </div>
+                  )}
                 </div>
-              )}
-              {currentSubPage?.imageDataUrl ? (
-                <Image
-                  src={currentSubPage.imageDataUrl}
-                  alt={currentDoc.title || `Page content`}
-                  fill 
-                  style={{ objectFit: "contain" }} 
-                  data-ai-hint="manga page comic"
-                  priority={true}
-                  key={currentSubPage.imageDataUrl}
-                />
-              ) : currentDoc.type === 'pdf' && !isLoadingPdfPage ? (
-                 <div className="flex flex-col items-center justify-center h-full text-center p-4">
-                  <BookOpen className="w-16 h-16 text-primary mb-4" />
-                  <p className="font-semibold">{currentDoc.title || 'PDF Document'}</p>
-                  <p className="text-sm text-muted-foreground">
-                    { currentDoc.numPages > 0 ? `Processing page ${currentPdfInternalPageIndex + 1}...` : "Empty PDF or error loading."}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-2">If this takes too long, the page might be complex or an error occurred.</p>
+                <div className="flex justify-between items-center">
+                  <Button onClick={() => navigatePage('prev')} 
+                    disabled={
+                        (currentDoc?.type === 'image' && currentDocumentIndex === 0) ||
+                        (currentDoc?.type === 'pdf' && currentDocumentIndex === 0 && currentPdfInternalPageIndex === 0) ||
+                        isLoadingTTS || isSpeaking || isLoadingPdfPage || isLoadingDocument
+                    }>
+                    <ChevronLeft /> Previous
+                  </Button>
+                  <Button onClick={() => navigatePage('next')} 
+                    disabled={
+                        (currentDoc?.type === 'image' && currentDocumentIndex === mangaDocuments.length - 1) ||
+                        (currentDoc?.type === 'pdf' && currentDoc.numPages > 0 && currentDocumentIndex === mangaDocuments.length - 1 && currentPdfInternalPageIndex === currentDoc.numPages - 1) ||
+                        (currentDoc?.type === 'pdf' && currentDoc.numPages === 0 && currentDocumentIndex === mangaDocuments.length -1 ) || 
+                        isLoadingTTS || isSpeaking || isLoadingPdfPage || isLoadingDocument
+                    }>
+                    Next <ChevronRight />
+                  </Button>
                 </div>
-              ) : (
-                <div className="flex items-center justify-center h-full text-center p-4">
-                  <FileText className="w-16 h-16 text-primary mb-4" />
-                  <p>No content to display for this page, or document is not an image/PDF.</p>
+              </CardContent>
+            </Card>
+          )}
+          
+          {textToRead && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Extracted Text</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="max-h-60 overflow-y-auto p-2 border rounded-md bg-muted/50 whitespace-pre-wrap text-sm">
+                  {isLoadingPdfPage && !currentSubPage?.extractedText ? "Loading page text..." : 
+                    (ttsSettings.type === 'local' && sentenceSegments.length > 0 && isSpeaking) ? (
+                      sentenceSegments.map((segment, index) => (
+                        <span
+                          key={index}
+                          className={cn(
+                            index === currentSentenceIndex && "text-accent font-semibold"
+                          )}
+                        >
+                          {segment}
+                        </span>
+                      ))
+                    ) : (
+                      textToRead || "No text extracted or available for this page."
+                    )
+                  }
                 </div>
-              )}
-            </div>
-            <div className="flex justify-between items-center">
-              <Button onClick={() => navigatePage('prev')} 
-                disabled={
-                    (currentDoc?.type === 'image' && currentDocumentIndex === 0) ||
-                    (currentDoc?.type === 'pdf' && currentDocumentIndex === 0 && currentPdfInternalPageIndex === 0) ||
-                    isLoadingTTS || isSpeaking || isLoadingPdfPage || isLoadingDocument
-                }>
-                <ChevronLeft /> Previous
-              </Button>
-              <Button onClick={() => navigatePage('next')} 
-                disabled={
-                    (currentDoc?.type === 'image' && currentDocumentIndex === mangaDocuments.length - 1) ||
-                    (currentDoc?.type === 'pdf' && currentDoc.numPages > 0 && currentDocumentIndex === mangaDocuments.length - 1 && currentPdfInternalPageIndex === currentDoc.numPages - 1) ||
-                    (currentDoc?.type === 'pdf' && currentDoc.numPages === 0 && currentDocumentIndex === mangaDocuments.length -1 ) || 
-                    isLoadingTTS || isSpeaking || isLoadingPdfPage || isLoadingDocument
-                }>
-                Next <ChevronRight />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        {/* Right Column: Floating TTS Controls */}
+        {effectiveTextToReadForControls && ( 
+          <div className="lg:w-1/3 lg:sticky lg:top-20 h-fit">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2"><Volume2 className="text-primary" /> TTS Controls</CardTitle>
+                <CardDescription>Configure and play the text. Highlighting for local TTS.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-col gap-4">
+                  <div>
+                    <Label htmlFor="tts-type">TTS Engine</Label>
+                    <Select value={ttsSettings.type} onValueChange={(v) => handleSettingChange('type', v as 'local' | 'cloud')} disabled={isSpeaking || isLoadingTTS}>
+                      <SelectTrigger id="tts-type">
+                        <SelectValue placeholder="Select TTS type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="local"><div className="flex items-center gap-2"><Smartphone /> Local Browser TTS</div></SelectItem>
+                        <SelectItem value="cloud"><div className="flex items-center gap-2"><Cloud /> Cloud TTS</div></SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="tts-language">Language</Label>
+                    <Input 
+                        id="tts-language" 
+                        value={ttsSettings.language} 
+                        onChange={(e) => handleSettingChange('language', e.target.value)}
+                        placeholder="e.g. en-US, ja-JP"
+                        disabled={isSpeaking || isLoadingTTS}
+                      />
+                  </div>
+                </div>
+
+                {ttsSettings.type === 'local' && availableVoices.length > 0 && (
+                  <div>
+                    <Label htmlFor="tts-voice">Voice (Local)</Label>
+                    <Select value={ttsSettings.voiceURI} onValueChange={(v) => handleSettingChange('voiceURI', v)} disabled={isSpeaking || isLoadingTTS}>
+                      <SelectTrigger id="tts-voice">
+                        <SelectValue placeholder="Select voice" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-60">
+                        {availableVoices.filter(v => v.lang.startsWith(ttsSettings.language.split('-')[0])).map(voice => (
+                          <SelectItem key={voice.voiceURI || voice.name} value={voice.voiceURI}>
+                            {voice.name} ({voice.lang}) {voice.default ? "[Default]" : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                
+                <div className="space-y-2">
+                  <Label htmlFor="tts-rate">Rate: {ttsSettings.rate.toFixed(1)}</Label>
+                  <Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isSpeaking || isLoadingTTS}/>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="tts-pitch">Pitch: {ttsSettings.pitch.toFixed(1)}</Label>
+                  <Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isSpeaking || isLoadingTTS}/>
+                </div>
+
+                <div className="flex flex-col items-start gap-2">
+                  {!isSpeaking && !isLoadingTTS && (
+                    <Button onClick={playSpeech} disabled={!canPlaySelectedText || isLoadingPdfPage || isLoadingDocument} className="w-full">
+                      <Play className="mr-2" /> Play {(typeof window !== 'undefined' && window.getSelection()?.toString().trim()) ? "Selected" : "All"}
+                    </Button>
+                  )}
+                  {isSpeaking && !isLoadingTTS && ttsSettings.type === 'local' && typeof window !== 'undefined' && window.speechSynthesis && !window.speechSynthesis.paused &&(
+                    <Button onClick={pauseSpeech} variant="outline" className="w-full">
+                      <Pause className="mr-2" /> Pause
+                    </Button>
+                  )}
+                  {!isSpeaking && !isLoadingTTS && ttsSettings.type === 'local' && typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.paused && (
+                    <Button onClick={resumeSpeech} variant="outline" className="w-full">
+                      <Play className="mr-2" /> Resume
+                    </Button>
+                  )}
+                  {(isSpeaking || isLoadingTTS) && (
+                    <Button onClick={stopSpeech} variant="destructive" className="w-full">
+                      <StopCircle className="mr-2" /> Stop
+                    </Button>
+                  )}
+                  {(isLoadingTTS || isLoadingDocument || isLoadingPdfPage) && <Loader2 className="animate-spin" />}
+                </div>
+                {(typeof window !== 'undefined' && window.getSelection()?.toString().trim()) && <p className="text-sm text-muted-foreground italic">Reading selected: "{(window.getSelection()?.toString().trim() || "").substring(0,50)}..."</p>}
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </div>
       
-      {textToRead && (
-         <Card>
-          <CardHeader>
-            <CardTitle>Extracted Text / File Info</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="max-h-60 overflow-y-auto p-2 border rounded-md bg-muted/50 whitespace-pre-wrap text-sm">
-              {isLoadingPdfPage && !currentSubPage?.extractedText ? "Loading page text..." : 
-                (ttsSettings.type === 'local' && sentenceSegments.length > 0 && isSpeaking) ? (
-                  sentenceSegments.map((segment, index) => (
-                    <span
-                      key={index}
-                      className={cn(
-                        index === currentSentenceIndex && "text-accent font-semibold"
-                      )}
-                    >
-                      {segment}
-                    </span>
-                  ))
-                ) : (
-                  textToRead || "No text extracted or available for this page."
-                )
-              }
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {effectiveTextToReadForControls && ( 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Volume2 className="text-primary" /> Text-to-Speech Controls</CardTitle>
-            <CardDescription>Configure and play the text. Sentence highlighting available for local TTS. For PDFs, text is extracted page by page.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="tts-type">TTS Engine</Label>
-                <Select value={ttsSettings.type} onValueChange={(v) => handleSettingChange('type', v as 'local' | 'cloud')} disabled={isSpeaking || isLoadingTTS}>
-                  <SelectTrigger id="tts-type">
-                    <SelectValue placeholder="Select TTS type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="local"><div className="flex items-center gap-2"><Smartphone /> Local Browser TTS</div></SelectItem>
-                    <SelectItem value="cloud"><div className="flex items-center gap-2"><Cloud /> Cloud TTS</div></SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="tts-language">Language</Label>
-                 <Input 
-                    id="tts-language" 
-                    value={ttsSettings.language} 
-                    onChange={(e) => handleSettingChange('language', e.target.value)}
-                    placeholder="e.g. en-US, ja-JP"
-                    disabled={isSpeaking || isLoadingTTS}
-                  />
-              </div>
-            </div>
-
-            {ttsSettings.type === 'local' && availableVoices.length > 0 && (
-              <div>
-                <Label htmlFor="tts-voice">Voice (Local)</Label>
-                <Select value={ttsSettings.voiceURI} onValueChange={(v) => handleSettingChange('voiceURI', v)} disabled={isSpeaking || isLoadingTTS}>
-                  <SelectTrigger id="tts-voice">
-                    <SelectValue placeholder="Select voice" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-60">
-                    {availableVoices.filter(v => v.lang.startsWith(ttsSettings.language.split('-')[0])).map(voice => (
-                      <SelectItem key={voice.voiceURI || voice.name} value={voice.voiceURI}>
-                        {voice.name} ({voice.lang}) {voice.default ? "[Default]" : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            
-            <div className="space-y-2">
-              <Label htmlFor="tts-rate">Rate: {ttsSettings.rate.toFixed(1)}</Label>
-              <Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isSpeaking || isLoadingTTS}/>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="tts-pitch">Pitch: {ttsSettings.pitch.toFixed(1)}</Label>
-              <Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isSpeaking || isLoadingTTS}/>
-            </div>
-
-            <div className="flex items-center gap-2 flex-wrap">
-              {!isSpeaking && !isLoadingTTS && (
-                <Button onClick={playSpeech} disabled={!canPlaySelectedText || isLoadingPdfPage || isLoadingDocument}>
-                  <Play className="mr-2" /> Play {(typeof window !== 'undefined' && window.getSelection()?.toString().trim()) ? "Selected" : "All"}
-                </Button>
-              )}
-              {isSpeaking && !isLoadingTTS && ttsSettings.type === 'local' && typeof window !== 'undefined' && window.speechSynthesis && !window.speechSynthesis.paused &&(
-                <Button onClick={pauseSpeech} variant="outline">
-                  <Pause className="mr-2" /> Pause
-                </Button>
-              )}
-               {!isSpeaking && !isLoadingTTS && ttsSettings.type === 'local' && typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.paused && (
-                 <Button onClick={resumeSpeech} variant="outline">
-                  <Play className="mr-2" /> Resume
-                </Button>
-               )}
-              {(isSpeaking || isLoadingTTS) && (
-                <Button onClick={stopSpeech} variant="destructive">
-                  <StopCircle className="mr-2" /> Stop
-                </Button>
-              )}
-              {(isLoadingTTS || isLoadingDocument || isLoadingPdfPage) && <Loader2 className="animate-spin" />}
-            </div>
-             {(typeof window !== 'undefined' && window.getSelection()?.toString().trim()) && <p className="text-sm text-muted-foreground italic">Reading selected text: "{(window.getSelection()?.toString().trim() || "").substring(0,50)}..."</p>}
-          </CardContent>
-        </Card>
-      )}
       {mangaDocuments.length === 0 && !isLoadingDocument && (
         <Card className="text-center">
           <CardHeader>
@@ -852,3 +858,4 @@ export function MangaRoom() {
     </div>
   );
 }
+
