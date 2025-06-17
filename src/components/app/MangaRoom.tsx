@@ -128,6 +128,7 @@ export function MangaRoom() {
     if (utteranceRef.current) {
       utteranceRef.current.onend = null;
       utteranceRef.current.onboundary = null;
+      utteranceRef.current.onerror = null;
       utteranceRef.current = null;
     }
     if(resetUIState) {
@@ -454,10 +455,9 @@ export function MangaRoom() {
       return;
     }
 
-    if (isSpeaking && !isPausedState) {
-        stopSpeech(false);
-        await new Promise(resolve => setTimeout(resolve, 150));
-    }
+    // Always stop any ongoing/paused speech before starting new
+    stopSpeech(false); // false to prevent premature UI flicker of sentence highlighting
+    await new Promise(resolve => setTimeout(resolve, 150)); // Short delay for engine to clear
 
 
     setIsSpeaking(true);
@@ -496,29 +496,20 @@ export function MangaRoom() {
           }
           cumulativeLength += segments[i].length;
         }
-        if (newIdx !== -1 && utteranceRef.current === utterance) { // Ensure it's the current utterance
+        if (newIdx !== -1 && utteranceRef.current === utterance) { 
             setCurrentSentenceIndex(newIdx);
         }
       };
 
       utterance.onend = () => {
-        if (utteranceRef.current === utterance) { // Ensure it's the current utterance
-            setIsSpeaking(false);
-            setIsPausedState(false);
-            setIsLoadingTTS(false);
-            setCurrentSentenceIndex(-1);
-            utteranceRef.current = null;
+        if (utteranceRef.current === utterance) { 
+            stopSpeech(true);
         }
       };
       utterance.onerror = (event) => {
-         if (utteranceRef.current === utterance) { // Ensure it's the current utterance
+         if (utteranceRef.current === utterance) { 
             toast({ variant: "destructive", title: "TTS Error", description: event.error || "Failed to play speech." });
-            setIsSpeaking(false);
-            setIsPausedState(false);
-            setIsLoadingTTS(false);
-            setCurrentSentenceIndex(-1);
-            setSentenceSegments([]);
-            utteranceRef.current = null;
+            stopSpeech(true);
         }
       };
       utteranceRef.current = utterance;
@@ -564,28 +555,29 @@ export function MangaRoom() {
 
   const resumeSpeech = () => {
     if (isSpeaking && isPausedState) {
-        // Local TTS
         if (ttsSettings.type === 'local' && typeof window !== 'undefined' && window.speechSynthesis && utteranceRef.current) {
             if (window.speechSynthesis.paused) {
                 window.speechSynthesis.resume();
-                setIsPausedState(false);
+                setIsPausedState(false); 
+
+                setTimeout(() => {
+                    // Check if resume actually made it speak. utteranceRef.current should still be valid here
+                    // unless onEnd/onError fired very fast and called stopSpeech.
+                    // isSpeaking is true, isPausedState is now false (optimistically).
+                    if (utteranceRef.current && isSpeaking && !isPausedState && !window.speechSynthesis.speaking && !window.speechSynthesis.pending) {
+                        console.warn("TTS Resume: Resumed, but not speaking/pending. Forcing stop.");
+                        stopSpeech(true); // Force stop if resume didn't take.
+                    }
+                }, 100); // Check after 100ms
             } else {
-                // If our state says paused, but engine is not paused.
-                console.warn("TTS Resume: App state indicates paused, but browser engine is not. Attempting to resync.");
-                setIsPausedState(false); // Correct our UI state.
-                // If engine also reports not speaking, our isSpeaking state is wrong.
-                if (!window.speechSynthesis.speaking) {
-                    console.warn("TTS Resume: Engine also not speaking. Resetting isSpeaking state.");
-                    setIsSpeaking(false); // This should make the button "Play" for a fresh start.
-                }
-                // If engine IS speaking, then isPausedState=false is the correct sync.
+                console.warn("TTS Resume: App state indicates paused, but browser engine is not. Resetting.");
+                stopSpeech(true); 
             }
         }
-        // Cloud TTS
         else if (ttsSettings.type === 'cloud' && audioPlayerRef.current && audioPlayerRef.current.paused) {
             audioPlayerRef.current.play().catch(e => {
                 toast({variant: "destructive", title: "Resume Error", description: "Could not resume audio."});
-                stopSpeech(true); // Full stop on error
+                stopSpeech(true); 
             });
             setIsPausedState(false);
         }
@@ -702,13 +694,12 @@ export function MangaRoom() {
     if (doc && doc.type === 'pdf' && doc.numPages > 0) {
       resetValue = (currentPdfInternalPageIndex + 1).toString();
     }
-    // Only reset if the input is invalid. If it's valid and different, onChange already handled it.
+    
     const pageNumFromInputText = parseInt(jumpToPageInput, 10);
     if (doc && doc.type === 'pdf' && doc.numPages > 0) {
         if (isNaN(pageNumFromInputText) || pageNumFromInputText < 1 || pageNumFromInputText > doc.numPages) {
              setJumpToPageInput((currentPdfInternalPageIndex + 1).toString());
         } else {
-            // Ensure canonical form if valid but different (e.g. "05" vs "5")
              if (jumpToPageInput !== pageNumFromInputText.toString()) {
                 setJumpToPageInput(pageNumFromInputText.toString());
              }
