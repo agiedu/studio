@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils';
 import { GlobalWorkerOptions, getDocument, version as pdfjsVersion } from 'pdfjs-dist';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist/types/src/display/api';
 
+
 function base64ToUint8Array(base64: string): Uint8Array {
   try {
     const binaryString = window.atob(base64);
@@ -185,7 +186,18 @@ export function MangaRoom() {
             console.error("Empty Base64 data for PDF:", pdfDocToProcess.id);
             toast({ variant: "destructive", title: "PDF Data Error", description: `Empty PDF data for ${pdfDocToProcess.title}. Try re-uploading.` });
             setIsLoadingPdfPage(false);
-            setMangaDocuments(prevDocs => prevDocs.map(d => { /* ... similar error marking ... */}));
+            setMangaDocuments(prevDocs => prevDocs.map(d => {
+              if (d.id === pdfDocToProcess.id && d.type === 'pdf') {
+                const updatedProcessedPages = [...d.processedPages];
+                 if (pageNumToRender < updatedProcessedPages.length) {
+                    updatedProcessedPages[pageNumToRender] = { imageDataUrl: '', extractedText: 'Error: Empty PDF data. Please re-upload.'};
+                } else {
+                     updatedProcessedPages.push({ imageDataUrl: '', extractedText: 'Error: Empty PDF data. Please re-upload.'});
+                }
+                return { ...d, processedPages: updatedProcessedPages };
+              }
+              return d;
+            }));
             return;
         }
         const pdfBytes = base64ToUint8Array(base64Data);
@@ -376,7 +388,7 @@ export function MangaRoom() {
       currentSubPage = currentDoc.processedPages[currentPdfInternalPageIndex];
       textToRead = currentSubPage?.extractedText || "";
       if (!textToRead && !isLoadingPdfPage && currentDoc.numPages > 0) {
-         if (!currentSubPage || (currentSubPage && !currentSubPage.extractedText && !currentSubPage.imageDataUrl.includes("Error"))) { // Avoid overwriting specific error messages
+         if (!currentSubPage || (currentSubPage && !currentSubPage.extractedText && currentSubPage.imageDataUrl && !currentSubPage.imageDataUrl.includes("Error"))) { 
             textToRead = "Processing PDF page, please wait. You can also manually select text from this message to read aloud.";
          } else if (currentSubPage && currentSubPage.extractedText && currentSubPage.extractedText.startsWith("Error:")) {
             textToRead = currentSubPage.extractedText;
@@ -650,7 +662,7 @@ export function MangaRoom() {
       
       const newCurrentActiveDoc = newDocs[newCurrentDocIndex];
       if (newCurrentActiveDoc && newCurrentActiveDoc.type === 'pdf') {
-         setCurrentPdfInternalPageIndex(0);
+         setCurrentPdfInternalPageIndex(Math.min(currentPdfInternalPageIndex, newCurrentActiveDoc.numPages - 1));
       } else {
          setCurrentPdfInternalPageIndex(0); 
       }
@@ -720,7 +732,7 @@ export function MangaRoom() {
                       style={{ objectFit: "contain" }} 
                       data-ai-hint="manga page comic"
                       priority={true}
-                      key={currentSubPage.imageDataUrl} 
+                      key={`${currentDoc.id}-${currentPdfInternalPageIndex}-${currentSubPage.imageDataUrl.substring(0,20)}`} 
                     />
                   ) : currentDoc.type === 'pdf' && !isLoadingPdfPage ? (
                     <div className="flex flex-col items-center justify-center h-full text-center p-4">
@@ -791,7 +803,7 @@ export function MangaRoom() {
         </div>
 
         {effectiveTextToReadForControls && ( 
-          <div className="lg:w-72 lg:sticky lg:top-16 h-fit">
+          <div className="lg:w-36 lg:sticky lg:top-16 h-fit">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><Volume2 className="text-primary" /> TTS Controls</CardTitle>
