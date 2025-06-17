@@ -148,7 +148,7 @@ export function MangaRoom() {
     try {
       let pdfDocInstance = pdfDocCacheRef.current[pdfDocToProcess.id];
       if (!pdfDocInstance) {
-        const loadingTask = getDocument(pdfDocToProcess.pdfDataUrl); 
+        const loadingTask = getDocument({data: pdfDocToProcess.pdfDataUrl.split(',')[1]}); 
         pdfDocInstance = await loadingTask.promise;
         pdfDocCacheRef.current[pdfDocToProcess.id] = pdfDocInstance;
       }
@@ -254,67 +254,52 @@ export function MangaRoom() {
       reader.readAsDataURL(file);
 
     } else if (file.type === 'application/pdf') {
-      const initialReader = new FileReader();
-      initialReader.onload = async (e_outer) => {
-        const fileArrayBuffer = e_outer.target?.result as ArrayBuffer;
-        if (!fileArrayBuffer) {
-            toast({ variant: "destructive", title: "Upload Error", description: "Failed to read PDF file." });
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const pdfBase64DataUrl = e.target?.result as string;
+         if (!pdfBase64DataUrl || !pdfBase64DataUrl.startsWith('data:application/pdf;base64,')) {
+            toast({ variant: "destructive", title: "Upload Error", description: "Invalid or corrupted PDF file processed." });
             setIsLoadingDocument(false);
             if (fileInputTarget) fileInputTarget.value = '';
             return;
         }
 
-        const base64Reader = new FileReader();
-        base64Reader.onload = async () => {
-          const pdfBase64DataUrl = base64Reader.result as string;
-           if (!pdfBase64DataUrl || !pdfBase64DataUrl.startsWith('data:application/pdf')) {
-              toast({ variant: "destructive", title: "Upload Error", description: "Invalid or corrupted PDF file processed." });
-              setIsLoadingDocument(false);
-              if (fileInputTarget) fileInputTarget.value = '';
-              return;
-          }
+        try {
+          // Pass only the base64 part to getDocument for data URLs
+          const loadingTask = getDocument({data: pdfBase64DataUrl.split(',')[1]});
+          const pdf = await loadingTask.promise;
+          pdfDocCacheRef.current[commonPageId] = pdf;
 
-          try {
-            const loadingTask = getDocument(pdfBase64DataUrl);
-            const pdf = await loadingTask.promise;
-            pdfDocCacheRef.current[commonPageId] = pdf;
+          const newPdfDoc: MangaPdfFile = {
+            id: commonPageId,
+            title: file.name,
+            type: 'pdf',
+            pdfDataUrl: pdfBase64DataUrl, 
+            numPages: pdf.numPages,
+            processedPages: new Array(pdf.numPages).fill(null),
+          };
+          
+          setMangaDocuments(prev => {
+            const newDocs = [...prev, newPdfDoc];
+            setCurrentDocumentIndex(newDocs.length - 1);
+            setCurrentPdfInternalPageIndex(0);
+            return newDocs;
+          });
+          toast({ title: "PDF Uploaded", description: `${file.name} (${pdf.numPages} pages). Processing first page...` });
 
-            const newPdfDoc: MangaPdfFile = {
-              id: commonPageId,
-              title: file.name,
-              type: 'pdf',
-              pdfDataUrl: pdfBase64DataUrl, 
-              numPages: pdf.numPages,
-              processedPages: new Array(pdf.numPages).fill(null),
-            };
-            
-            setMangaDocuments(prev => {
-              const newDocs = [...prev, newPdfDoc];
-              setCurrentDocumentIndex(newDocs.length - 1);
-              setCurrentPdfInternalPageIndex(0);
-              return newDocs;
-            });
-            toast({ title: "PDF Uploaded", description: `${file.name} (${pdf.numPages} pages). Processing first page...` });
-
-          } catch (pdfLoadError: any) {
-            console.error("Error loading PDF:", pdfLoadError);
-            toast({ variant: "destructive", title: "PDF Load Error", description: pdfLoadError.message || "Failed to load PDF." });
-          } finally {
-            setIsLoadingDocument(false);
-          }
-        };
-        base64Reader.onerror = () => {
-          toast({ variant: "destructive", title: "File Read Error", description: "Could not process the PDF file content." });
+        } catch (pdfLoadError: any) {
+          console.error("Error loading PDF:", pdfLoadError);
+          toast({ variant: "destructive", title: "PDF Load Error", description: pdfLoadError.message || "Failed to load PDF." });
+        } finally {
           setIsLoadingDocument(false);
-          if (fileInputTarget) fileInputTarget.value = '';
-        };
-        base64Reader.readAsDataURL(new Blob([fileArrayBuffer], { type: 'application/pdf' }));
+        }
       };
-      initialReader.onerror = () => {
-        toast({ variant: "destructive", title: "File Read Error", description: "Could not read the PDF file." });
+      reader.onerror = () => {
+        toast({ variant: "destructive", title: "File Read Error", description: "Could not process the PDF file content." });
         setIsLoadingDocument(false);
+        if (fileInputTarget) fileInputTarget.value = '';
       };
-      initialReader.readAsArrayBuffer(file);
+      reader.readAsDataURL(file); // Read as Base64 Data URL
       
     } else {
       toast({ variant: "destructive", title: "Unsupported File Type", description: "Please upload an image or a PDF file." });
@@ -339,9 +324,9 @@ export function MangaRoom() {
       textToRead = currentSubPage?.extractedText || "";
       if (!textToRead && !isLoadingPdfPage && currentDoc.numPages > 0) {
          if (!currentSubPage) {
-            textToRead = "Processing PDF page or select text manually if available.";
+            textToRead = "Processing PDF page, please wait. You can also manually select text from this message to read aloud.";
          } else {
-            textToRead = "No text extracted for this page. Select text manually if available.";
+            textToRead = "No text extracted for this page yet. Select text manually if available, or wait if processing.";
          }
       } else if (isLoadingPdfPage) {
          textToRead = "Loading PDF page content...";
@@ -515,16 +500,13 @@ export function MangaRoom() {
         player.pause();
       }
       if (player.src) { 
-        if (player.src.startsWith('blob:')) {
-          URL.revokeObjectURL(player.src);
-        }
         player.src = ""; 
       }
       if (audioPlayerRef.current === player) { 
         audioPlayerRef.current = null;
       }
     };
-  }, [ttsSettings.type, isSpeaking, toast]);
+  }, [ttsSettings.type, isSpeaking, toast, stopSpeech]);
 
 
   const handleSettingChange = <K extends keyof TTSSettings>(key: K, value: TTSSettings[K]) => {
@@ -755,7 +737,7 @@ export function MangaRoom() {
 
         {/* Right Column: Floating TTS Controls */}
         {effectiveTextToReadForControls && ( 
-          <div className="lg:w-1/3 lg:sticky lg:top-20 h-fit">
+          <div className="lg:w-72 lg:sticky lg:top-16 h-fit">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><Volume2 className="text-primary" /> TTS Controls</CardTitle>
