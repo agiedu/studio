@@ -192,7 +192,6 @@ export function MangaRoom() {
         pdfDocToProcess.processedPages[pageNumToRender]?.extractedText !== undefined &&
         !pdfDocToProcess.processedPages[pageNumToRender]?.extractedText?.startsWith("Error:")) {
        setIsLoadingPdfPage(false);
-       // setJumpToPageInput((pageNumToRender + 1).toString()); // This will be handled by the main useEffect for currentPdfInternalPageIndex
        return;
     }
 
@@ -259,7 +258,6 @@ export function MangaRoom() {
           }
           return doc;
         }));
-        // setJumpToPageInput((pageNumToRender + 1).toString()); // This will be handled by the main useEffect
         if ('error' in ocrResult) {
           toast({ variant: "destructive", title: "OCR Error on PDF Page", description: ocrResult.error });
         }
@@ -445,7 +443,6 @@ export function MangaRoom() {
 
   const playSpeech = async () => {
     setIsLoadingTTS(true);
-    // isPausedState is set by pause/resume functions
 
     const selectedText = typeof window !== 'undefined' ? window.getSelection()?.toString().trim() : '';
     const effectiveTextToRead = selectedText || textToRead;
@@ -457,16 +454,14 @@ export function MangaRoom() {
       return;
     }
 
-    // If already speaking and not paused, effectively restart (stop then play)
-    // If paused, this call will be to resume, handled by resumeSpeech
     if (isSpeaking && !isPausedState) {
-        stopSpeech(false); // Stop current speech but don't reset all UI immediately
-        await new Promise(resolve => setTimeout(resolve, 150)); // Short delay for speech engine to clear
+        stopSpeech(false);
+        await new Promise(resolve => setTimeout(resolve, 150));
     }
 
 
     setIsSpeaking(true);
-    setIsPausedState(false); // Explicitly set to not paused when (re)starting
+    setIsPausedState(false);
 
     if (ttsSettings.type === 'local') {
       if (typeof window === 'undefined' || !window.speechSynthesis) {
@@ -501,29 +496,33 @@ export function MangaRoom() {
           }
           cumulativeLength += segments[i].length;
         }
-        if (newIdx !== -1) {
+        if (newIdx !== -1 && utteranceRef.current === utterance) { // Ensure it's the current utterance
             setCurrentSentenceIndex(newIdx);
         }
       };
 
       utterance.onend = () => {
-        setIsSpeaking(false);
-        setIsPausedState(false);
-        setIsLoadingTTS(false);
-        setCurrentSentenceIndex(-1);
-        utteranceRef.current = null;
+        if (utteranceRef.current === utterance) { // Ensure it's the current utterance
+            setIsSpeaking(false);
+            setIsPausedState(false);
+            setIsLoadingTTS(false);
+            setCurrentSentenceIndex(-1);
+            utteranceRef.current = null;
+        }
       };
       utterance.onerror = (event) => {
-        toast({ variant: "destructive", title: "TTS Error", description: event.error || "Failed to play speech." });
-        setIsSpeaking(false);
-        setIsPausedState(false);
-        setIsLoadingTTS(false);
-        setCurrentSentenceIndex(-1);
-        setSentenceSegments([]);
-        utteranceRef.current = null;
+         if (utteranceRef.current === utterance) { // Ensure it's the current utterance
+            toast({ variant: "destructive", title: "TTS Error", description: event.error || "Failed to play speech." });
+            setIsSpeaking(false);
+            setIsPausedState(false);
+            setIsLoadingTTS(false);
+            setCurrentSentenceIndex(-1);
+            setSentenceSegments([]);
+            utteranceRef.current = null;
+        }
       };
       utteranceRef.current = utterance;
-      window.speechSynthesis.speak(utterance); // This will play from the beginning
+      window.speechSynthesis.speak(utterance);
       setIsLoadingTTS(false);
 
     } else { // Cloud TTS
@@ -565,18 +564,34 @@ export function MangaRoom() {
 
   const resumeSpeech = () => {
     if (isSpeaking && isPausedState) {
-        if (ttsSettings.type === 'local' && typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.paused && utteranceRef.current) {
-            window.speechSynthesis.resume();
-            setIsPausedState(false);
-        } else if (audioPlayerRef.current && audioPlayerRef.current.paused) {
+        // Local TTS
+        if (ttsSettings.type === 'local' && typeof window !== 'undefined' && window.speechSynthesis && utteranceRef.current) {
+            if (window.speechSynthesis.paused) {
+                window.speechSynthesis.resume();
+                setIsPausedState(false);
+            } else {
+                // If our state says paused, but engine is not paused.
+                console.warn("TTS Resume: App state indicates paused, but browser engine is not. Attempting to resync.");
+                setIsPausedState(false); // Correct our UI state.
+                // If engine also reports not speaking, our isSpeaking state is wrong.
+                if (!window.speechSynthesis.speaking) {
+                    console.warn("TTS Resume: Engine also not speaking. Resetting isSpeaking state.");
+                    setIsSpeaking(false); // This should make the button "Play" for a fresh start.
+                }
+                // If engine IS speaking, then isPausedState=false is the correct sync.
+            }
+        }
+        // Cloud TTS
+        else if (ttsSettings.type === 'cloud' && audioPlayerRef.current && audioPlayerRef.current.paused) {
             audioPlayerRef.current.play().catch(e => {
                 toast({variant: "destructive", title: "Resume Error", description: "Could not resume audio."});
-                stopSpeech(true);
+                stopSpeech(true); // Full stop on error
             });
             setIsPausedState(false);
         }
     }
   };
+
 
   useEffect(() => {
     const player = new Audio();
@@ -687,21 +702,17 @@ export function MangaRoom() {
     if (doc && doc.type === 'pdf' && doc.numPages > 0) {
       resetValue = (currentPdfInternalPageIndex + 1).toString();
     }
-
+    // Only reset if the input is invalid. If it's valid and different, onChange already handled it.
     const pageNumFromInputText = parseInt(jumpToPageInput, 10);
-
-    if (doc && doc.type === 'pdf' && doc.numPages > 0 &&
-        !isNaN(pageNumFromInputText) &&
-        pageNumFromInputText >= 1 &&
-        pageNumFromInputText <= doc.numPages) {
-      if ( (pageNumFromInputText -1) === currentPdfInternalPageIndex) {
-         if (jumpToPageInput !== pageNumFromInputText.toString()) {
-            setJumpToPageInput(pageNumFromInputText.toString());
-         }
-         return;
-      } else {
-        setJumpToPageInput((currentPdfInternalPageIndex + 1).toString());
-      }
+    if (doc && doc.type === 'pdf' && doc.numPages > 0) {
+        if (isNaN(pageNumFromInputText) || pageNumFromInputText < 1 || pageNumFromInputText > doc.numPages) {
+             setJumpToPageInput((currentPdfInternalPageIndex + 1).toString());
+        } else {
+            // Ensure canonical form if valid but different (e.g. "05" vs "5")
+             if (jumpToPageInput !== pageNumFromInputText.toString()) {
+                setJumpToPageInput(pageNumFromInputText.toString());
+             }
+        }
     } else {
       setJumpToPageInput(resetValue);
     }
@@ -794,10 +805,7 @@ export function MangaRoom() {
 
           {mangaDocuments.length > 0 && currentDoc && (
             <Card>
-               <CardHeader className="pb-2"> {/* Reduced bottom padding for header */}
-                 {/* Title moved to the right panel */}
-              </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-4 pt-6">
                 <div className="relative aspect-[2/3] w-full mx-auto bg-muted rounded-md overflow-hidden shadow-lg">
                   {(isLoadingPdfPage && !currentSubPage?.imageDataUrl) && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 z-10">
@@ -881,7 +889,7 @@ export function MangaRoom() {
           )}
       </div>
 
-      <div className="lg:w-72 lg:sticky lg:top-16 max-h-[calc(100vh-theme(spacing.16))] overflow-y-auto mt-6 lg:mt-0">
+      <div className="lg:w-72 lg:sticky lg:top-16 max-h-[calc(100vh-theme(spacing.16))] overflow-y-auto space-y-3 mt-6 lg:mt-0">
           <Card>
             <CardHeader className="p-4">
                {mangaDocuments.length > 0 && currentDoc ? (
@@ -920,10 +928,10 @@ export function MangaRoom() {
                   </Select>
                 </>
               ) : (
-                <p className="text-xs text-muted-foreground">No documents uploaded.</p>
+                <p className="text-xs text-muted-foreground p-4 text-center">No documents uploaded.</p>
               )}
             </CardHeader>
-            <CardContent className="p-4 space-y-3">
+            <CardContent className="p-4 space-y-3 border-t">
               {currentDoc?.type === 'pdf' && currentDoc.numPages > 0 && (
                 <div className="space-y-2">
                   <Label htmlFor="pdf-page-jump" className="text-sm">Page Navigation (PDF)</Label>
