@@ -78,3 +78,4 @@ export interface FavoriteItem {
   sourceDocumentName?: string;
   createdAt: number;
 }
+

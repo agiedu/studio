@@ -34,6 +34,7 @@ export default function LibraryPage() {
       name: file.name,
       createdAt: Date.now(),
     };
+    let shouldClearInput = true;
 
     try {
       if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
@@ -47,6 +48,7 @@ export default function LibraryPage() {
         setDocuments(prev => [newDoc, ...prev]);
         toast({ title: "Success", description: `${file.name} uploaded.` });
       } else if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
+        shouldClearInput = false; // FileReader handles its own lifecycle for input clearing
         const reader = new FileReader();
         reader.onload = (e) => {
           const pdfDataUrl = e.target?.result as string;
@@ -64,14 +66,17 @@ export default function LibraryPage() {
             toast({ variant: "destructive", title: "Error", description: "Could not read PDF file content." });
           }
           setIsLoading(false);
+          if (event.target) event.target.value = ''; 
         };
         reader.onerror = () => {
           toast({ variant: "destructive", title: "Error", description: "Failed to read file." });
           setIsLoading(false);
+          if (event.target) event.target.value = '';
         };
         reader.readAsDataURL(file);
         return; 
       } else if (file.type.startsWith('image/')) {
+        shouldClearInput = false; // FileReader handles its own lifecycle for input clearing
         const reader = new FileReader();
         reader.onload = (e) => {
           const imageDataUrl = e.target?.result as string;
@@ -88,24 +93,27 @@ export default function LibraryPage() {
             toast({ variant: "destructive", title: "Error", description: "Could not read image file content." });
           }
           setIsLoading(false);
+          if (event.target) event.target.value = '';
         };
         reader.onerror = () => {
           toast({ variant: "destructive", title: "Error", description: "Failed to read image file." });
           setIsLoading(false);
+          if (event.target) event.target.value = '';
         };
         reader.readAsDataURL(file);
         return;
       }
       else {
         toast({ variant: "destructive", title: "Unsupported File", description: "Please upload a TXT, PDF, or Image file." });
-         setIsLoading(false);
       }
     } catch (error: any) {
       toast({ variant: "destructive", title: "Upload Error", description: error.message || "An unknown error occurred." });
-       setIsLoading(false);
+    } finally {
+        if (shouldClearInput) { // Only set loading to false if not handled by FileReader
+            setIsLoading(false);
+            if (event.target) event.target.value = ''; 
+        }
     }
-    // setIsLoading(false) // This will be called for non-async paths or after await for txt
-    if (event.target) event.target.value = ''; 
   };
 
   const handleDeleteDocument = (docId: string) => {
@@ -116,9 +124,12 @@ export default function LibraryPage() {
 
   const handleReadDocument = (doc: StoredDocument) => {
     if (doc.type === 'image') {
-      router.push(`/read2?loadFromLibraryId=${doc.id}`); // Navigate image types to MangaRoom (/read2)
-    } else {
-      router.push(`/reader?docId=${doc.id}`); // TXT and PDF go to Reader page
+      router.push(`/read2?loadFromLibraryId=${doc.id}`); 
+    } else if (doc.type === 'pdf') {
+       router.push(`/read2?loadFromLibraryId=${doc.id}`); // Also route PDFs to Read2 (MangaRoom)
+    }
+     else { // TXT
+      router.push(`/reader?docId=${doc.id}`);
     }
   };
 
