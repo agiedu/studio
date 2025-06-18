@@ -156,7 +156,6 @@ export default function ReaderPage() {
         default: v.default,
       }));
       setAvailableVoices(voices);
-      // Update global settings with a suitable default voice if none is set for the current language
       const currentSettings = LocalStorage.loadTTSSettings();
       if (!currentSettings.voiceURI && voices.length > 0) {
         const defaultVoice = voices.find(v => v.lang === currentSettings.language && v.default) || voices.find(v => v.lang === currentSettings.language) || voices.find(v => v.default) || voices[0];
@@ -166,10 +165,10 @@ export default function ReaderPage() {
             LocalStorage.saveTTSSettings(newSettings);
         }
       } else {
-        setTtsSettings(currentSettings); // ensure local state is aligned
+        setTtsSettings(currentSettings);
       }
     }
-  }, []); // Removed ttsSettings.language and ttsSettings.voiceURI dependencies to avoid loops
+  }, []);
 
   useEffect(() => {
     populateVoiceList();
@@ -221,26 +220,25 @@ export default function ReaderPage() {
       return;
     }
 
-    if (isSpeaking) { // If currently speaking (or paused)
-      if (isPaused) { // Resume
+    if (isSpeaking) { 
+      if (isPaused) { 
         if (ttsSettings.type === 'local' && typeof window !== 'undefined' && window.speechSynthesis && utteranceRef.current) {
             if (window.speechSynthesis.paused) {
                 window.speechSynthesis.resume();
                 setIsPaused(false);
-                // Check if resume actually worked
                 setTimeout(() => {
                     if (utteranceRef.current && isSpeaking && !isPaused && !window.speechSynthesis.speaking && !window.speechSynthesis.pending) {
                         stopSpeech(true); 
                     }
                 }, 100);
-            } else { // State mismatch
+            } else { 
                  stopSpeech(true);
             }
         } else if (ttsSettings.type === 'cloud' && audioPlayerRef.current?.paused) {
           audioPlayerRef.current.play().catch(() => stopSpeech(true));
           setIsPaused(false);
         }
-      } else { // Pause
+      } else { 
         if (ttsSettings.type === 'local' && typeof window !== 'undefined' && window.speechSynthesis && utteranceRef.current) {
           window.speechSynthesis.pause();
           setIsPaused(true);
@@ -249,7 +247,7 @@ export default function ReaderPage() {
           setIsPaused(true);
         }
       }
-    } else { // Play new
+    } else { 
       stopSpeech(false);
       setIsLoadingTTS(true);
       setIsSpeaking(true);
@@ -295,7 +293,7 @@ export default function ReaderPage() {
         window.speechSynthesis.speak(utterance);
         setIsLoadingTTS(false);
 
-      } else { // Cloud TTS
+      } else { 
         setSentenceSegments([]); 
         setCurrentSentenceIndex(-1);
         try {
@@ -319,7 +317,7 @@ export default function ReaderPage() {
     stopSpeech(true);
     const newSettings = { ...ttsSettings, [key]: value };
     setTtsSettings(newSettings);
-    LocalStorage.saveTTSSettings(newSettings); // Save globally
+    LocalStorage.saveTTSSettings(newSettings); 
      if (key === 'language' && newSettings.type === 'local') {
         const suitableVoice = availableVoices.find(v => v.lang === value && v.default) || availableVoices.find(v => v.lang === value);
         if (suitableVoice) {
@@ -371,9 +369,9 @@ export default function ReaderPage() {
 
 
   return (
-    <div className="flex flex-col lg:flex-row w-full p-4 md:p-6 space-y-6 lg:space-y-0 lg:space-x-6">
-      {/* Left Panel: Document Content */}
-      <div className="flex-grow lg:pr-4 space-y-6">
+    <div className="flex flex-col w-full p-4 md:p-6 space-y-6">
+      {/* Document Content Area */}
+      <div className="flex-grow space-y-6">
         {!docId && !isLoadingDocument && (
           <Card>
             <CardHeader>
@@ -421,7 +419,7 @@ export default function ReaderPage() {
               <CardContent>
                 <div
                   className={cn(
-                    "max-h-[calc(100vh-22rem)] overflow-y-auto p-3 border rounded-md bg-muted/30 whitespace-pre-wrap text-sm select-text",
+                    "min-h-[200px] max-h-[calc(100vh-30rem)] overflow-y-auto p-3 border rounded-md bg-muted/30 whitespace-pre-wrap text-sm select-text",
                     extractedText.startsWith("Error:") && 'bg-destructive/10 text-destructive-foreground'
                   )}
                 >
@@ -451,8 +449,8 @@ export default function ReaderPage() {
         )}
       </div>
 
-      {/* Right Panel: TTS Controls */}
-      <div className="lg:w-80 lg:sticky lg:top-[calc(theme(spacing.16)+1rem)] max-h-[calc(100vh-theme(spacing.16)-2rem)] overflow-y-auto space-y-4">
+      {/* TTS Controls Area */}
+      <div className="space-y-4">
         <Card>
           <CardHeader className="p-4">
             <CardTitle className="text-lg">Text-to-Speech</CardTitle>
