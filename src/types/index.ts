@@ -19,10 +19,8 @@ export interface MangaImageFile extends MangaFile {
 
 export interface MangaPdfFile extends MangaFile {
   type: 'pdf';
-  pdfDataUrl: string;
+  pdfDataUrl: string; // Full data URI for the PDF
   numPages: number;
-  // processedPages will always be an array of MangaSubPage.
-  // If a page hasn't been processed, its imageDataUrl might be empty and extractedText undefined.
   processedPages: MangaSubPage[];
 }
 
@@ -34,6 +32,8 @@ export interface TTSSettings {
   language: string;
   rate: number;
   pitch: number;
+  // For Favorites page, add engine property
+  engine?: 'local' | 'cloud';
 }
 
 export interface TTSVoice {
@@ -44,8 +44,8 @@ export interface TTSVoice {
   default: boolean;
 }
 
-// New types for Library and Favorites
-export type StoredDocumentType = 'txt' | 'pdf';
+// Types for Library and Favorites
+export type StoredDocumentType = 'txt' | 'pdf' | 'image';
 
 export interface BaseStoredDocument {
   id: string;
@@ -61,15 +61,20 @@ export interface StoredTxtDocument extends BaseStoredDocument {
 
 export interface StoredPdfDocument extends BaseStoredDocument {
   type: 'pdf';
-  pdfBase64: string; // Store PDF as base64 encoded string
+  pdfBase64: string; // Store PDF as base64 encoded string (the data part only)
 }
 
-export type StoredDocument = StoredTxtDocument | StoredPdfDocument;
+export interface StoredImageDocument extends BaseStoredDocument {
+  type: 'image';
+  imageDataUrl: string; // Store full image data URI
+}
+
+export type StoredDocument = StoredTxtDocument | StoredPdfDocument | StoredImageDocument;
 
 export interface FavoriteItem {
   id: string;
   text: string;
-  sourceDocumentId?: string; // Optional: link back to the document it came from
+  sourceDocumentId?: string;
   sourceDocumentName?: string;
   createdAt: number;
 }
