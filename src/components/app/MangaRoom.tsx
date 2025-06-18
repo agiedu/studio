@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { MangaDocument, MangaImageFile, MangaPdfFile, MangaSubPage, TTSSettings, TTSVoice } from '@/types';
+import type { MangaDocument, MangaImageFile, MangaPdfFile, MangaSubPage, TTSSettings, TTSVoice, FavoriteItem } from '@/types';
 import { performOCR, getCloudSpeech } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Slider } from '@/components/ui/slider';
 import { Progress } from '@/components/ui/progress';
 import Image from 'next/image';
-import { Cloud, FileText, Loader2, Play, Pause, Smartphone, UploadCloud, XCircle, BookOpen, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Cloud, FileText, Loader2, Play, Pause, Smartphone, UploadCloud, XCircle, BookOpen, ChevronLeft, ChevronRight, Star } from 'lucide-react';
 import * as LocalStorage from '@/lib/localStorageService';
 import { cn } from '@/lib/utils';
 
@@ -91,6 +91,8 @@ export function MangaRoom() {
   }, []);
 
   useEffect(() => {
+    // Only save if mangaDocuments is not the initial empty array from useState,
+    // or if it has been populated by LocalStorage.loadDocuments initially
     if (mangaDocuments.length > 0 || LocalStorage.loadDocuments().length > 0) {
         LocalStorage.saveDocuments(mangaDocuments);
     }
@@ -153,7 +155,7 @@ export function MangaRoom() {
       if (!ttsSettings.voiceURI && voices.length > 0) {
         const defaultVoice = voices.find(v => v.lang === ttsSettings.language && v.default) || voices.find(v => v.lang === ttsSettings.language) || voices.find(v => v.default) || voices[0];
         if (defaultVoice) {
-          setTtsSettings(prev => ({ ...prev, voiceURI: defaultVoice.voiceURI }));
+          setTtsSettings(prev => ({ ...prev, voiceURI: defaultVoice.voiceURI, language: defaultVoice.lang }));
         }
       }
     }
@@ -455,9 +457,8 @@ export function MangaRoom() {
       return;
     }
 
-    // Always stop any ongoing/paused speech before starting new
-    stopSpeech(false); // false to prevent premature UI flicker of sentence highlighting
-    await new Promise(resolve => setTimeout(resolve, 150)); // Short delay for engine to clear
+    stopSpeech(false); 
+    await new Promise(resolve => setTimeout(resolve, 150));
 
 
     setIsSpeaking(true);
@@ -516,7 +517,7 @@ export function MangaRoom() {
       window.speechSynthesis.speak(utterance);
       setIsLoadingTTS(false);
 
-    } else { // Cloud TTS
+    } else { 
       setSentenceSegments([]);
       setCurrentSentenceIndex(-1);
       try {
@@ -561,14 +562,11 @@ export function MangaRoom() {
                 setIsPausedState(false); 
 
                 setTimeout(() => {
-                    // Check if resume actually made it speak. utteranceRef.current should still be valid here
-                    // unless onEnd/onError fired very fast and called stopSpeech.
-                    // isSpeaking is true, isPausedState is now false (optimistically).
                     if (utteranceRef.current && isSpeaking && !isPausedState && !window.speechSynthesis.speaking && !window.speechSynthesis.pending) {
                         console.warn("TTS Resume: Resumed, but not speaking/pending. Forcing stop.");
-                        stopSpeech(true); // Force stop if resume didn't take.
+                        stopSpeech(true);
                     }
-                }, 100); // Check after 100ms
+                }, 100);
             } else {
                 console.warn("TTS Resume: App state indicates paused, but browser engine is not. Resetting.");
                 stopSpeech(true); 
@@ -590,9 +588,7 @@ export function MangaRoom() {
     audioPlayerRef.current = player;
 
     const handleAudioEnded = () => {
-      setIsSpeaking(false);
-      setIsPausedState(false);
-      setIsLoadingTTS(false);
+      stopSpeech(true);
     };
     const handleAudioPlaying = () => {
         if (ttsSettings.type === 'cloud' && isSpeaking) {
@@ -614,9 +610,7 @@ export function MangaRoom() {
         }
       }
       toast({variant: "destructive", title: "Audio Error", description: errorMessage});
-      setIsSpeaking(false);
-      setIsPausedState(false);
-      setIsLoadingTTS(false);
+      stopSpeech(true);
     };
 
     player.addEventListener('ended', handleAudioEnded);
@@ -641,7 +635,19 @@ export function MangaRoom() {
 
   const handleSettingChange = <K extends keyof TTSSettings>(key: K, value: TTSSettings[K]) => {
     stopSpeech(true);
-    setTtsSettings(prev => ({ ...prev, [key]: value }));
+    setTtsSettings(prev => {
+      const newSettings = { ...prev, [key]: value };
+      if (key === 'language' && newSettings.type === 'local') {
+        const suitableVoice = availableVoices.find(v => v.lang === value && v.default) || availableVoices.find(v => v.lang === value);
+        if (suitableVoice) {
+            newSettings.voiceURI = suitableVoice.voiceURI;
+        } else {
+            newSettings.voiceURI = undefined;
+        }
+      }
+      return newSettings;
+    });
+
     if (key === 'type') {
       setSentenceSegments([]);
       setCurrentSentenceIndex(-1);
@@ -700,8 +706,9 @@ export function MangaRoom() {
         if (isNaN(pageNumFromInputText) || pageNumFromInputText < 1 || pageNumFromInputText > doc.numPages) {
              setJumpToPageInput((currentPdfInternalPageIndex + 1).toString());
         } else {
-             if (jumpToPageInput !== pageNumFromInputText.toString()) {
-                setJumpToPageInput(pageNumFromInputText.toString());
+             // No need to jump again on blur if already changed by onChange
+             if (jumpToPageInput !== (currentPdfInternalPageIndex+1).toString()) {
+                setJumpToPageInput((currentPdfInternalPageIndex+1).toString());
              }
         }
     } else {
@@ -754,6 +761,25 @@ export function MangaRoom() {
       }
     }
   };
+
+  const handleFavoriteSelection = () => {
+    const selection = window.getSelection()?.toString().trim();
+    const currentDocForFavorite = mangaDocuments[currentDocumentIndex];
+    if (selection && currentDocForFavorite) {
+      const newFavorite: FavoriteItem = {
+        id: Date.now().toString(),
+        text: selection,
+        sourceDocumentId: currentDocForFavorite.id,
+        sourceDocumentName: currentDocForFavorite.title || "Untitled Manga Document",
+        createdAt: Date.now(),
+      };
+      LocalStorage.addFavoriteItem(newFavorite);
+      toast({ title: "Favorited!", description: `"${selection.substring(0, 30)}..." added to favorites.` });
+    } else if (!selection) {
+      toast({ variant: "destructive", title: "No Selection", description: "Please select text to favorite." });
+    }
+  };
+
 
   const getPlayButtonState = () => {
     const canPlay = !!((typeof window !== 'undefined' && window.getSelection()?.toString().trim()) || textToRead) && !isLoadingPdfPage && !isLoadingDocument;
@@ -863,6 +889,9 @@ export function MangaRoom() {
                     )
                   }
                 </div>
+                <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="mt-2">
+                  <Star className="mr-2 h-4 w-4" /> Favorite Selected Text
+                </Button>
               </CardContent>
             </Card>
           )}
@@ -1025,18 +1054,18 @@ export function MangaRoom() {
                           value={ttsSettings.language}
                           onChange={(e) => handleSettingChange('language', e.target.value)}
                           placeholder="e.g. en-US"
-                          disabled={(isSpeaking && !isPausedState) || isLoadingTTS}
+                          disabled={(isSpeaking && !isPausedState) || isLoadingTTS || (ttsSettings.type === 'local' && availableVoices.length === 0)}
                           className="h-8 text-xs"
                         />
                     </div>
                   </div>
 
-                  {ttsSettings.type === 'local' && availableVoices.length > 0 && (
+                  {ttsSettings.type === 'local' && (
                     <div>
                       <Label htmlFor="tts-voice" className="text-xs">Voice (Local)</Label>
-                      <Select value={ttsSettings.voiceURI} onValueChange={(v) => handleSettingChange('voiceURI', v)} disabled={(isSpeaking && !isPausedState) || isLoadingTTS}>
+                      <Select value={ttsSettings.voiceURI} onValueChange={(v) => handleSettingChange('voiceURI', v)} disabled={(isSpeaking && !isPausedState) || isLoadingTTS || availableVoices.filter(voice => voice.lang.startsWith(ttsSettings.language.split('-')[0])).length === 0}>
                         <SelectTrigger id="tts-voice" className="h-8 text-xs">
-                          <SelectValue placeholder="Select voice" />
+                          <SelectValue placeholder={availableVoices.length > 0 ? "Select voice" : "No voices available"} />
                         </SelectTrigger>
                         <SelectContent className="max-h-48">
                           {availableVoices.filter(v => v.lang.startsWith(ttsSettings.language.split('-')[0])).map(voice => (
@@ -1044,6 +1073,9 @@ export function MangaRoom() {
                               {voice.name} ({voice.lang}) {voice.default ? "[Def]" : ""}
                             </SelectItem>
                           ))}
+                           {availableVoices.filter(voice => voice.lang.startsWith(ttsSettings.language.split('-')[0])).length === 0 && (
+                                <SelectItem value="no-voice-manga" disabled>{availableVoices.length > 0 ? "No voices for language" : "No local voices"}</SelectItem>
+                            )}
                         </SelectContent>
                       </Select>
                     </div>
@@ -1077,5 +1109,3 @@ export function MangaRoom() {
     </div>
   );
 }
-
-    

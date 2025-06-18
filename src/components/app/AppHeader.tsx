@@ -40,11 +40,6 @@ export function AppHeader() {
           </Link>
           <nav className="flex items-center gap-1 md:gap-2">
             <Button variant="ghost" asChild size="sm">
-              <Link href="/">
-                <HomeIcon className="mr-1 h-4 w-4" /> Home
-              </Link>
-            </Button>
-            <Button variant="ghost" asChild size="sm">
               <Link href="/library">
                 <Library className="mr-1 h-4 w-4" /> Library
               </Link>
@@ -52,6 +47,11 @@ export function AppHeader() {
             <Button variant="ghost" asChild size="sm">
               <Link href="/reader">
                 <BookOpenText className="mr-1 h-4 w-4" /> Reader
+              </Link>
+            </Button>
+            <Button variant="ghost" asChild size="sm">
+              <Link href="/">
+                <HomeIcon className="mr-1 h-4 w-4" /> Read2
               </Link>
             </Button>
              <Button variant="ghost" asChild size="sm">
