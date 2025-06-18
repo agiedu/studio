@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
+import { AppHeader } from '@/components/app/AppHeader';
 
 export const metadata: Metadata = {
   title: 'MangaTalk',
@@ -19,8 +20,11 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,200..900;1,7..72,200..900&display=swap" rel="stylesheet" />
       </head>
-      <body className="font-body antialiased">
-        {children}
+      <body className="font-body antialiased flex flex-col min-h-screen bg-background">
+        <AppHeader />
+        <main className="flex-grow flex flex-col">
+          {children}
+        </main>
         <Toaster />
       </body>
     </html>
