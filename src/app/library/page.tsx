@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { UploadCloud, BookOpen, Trash2, FileText, FileType2, Image as ImageIcon } from 'lucide-react';
+import { UploadCloud, BookOpen, Trash2, FileText, FileType2, Image as ImageIcon, Info } from 'lucide-react';
 import * as LocalStorage from '@/lib/localStorageService';
 import type { StoredDocument, StoredTxtDocument, StoredPdfDocument, StoredImageDocument } from '@/types';
 import { format } from 'date-fns';
@@ -45,10 +45,10 @@ export default function LibraryPage() {
           textContent,
         };
         LocalStorage.addStoredDocument(newDoc);
-        setDocuments(prev => [newDoc, ...prev]);
-        toast({ title: "Success", description: `${file.name} uploaded.` });
+        setDocuments(prev => [newDoc, ...prev].sort((a,b) => b.createdAt - a.createdAt));
+        toast({ title: "Success", description: `${file.name} uploaded to library.` });
       } else if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
-        shouldClearInput = false; // FileReader handles its own lifecycle for input clearing
+        shouldClearInput = false; 
         const reader = new FileReader();
         reader.onload = (e) => {
           const pdfDataUrl = e.target?.result as string;
@@ -60,8 +60,8 @@ export default function LibraryPage() {
               pdfBase64,
             };
             LocalStorage.addStoredDocument(newDoc);
-            setDocuments(prev => [newDoc, ...prev]);
-            toast({ title: "Success", description: `${file.name} uploaded.` });
+            setDocuments(prev => [newDoc, ...prev].sort((a,b) => b.createdAt - a.createdAt));
+            toast({ title: "Success", description: `${file.name} uploaded to library.` });
           } else {
             toast({ variant: "destructive", title: "Error", description: "Could not read PDF file content." });
           }
@@ -76,7 +76,7 @@ export default function LibraryPage() {
         reader.readAsDataURL(file);
         return; 
       } else if (file.type.startsWith('image/')) {
-        shouldClearInput = false; // FileReader handles its own lifecycle for input clearing
+        shouldClearInput = false; 
         const reader = new FileReader();
         reader.onload = (e) => {
           const imageDataUrl = e.target?.result as string;
@@ -87,8 +87,8 @@ export default function LibraryPage() {
               imageDataUrl,
             };
             LocalStorage.addStoredDocument(newDoc);
-            setDocuments(prev => [newDoc, ...prev]);
-            toast({ title: "Success", description: `${file.name} (image) uploaded.` });
+            setDocuments(prev => [newDoc, ...prev].sort((a,b) => b.createdAt - a.createdAt));
+            toast({ title: "Success", description: `${file.name} (image) uploaded to library.` });
           } else {
             toast({ variant: "destructive", title: "Error", description: "Could not read image file content." });
           }
@@ -109,7 +109,7 @@ export default function LibraryPage() {
     } catch (error: any) {
       toast({ variant: "destructive", title: "Upload Error", description: error.message || "An unknown error occurred." });
     } finally {
-        if (shouldClearInput) { // Only set loading to false if not handled by FileReader
+        if (shouldClearInput) { 
             setIsLoading(false);
             if (event.target) event.target.value = ''; 
         }
@@ -123,12 +123,10 @@ export default function LibraryPage() {
   };
 
   const handleReadDocument = (doc: StoredDocument) => {
-    if (doc.type === 'image') {
-      router.push(`/read2?loadFromLibraryId=${doc.id}`); 
-    } else if (doc.type === 'pdf') {
-       router.push(`/read2?loadFromLibraryId=${doc.id}`); // Also route PDFs to Read2 (MangaRoom)
-    }
-     else { // TXT
+    if (doc.type === 'image' || doc.type === 'pdf') {
+      // Navigate to the root page (where MangaRoom is) for images and PDFs
+      router.push(`/?loadFromLibraryId=${doc.id}`); 
+    } else { // TXT
       router.push(`/reader?docId=${doc.id}`);
     }
   };
@@ -147,7 +145,7 @@ export default function LibraryPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><UploadCloud className="text-primary" /> Upload to Library</CardTitle>
-          <CardDescription>Upload TXT, PDF, or Image files to store them locally for reading.</CardDescription>
+          <CardDescription>Upload TXT, PDF, or Image files to store them locally for reading. This is the main place to add documents.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid w-full max-w-md items-center gap-1.5">
@@ -161,11 +159,11 @@ export default function LibraryPage() {
       <Card>
         <CardHeader>
           <CardTitle>My Library</CardTitle>
-          <CardDescription>Stored documents. Click "Read" to open.</CardDescription>
+          <CardDescription>Your locally stored documents. Click "Read" to open.</CardDescription>
         </CardHeader>
         <CardContent>
           {documents.length === 0 ? (
-            <p className="text-muted-foreground">Your library is empty. Upload some documents to get started!</p>
+             <p className="text-muted-foreground flex items-center gap-2"><Info className="h-5 w-5" /> Your library is empty. Upload some documents to get started!</p>
           ) : (
             <ul className="space-y-3">
               {documents.map(doc => (
@@ -201,4 +199,3 @@ export default function LibraryPage() {
     </div>
   );
 }
-

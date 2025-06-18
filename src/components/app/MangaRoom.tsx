@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation'; // useRouter removed as it's not used directly here
 import type { MangaDocument, MangaImageFile, MangaPdfFile, MangaSubPage, TTSSettings, TTSVoice, FavoriteItem, StoredDocument, StoredImageDocument, StoredPdfDocument } from '@/types';
 import { performOCR, getCloudSpeech } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
@@ -12,9 +12,8 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
-import { Progress } from '@/components/ui/progress';
 import Image from 'next/image';
-import { Cloud, Loader2, Play, Pause, Smartphone, UploadCloud, BookOpen, ChevronLeft, ChevronRight, Star, Trash2, Image as ImageIcon } from 'lucide-react';
+import { Cloud, Loader2, Play, Pause, Smartphone, BookOpen, ChevronLeft, ChevronRight, Star, Trash2, Image as ImageIcon } from 'lucide-react';
 import * as LocalStorage from '@/lib/localStorageService';
 import { cn } from '@/lib/utils';
 
@@ -46,8 +45,8 @@ export function MangaRoom() {
   const [jumpToPageInput, setJumpToPageInput] = useState('');
 
   const [ttsSettings, setTtsSettings] = useState<TTSSettings>(LocalStorage.defaultTTSSettings);
-  const [isLoadingDocument, setIsLoadingDocument] = useState(false); 
-  const [isLoadingInitialDoc, setIsLoadingInitialDoc] = useState(true);
+  const [isLoadingDocument, setIsLoadingDocument] = useState(false); // For loading specific documents
+  const [isLoadingInitialDoc, setIsLoadingInitialDoc] = useState(true); // For initial component load
   const [isLoadingPdfPage, setIsLoadingPdfPage] = useState(false);
   const [isLoadingTTS, setIsLoadingTTS] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -68,9 +67,16 @@ export function MangaRoom() {
     }
   }, []);
 
-  useEffect(() => {
+ useEffect(() => {
     const loadInitialDocument = async () => {
       setIsLoadingInitialDoc(true);
+      setIsLoadingDocument(true); // Assume we are loading a document initially
+      setActiveDocument(null); // Clear previous document
+      setSentenceSegments([]);
+      setCurrentSentenceIndex(-1);
+      stopSpeech(true);
+
+
       let docToLoad: StoredDocument | undefined | null = null;
       const loadFromLibraryId = searchParams.get('loadFromLibraryId');
 
@@ -87,13 +93,12 @@ export function MangaRoom() {
         if (lastActiveId) {
           docToLoad = LocalStorage.getStoredDocumentById(lastActiveId);
           if (!docToLoad) {
-            LocalStorage.saveLastActiveMangaRoomDocId(null);
+            LocalStorage.saveLastActiveMangaRoomDocId(null); // Clear if doc no longer exists
           }
         }
       }
 
       if (docToLoad) {
-        setIsLoadingDocument(true);
         if (docToLoad.type === 'image') {
           const storedImageDoc = docToLoad as StoredImageDocument;
           try {
@@ -103,16 +108,14 @@ export function MangaRoom() {
               title: storedImageDoc.name,
               type: 'image',
               imageDataUrl: storedImageDoc.imageDataUrl,
-              extractedText: 'extractedText' in ocrResult ? ocrResult.extractedText : "OCR failed on load.",
+              extractedText: 'extractedText' in ocrResult ? ocrResult.extractedText : "OCR failed on load. Select text manually if image has embedded text.",
             };
             setActiveDocument(newMangaImageFile);
-            if ('error' in ocrResult) toast({ variant: "destructive", title: "OCR Error", description: ocrResult.error });
+            if ('error' in ocrResult && ocrResult.error) toast({ variant: "destructive", title: "OCR Error", description: ocrResult.error });
           } catch (e: any) {
             toast({ variant: "destructive", title: "Error loading image", description: e.message });
             setActiveDocument(null);
             LocalStorage.saveLastActiveMangaRoomDocId(null);
-          } finally {
-            setIsLoadingDocument(false);
           }
         } else if (docToLoad.type === 'pdf') {
           const storedPdfDoc = docToLoad as StoredPdfDocument;
@@ -128,29 +131,28 @@ export function MangaRoom() {
               id: storedPdfDoc.id,
               title: storedPdfDoc.name,
               type: 'pdf',
-              pdfDataUrl: `data:application/pdf;base64,${storedPdfDoc.pdfBase64}`, // Reconstruct data URL for internal use if needed
+              pdfDataUrl: `data:application/pdf;base64,${storedPdfDoc.pdfBase64}`,
               numPages: pdfInstance.numPages,
               processedPages: new Array(pdfInstance.numPages).fill(null).map(() => ({ imageDataUrl: '', extractedText: undefined })),
             };
             setActiveDocument(newMangaPdfFile);
             const savedPageIndex = LocalStorage.loadCurrentPdfPageIndexForDoc(storedPdfDoc.id);
             setCurrentPdfInternalPageIndex(savedPageIndex !== undefined ? savedPageIndex : 0);
+            setJumpToPageInput(savedPageIndex !== undefined ? (savedPageIndex+1).toString() : '1');
           } catch (e: any) {
              toast({ variant: "destructive", title: "Error loading PDF", description: e.message });
              setActiveDocument(null);
              LocalStorage.saveLastActiveMangaRoomDocId(null);
-          } finally {
-            setIsLoadingDocument(false);
           }
         }
       }
+      setIsLoadingDocument(false);
       setIsLoadingInitialDoc(false);
     };
 
     loadInitialDocument();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, toast]);
-
+  }, [searchParams]); // Removed toast from deps to avoid re-triggering on toast change
 
   useEffect(() => {
     LocalStorage.saveTTSSettings(ttsSettings);
@@ -162,8 +164,10 @@ export function MangaRoom() {
     }
     if (activeDocument?.id) {
         LocalStorage.saveLastActiveMangaRoomDocId(activeDocument.id);
+    } else if (!searchParams.get('loadFromLibraryId')) { // Only clear if not actively trying to load
+        LocalStorage.saveLastActiveMangaRoomDocId(null);
     }
-  }, [currentPdfInternalPageIndex, activeDocument]);
+  }, [currentPdfInternalPageIndex, activeDocument, searchParams]);
 
 
   const stopSpeech = useCallback((resetUIState = true) => {
@@ -245,7 +249,6 @@ export function MangaRoom() {
     try {
       let pdfDocInstance = pdfDocCacheRef.current[doc.id];
       if (!pdfDocInstance) {
-        // Attempt to retrieve from StoredDocument if pdfDataUrl is not directly available
         const storedDoc = LocalStorage.getStoredDocumentById(doc.id) as StoredPdfDocument | undefined;
         if (!storedDoc || storedDoc.type !== 'pdf' || !storedDoc.pdfBase64) {
             const errorMsg = `Corrupted or missing PDF data for ${doc.title}. Please re-upload from library.`;
@@ -269,7 +272,7 @@ export function MangaRoom() {
         pdfDocCacheRef.current[doc.id] = pdfDocInstance;
       }
 
-      const page: PDFPageProxy = await pdfDocInstance.getPage(pageNumToRender + 1);
+      const page: PDFPageProxy = await pdfDocInstance.getPage(pageNumToRender + 1); // PDF.js pages are 1-indexed
       const viewport = page.getViewport({ scale: 1.5 });
       const canvas = document.createElement('canvas');
       const context = canvas.getContext('2d');
@@ -283,7 +286,7 @@ export function MangaRoom() {
         const ocrResult = await performOCR(imageDataUrl);
         const newSubPage: MangaSubPage = {
           imageDataUrl,
-          extractedText: 'extractedText' in ocrResult ? ocrResult.extractedText : "OCR failed for this page.",
+          extractedText: 'extractedText' in ocrResult ? ocrResult.extractedText : "OCR failed for this page. Select text manually if available on image.",
         };
 
         setActiveDocument(prevDoc => {
@@ -295,7 +298,7 @@ export function MangaRoom() {
           return prevDoc;
         });
 
-        if ('error' in ocrResult) {
+        if ('error' in ocrResult && ocrResult.error) {
           toast({ variant: "destructive", title: "OCR Error on PDF Page", description: ocrResult.error });
         }
       } else {
@@ -319,7 +322,7 @@ export function MangaRoom() {
   }, [toast]);
 
   useEffect(() => {
-    if (activeDocument?.type === 'pdf' && activeDocument.numPages > 0 && currentPdfInternalPageIndex < activeDocument.numPages) {
+    if (activeDocument?.type === 'pdf' && activeDocument.numPages > 0 && currentPdfInternalPageIndex >= 0 && currentPdfInternalPageIndex < activeDocument.numPages) {
       setJumpToPageInput((currentPdfInternalPageIndex + 1).toString());
       const currentPageData = activeDocument.processedPages[currentPdfInternalPageIndex];
       if ((!currentPageData || !currentPageData.imageDataUrl || currentPageData.extractedText === undefined || currentPageData.extractedText.startsWith("Error:")) &&
@@ -328,7 +331,7 @@ export function MangaRoom() {
          renderAndProcessPdfPage(activeDocument as MangaPdfFile, currentPdfInternalPageIndex);
       }
     } else if (activeDocument?.type === 'image') {
-      setJumpToPageInput('');
+      setJumpToPageInput(''); // No page input for single images
     } else if (!activeDocument) {
       setJumpToPageInput('');
     }
@@ -342,7 +345,7 @@ export function MangaRoom() {
     if (activeDocument.type === 'image') {
       currentSubPage = {imageDataUrl: activeDocument.imageDataUrl, extractedText: activeDocument.extractedText};
       textToRead = activeDocument.extractedText || "";
-    } else if (activeDocument.type === 'pdf' && activeDocument.processedPages) {
+    } else if (activeDocument.type === 'pdf' && activeDocument.processedPages && currentPdfInternalPageIndex >= 0 && currentPdfInternalPageIndex < activeDocument.numPages) {
       currentSubPage = activeDocument.processedPages[currentPdfInternalPageIndex];
       textToRead = currentSubPage?.extractedText || "";
        if (!currentSubPage?.imageDataUrl && !isLoadingPdfPage && activeDocument.numPages > 0) {
@@ -354,8 +357,11 @@ export function MangaRoom() {
       } else if (isLoadingPdfPage) {
          textToRead = "Loading PDF page content...";
       }
+    } else if (activeDocument.type === 'pdf' && (currentPdfInternalPageIndex < 0 || currentPdfInternalPageIndex >= activeDocument.numPages)){
+        textToRead = "Invalid page index.";
     }
   }
+
 
   const playSpeech = async () => {
     setIsLoadingTTS(true);
@@ -363,15 +369,15 @@ export function MangaRoom() {
     const selectedText = typeof window !== 'undefined' ? window.getSelection()?.toString().trim() : '';
     const effectiveTextToRead = selectedText || textToRead;
 
-    if (!effectiveTextToRead || isLoadingPdfPage || !activeDocument || textToRead.startsWith("Error:")) {
-      toast({ variant: "destructive", title: "No Text", description: "No valid text available to read or PDF page is loading." });
+    if (!effectiveTextToRead || isLoadingPdfPage || !activeDocument || textToRead.startsWith("Error:") || textToRead.startsWith("Processing") || textToRead.startsWith("Loading")) {
+      toast({ variant: "destructive", title: "No Text", description: "No valid text available to read or page is still processing." });
       setIsLoadingTTS(false);
-      setIsSpeaking(false);
+      setIsSpeaking(false); // Ensure speaking is false if no text
       return;
     }
 
     stopSpeech(false); 
-    await new Promise(resolve => setTimeout(resolve, 150));
+    await new Promise(resolve => setTimeout(resolve, 150)); // Small delay for UI updates
 
     setIsSpeaking(true);
     setIsPausedState(false);
@@ -379,9 +385,7 @@ export function MangaRoom() {
     if (ttsSettings.type === 'local') {
       if (typeof window === 'undefined' || !window.speechSynthesis) {
         toast({ variant: "destructive", title: "TTS Error", description: "Browser Speech Synthesis not supported." });
-        setIsLoadingTTS(false);
-        setIsSpeaking(false);
-        return;
+        stopSpeech(true); return;
       }
 
       const utterance = new SpeechSynthesisUtterance(effectiveTextToRead);
@@ -427,14 +431,15 @@ export function MangaRoom() {
       window.speechSynthesis.speak(utterance);
       setIsLoadingTTS(false);
 
-    } else { 
-      setSentenceSegments([]);
+    } else { // Cloud TTS
+      setSentenceSegments([]); // Cloud TTS doesn't support sentence highlighting here
       setCurrentSentenceIndex(-1);
       try {
         const cloudResult = await getCloudSpeech(effectiveTextToRead, ttsSettings.language);
         if ('audioUrl' in cloudResult && audioPlayerRef.current) {
             audioPlayerRef.current.src = cloudResult.audioUrl;
             await audioPlayerRef.current.play();
+            // setIsLoadingTTS(false); // Moved to onplaying handler
         } else if ('error' in cloudResult) {
           toast({ variant: "destructive", title: "Cloud TTS Error", description: cloudResult.error });
           stopSpeech(true);
@@ -466,12 +471,15 @@ export function MangaRoom() {
             if (window.speechSynthesis.paused) {
                 window.speechSynthesis.resume();
                 setIsPausedState(false); 
+                // Check if speech actually resumed, sometimes it gets stuck
                 setTimeout(() => {
                     if (utteranceRef.current && isSpeaking && !isPausedState && !window.speechSynthesis.speaking && !window.speechSynthesis.pending) {
-                        stopSpeech(true);
+                        // console.warn("Speech synthesis did not resume, stopping.");
+                        stopSpeech(true); // Force stop if it didn't resume
                     }
-                }, 100);
-            } else {
+                }, 100); // Give it a moment to resume
+            } else { // Not paused, but state says it is? Resync.
+                // console.warn("Speech synthesis was not paused, stopping to resync.");
                 stopSpeech(true); 
             }
         }
@@ -492,9 +500,9 @@ export function MangaRoom() {
 
     const handleAudioEnded = () => stopSpeech(true);
     const handleAudioPlaying = () => {
-        if (ttsSettings.type === 'cloud' && isSpeaking) {
+        if (ttsSettings.type === 'cloud' && isSpeaking) { // Check isSpeaking too
             setIsLoadingTTS(false);
-            setIsPausedState(false);
+            setIsPausedState(false); // Ensure paused is false when playing
         }
     };
 
@@ -523,36 +531,38 @@ export function MangaRoom() {
       player.removeEventListener('playing', handleAudioPlaying);
       player.removeEventListener('error', handleAudioError);
       if (player.src && !player.paused) player.pause();
-      player.src = "";
-      if (audioPlayerRef.current === player) audioPlayerRef.current = null;
+      player.src = ""; // Clear src
+      if (audioPlayerRef.current === player) audioPlayerRef.current = null; // Avoid memory leak
     };
   }, [ttsSettings.type, isSpeaking, toast, stopSpeech]);
 
 
   const handleSettingChange = <K extends keyof TTSSettings>(key: K, value: TTSSettings[K]) => {
-    stopSpeech(true);
+    stopSpeech(true); // Stop speech before changing settings
     setTtsSettings(prev => {
       const newSettings = { ...prev, [key]: value };
       if (key === 'language' && newSettings.type === 'local') {
+        // Attempt to find a suitable voice for the new language
         const suitableVoice = availableVoices.find(v => v.lang === value && v.default) || availableVoices.find(v => v.lang === value);
         if (suitableVoice) {
             newSettings.voiceURI = suitableVoice.voiceURI;
         } else {
+            // If no specific voice, clear it to let browser pick default for that language
             newSettings.voiceURI = undefined;
         }
       }
-      LocalStorage.saveTTSSettings(newSettings); // Save immediately
+      // LocalStorage.saveTTSSettings(newSettings); // Save immediately - already done in useEffect
       return newSettings;
     });
 
-    if (key === 'type') {
+    if (key === 'type') { // Reset sentence highlighting if engine changes
       setSentenceSegments([]);
       setCurrentSentenceIndex(-1);
     }
   };
 
   const navigatePdfPage = (direction: 'next' | 'prev') => {
-    stopSpeech(true);
+    stopSpeech(true); // Stop speech when changing pages
     const doc = activeDocument;
     if (!doc || doc.type !== 'pdf') return;
 
@@ -568,48 +578,53 @@ export function MangaRoom() {
     }
     if (newPdfPage !== currentPdfInternalPageIndex) {
       setCurrentPdfInternalPageIndex(newPdfPage);
+      // renderAndProcessPdfPage will be triggered by useEffect watching currentPdfInternalPageIndex
     }
   };
-
+  
   const handleJumpToPageOnBlur = () => {
     const doc = activeDocument;
-    let resetValue = '';
-    if (doc && doc.type === 'pdf' && doc.numPages > 0) {
+    let resetValue = ''; // Default to empty if no doc
+    if (doc && doc.type === 'pdf' && doc.numPages > 0 && currentPdfInternalPageIndex >= 0) {
       resetValue = (currentPdfInternalPageIndex + 1).toString();
     }
     
     const pageNumFromInputText = parseInt(jumpToPageInput, 10);
     if (doc && doc.type === 'pdf' && doc.numPages > 0) {
         if (isNaN(pageNumFromInputText) || pageNumFromInputText < 1 || pageNumFromInputText > doc.numPages) {
-             setJumpToPageInput((currentPdfInternalPageIndex + 1).toString());
+             // If invalid, reset to current actual page or '1' if current is bad
+             setJumpToPageInput(currentPdfInternalPageIndex >=0 ? (currentPdfInternalPageIndex + 1).toString() : '1');
         } else {
-             if (jumpToPageInput !== (currentPdfInternalPageIndex+1).toString()) {
-                 setJumpToPageInput((currentPdfInternalPageIndex+1).toString());
+             // Valid input, but check if it's different before updating state to avoid loop
+             if (jumpToPageInput !== ((currentPdfInternalPageIndex ?? -1)+1).toString()) {
+                 // This case is handled by onChange, onBlur is more for validation reset
+                 // setJumpToPageInput((currentPdfInternalPageIndex+1).toString());
              }
         }
     } else {
-      setJumpToPageInput(resetValue);
+      setJumpToPageInput(resetValue); // Reset if no PDF doc or invalid state
     }
   };
 
   const handleClearActiveDocument = () => {
     stopSpeech(true);
     if (activeDocument) {
-        delete pdfDocCacheRef.current[activeDocument.id];
-        LocalStorage.saveLastActiveMangaRoomDocId(null); 
+        delete pdfDocCacheRef.current[activeDocument.id]; // Clear PDF cache for this doc
+        LocalStorage.saveLastActiveMangaRoomDocId(null); // Clear last active
     }
     setActiveDocument(null);
     setCurrentPdfInternalPageIndex(0);
     setJumpToPageInput('');
     setSentenceSegments([]);
     setCurrentSentenceIndex(-1);
+    // Do not clear query params here, let useEffect handle reload if params change
     toast({title: "Document Cleared", description: "The current document has been cleared from view."});
   }
 
 
   const handleFavoriteSelection = () => {
     const selection = window.getSelection()?.toString().trim();
-    const currentDocForFavorite = activeDocument;
+    const currentDocForFavorite = activeDocument; // Use the state variable
     if (selection && currentDocForFavorite) {
       const newFavorite: FavoriteItem = {
         id: Date.now().toString(),
@@ -627,19 +642,24 @@ export function MangaRoom() {
 
 
   const getPlayButtonState = () => {
-    const canPlay = !!((typeof window !== 'undefined' && window.getSelection()?.toString().trim()) || textToRead) && !isLoadingPdfPage && !isLoadingDocument && activeDocument && !textToRead.startsWith("Error:");
+    const selectedTextContent = typeof window !== 'undefined' ? window.getSelection()?.toString().trim() : '';
+    // Check if there's any valid text to read (either selected or from the document)
+    // and that the document isn't in an error or loading state for text.
+    const canPlay = !!(selectedTextContent || (textToRead && !textToRead.startsWith("Error:") && !textToRead.startsWith("Processing") && !textToRead.startsWith("Loading"))) &&
+                    !isLoadingPdfPage && !isLoadingDocument && activeDocument;
+
 
     if (isLoadingTTS) return { icon: <Loader2 className="mr-1 h-4 w-4 animate-spin" />, text: "Loading...", action: () => {}, disabled: true, variant: "default" as const };
 
     if (isSpeaking) {
         if (isPausedState) {
-            return { icon: <Play className="mr-1 h-4 w-4" />, text: "Resume", action: resumeSpeech, variant: "outline" as const};
+            return { icon: <Play className="mr-1 h-4 w-4" />, text: "Resume", action: resumeSpeech, disabled: !canPlay, variant: "outline" as const};
         }
-        return { icon: <Pause className="mr-1 h-4 w-4" />, text: "Pause", action: pauseSpeech, variant: "outline" as const};
+        return { icon: <Pause className="mr-1 h-4 w-4" />, text: "Pause", action: pauseSpeech, disabled: !canPlay, variant: "outline" as const};
     }
     return {
         icon: <Play className="mr-1 h-4 w-4" />,
-        text: (typeof window !== 'undefined' && window.getSelection()?.toString().trim()) ? "Play Selected" : "Play All",
+        text: selectedTextContent ? "Play Selected" : "Play All",
         action: playSpeech,
         disabled: !canPlay,
         variant: "default" as const
@@ -662,7 +682,7 @@ export function MangaRoom() {
     <div className="flex flex-col w-full p-4 md:p-6 space-y-6">
       {/* Content Area (Image/PDF display, Extracted Text) */}
       <div className="flex-grow space-y-6">
-          {activeDocument && (
+          {activeDocument && !isLoadingDocument && ( // Ensure doc is loaded and not in general loading state
             <>
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -675,7 +695,7 @@ export function MangaRoom() {
               </CardHeader>
               <CardContent className="space-y-4 pt-0">
                 <div className="relative aspect-[2/3] w-full mx-auto bg-muted rounded-md overflow-hidden shadow-inner">
-                  {(isLoadingPdfPage && !currentSubPage?.imageDataUrl && activeDocument.type==='pdf') && (
+                  {(isLoadingPdfPage && activeDocument.type==='pdf' && (!currentSubPage?.imageDataUrl)) && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 z-10">
                         <Loader2 className="h-12 w-12 animate-spin text-primary" />
                         <p className="mt-2 text-muted-foreground">Loading PDF page...</p>
@@ -689,9 +709,9 @@ export function MangaRoom() {
                       style={{ objectFit: "contain" }}
                       data-ai-hint="manga page comic"
                       priority={true}
-                      key={`${activeDocument.id}-${currentPdfInternalPageIndex}-${currentSubPage.imageDataUrl.substring(0,20)}`}
+                      key={`${activeDocument.id}-${activeDocument.type==='pdf' ? currentPdfInternalPageIndex : 'image'}-${currentSubPage.imageDataUrl.substring(0,20)}`} // More specific key
                     />
-                  ) : activeDocument.type === 'pdf' && !isLoadingPdfPage ? (
+                  ) : activeDocument.type === 'pdf' && !isLoadingPdfPage && activeDocument.numPages > 0 ? ( // Show placeholder if PDF page not yet rendered
                     <div className="flex flex-col items-center justify-center h-full text-center p-4">
                       <BookOpen className="w-16 h-16 text-primary mb-4" />
                       <p className="font-semibold">{activeDocument.title || 'PDF Document'}</p>
@@ -699,22 +719,27 @@ export function MangaRoom() {
                         { activeDocument.numPages > 0 ? `Page ${currentPdfInternalPageIndex + 1} of ${activeDocument.numPages}. Waiting to process...` : "Empty PDF or error loading."}
                       </p>
                        {isLoadingPdfPage && <Loader2 className="h-6 w-6 animate-spin text-primary mt-2" />}
-                       {!isLoadingPdfPage && activeDocument.numPages > 0 && (!currentSubPage?.imageDataUrl || currentSubPage?.extractedText?.startsWith("Error:")) &&
+                       {!isLoadingPdfPage && activeDocument.numPages > 0 && (!currentSubPage?.imageDataUrl || currentSubPage?.extractedText?.startsWith("Error:") || currentSubPage?.extractedText === undefined) &&
                          <Button onClick={() => renderAndProcessPdfPage(activeDocument as MangaPdfFile, currentPdfInternalPageIndex)} className="mt-2" size="sm" disabled={isLoadingPdfPage}>Process This Page</Button>
                        }
                       <p className="text-xs text-muted-foreground mt-2">If this takes too long, the page might be complex or an error occurred.</p>
                     </div>
+                  ): activeDocument.type === 'image' && !currentSubPage?.imageDataUrl && !isLoadingDocument ? ( // Image type but no URL (should not happen if loaded correctly)
+                    <div className="flex flex-col items-center justify-center h-full text-center p-4">
+                        <ImageIcon className="w-16 h-16 text-destructive mb-4" />
+                        <p>Image data is missing or failed to load.</p>
+                    </div>
                   ) : (
-                     !isLoadingDocument && !isLoadingInitialDoc &&
+                     !isLoadingDocument && !isLoadingInitialDoc && // Only show "no content" if truly nothing active
                     <div className="flex flex-col items-center justify-center h-full text-center p-4">
                       <ImageIcon className="w-16 h-16 text-primary mb-4" />
-                      <p>No content to display. Please upload a file from the Library.</p>
+                      <p>No content to display. Please select a document from the Library.</p>
                     </div>
                   )}
                 </div>
               </CardContent>
             </Card>
-             {(textToRead || (isLoadingPdfPage && !currentSubPage?.extractedText && activeDocument.type === 'pdf')) && (
+             {(textToRead || (isLoadingPdfPage && activeDocument.type === 'pdf' && !currentSubPage?.extractedText)) && ( // Show text area if text exists or is loading for PDF
                 <Card>
                 <CardHeader className="pb-2 pt-4">
                     <CardTitle className="text-lg">Extracted Text</CardTitle>
@@ -723,10 +748,11 @@ export function MangaRoom() {
                     <div 
                         className={cn(
                             "min-h-[100px] max-h-60 overflow-y-auto p-2 border rounded-md bg-muted/30 whitespace-pre-wrap text-sm select-text",
-                            textToRead.startsWith("Error:") && "text-destructive bg-destructive/10"
+                            textToRead.startsWith("Error:") && "text-destructive bg-destructive/10",
+                            (textToRead.startsWith("Processing") || textToRead.startsWith("Loading")) && "text-muted-foreground"
                         )}
                     >
-                    {isLoadingPdfPage && !currentSubPage?.extractedText ? "Loading page text..." :
+                    {(isLoadingPdfPage && activeDocument.type === 'pdf' && !currentSubPage?.extractedText) ? "Loading page text..." : // Specific loading message for text
                         (ttsSettings.type === 'local' && sentenceSegments.length > 0 && isSpeaking && !isPausedState) ? (
                         sentenceSegments.map((segment, index) => (
                             <span
@@ -744,7 +770,7 @@ export function MangaRoom() {
                         )
                     }
                     </div>
-                    <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="mt-3">
+                    <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="mt-3" disabled={!activeDocument || isLoadingDocument || isLoadingPdfPage}>
                     <Star className="mr-2 h-4 w-4" /> Favorite Selected Text
                     </Button>
                 </CardContent>
@@ -759,15 +785,23 @@ export function MangaRoom() {
                 <CardTitle>No File Loaded</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-muted-foreground">Please go to the Library to select or upload a document to view here.</p>
+                <p className="text-muted-foreground">Please select or upload a document from your Library to view it here.</p>
                 <BookOpen className="mx-auto my-4 h-12 w-12 text-muted-foreground" />
               </CardContent>
             </Card>
           )}
+
+          {/* General loading state for document processing, not initial load */}
+          {isLoadingDocument && !isLoadingInitialDoc && (
+             <div className="flex flex-col flex-grow items-center justify-center p-4">
+                <Loader2 className="h-12 w-12 animate-spin text-primary" />
+                <p className="mt-4 text-muted-foreground">Loading document details...</p>
+            </div>
+          )}
       </div>
 
       {/* Controls Area (PDF Nav, TTS Settings) - stacked below content */}
-      {activeDocument && (
+      {activeDocument && !isLoadingDocument && ( // Only show controls if a document is active and not loading
         <div className="space-y-4">
             <Card>
             <CardHeader className="p-4">
@@ -789,27 +823,27 @@ export function MangaRoom() {
                     </Button>
                     <Input
                       id="pdf-page-jump"
-                      type="text"
-                      inputMode="numeric"
+                      type="text" // Changed from number for better control over updates
+                      inputMode="numeric" // Still hint numeric keyboard
                       className="h-8 w-12 text-center text-sm px-1"
                       value={jumpToPageInput}
                       onChange={(e) => {
                         const newValue = e.target.value;
-                        setJumpToPageInput(newValue); 
+                        setJumpToPageInput(newValue); // Update display immediately
 
-                        const doc = activeDocument; 
+                        const doc = activeDocument; // Ensure activeDocument is the latest
                         if (doc && doc.type === 'pdf' && doc.numPages > 0) {
                           const pageNumOneBased = parseInt(newValue, 10);
                           if (!isNaN(pageNumOneBased) && pageNumOneBased >= 1 && pageNumOneBased <= doc.numPages) {
                             const pageNumZeroBased = pageNumOneBased - 1;
                             if (pageNumZeroBased !== currentPdfInternalPageIndex) {
-                              stopSpeech(true); 
+                              stopSpeech(true); // Stop speech before changing page
                               setCurrentPdfInternalPageIndex(pageNumZeroBased);
                             }
                           }
                         }
                       }}
-                      onBlur={handleJumpToPageOnBlur}
+                      onBlur={handleJumpToPageOnBlur} // Validate on blur
                       disabled={isLoadingPdfPage || isLoadingTTS || (isSpeaking && !isPausedState)}
                     />
                      <Button
@@ -826,7 +860,7 @@ export function MangaRoom() {
                 </div>
               )}
 
-              {(textToRead || (typeof window !== 'undefined' && window.getSelection()?.toString().trim())) && !isLoadingPdfPage && (
+              {(textToRead || (typeof window !== 'undefined' && window.getSelection()?.toString().trim())) && !isLoadingPdfPage && !textToRead.startsWith("Error:") && !textToRead.startsWith("Processing") && !textToRead.startsWith("Loading") && (
                 <>
                   <hr className="my-3 border-border" />
                   <Label className="text-sm block mb-1">TTS Settings</Label>
@@ -906,4 +940,3 @@ export function MangaRoom() {
     </div>
   );
 }
-
