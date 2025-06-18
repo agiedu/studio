@@ -83,7 +83,7 @@ export function MangaRoom() {
 
     if (loadFromLibraryIdQuery) {
       docIdToLoad = loadFromLibraryIdQuery;
-       if (router.pathname === '/' && loadFromLibraryIdQuery) {
+       if (window.location.pathname === '/' && loadFromLibraryIdQuery) { // Check pathname
          const newUrl = new URL(window.location.href);
          newUrl.searchParams.delete('loadFromLibraryId');
          router.replace(newUrl.pathname + newUrl.search, { scroll: false });
@@ -170,7 +170,7 @@ export function MangaRoom() {
       setIsLoadingDocument(false);
     }
     setIsLoadingInitialDoc(false);
-  }, [searchParams, router, toast]); 
+  }, [searchParams, router]); 
 
  useEffect(() => {
     loadInitialDocument();
@@ -313,7 +313,7 @@ export function MangaRoom() {
       const textContent = await page.getTextContent();
       const directText = textContent.items.map(item => ('str' in item ? item.str : '')).join(" ").trim();
 
-      if (directText.length > 1) { // Prioritize direct text if substantial
+      if (directText.length > 1) { 
         textForPage = directText;
         setActiveDocument(prevD => {
           if (prevD && prevD.id === doc.id && prevD.type === 'pdf') {
@@ -449,6 +449,7 @@ export function MangaRoom() {
           reader.readAsDataURL(file);
         });
 
+        // For MangaRoom internal state
         const mangaImageFile: MangaImageFile = {
           id: newDocId,
           title: file.name,
@@ -456,12 +457,14 @@ export function MangaRoom() {
           imageDataUrl,
           extractedText: "Performing OCR...", 
         };
+        setActiveDocument(mangaImageFile); // Set active document for UI
         
+        // For saving to shared library
         const storedImageForLibrary: StoredImageDocument = {
           id: newDocId,
           name: file.name,
           type: 'image',
-          imageDataUrl, 
+          imageDataUrl: imageDataUrl, 
           createdAt: Date.now(),
         };
         saveToLibrarySuccess = LocalStorage.addStoredDocument(storedImageForLibrary);
@@ -473,8 +476,7 @@ export function MangaRoom() {
           toast({ variant: "destructive", title: "Storage Error", description: `Failed to save ${file.name} to library. Storage might be full.` });
         }
         
-        setActiveDocument(mangaImageFile);
-        
+        // Perform OCR after setting active document and attempting library save
         const ocrResult = await performOCR(imageDataUrl);
         setActiveDocument(prev => {
             if (prev && prev.id === newDocId && prev.type === 'image') {
@@ -502,6 +504,7 @@ export function MangaRoom() {
         const pdfInstance = await pdfLoadingTask.promise;
         pdfDocCacheRef.current[newDocId] = pdfInstance; 
 
+        // For MangaRoom internal state
         const mangaPdfFile: MangaPdfFile = {
           id: newDocId,
           title: file.name,
@@ -510,12 +513,14 @@ export function MangaRoom() {
           numPages: pdfInstance.numPages,
           processedPages: new Array(pdfInstance.numPages).fill(null).map(() => ({ imageDataUrl: '', extractedText: undefined })),
         };
+        setActiveDocument(mangaPdfFile); // Set active document for UI
         
+        // For saving to shared library
         const storedPdfForLibrary: StoredPdfDocument = {
           id: newDocId,
           name: file.name,
           type: 'pdf',
-          pdfBase64, 
+          pdfBase64: pdfBase64, 
           createdAt: Date.now(),
         };
         saveToLibrarySuccess = LocalStorage.addStoredDocument(storedPdfForLibrary);
@@ -523,13 +528,12 @@ export function MangaRoom() {
         if (saveToLibrarySuccess) {
           LocalStorage.saveLastActiveMangaRoomDocId(newDocId);
           toast({ title: "PDF Uploaded", description: `${file.name} added to library and active for Read2.` });
+          setCurrentPdfInternalPageIndex(0); 
+          setJumpToPageInput('1');
         } else {
           toast({ variant: "destructive", title: "Storage Error", description: `Failed to save ${file.name} to library. Storage might be full.` });
         }
         
-        setActiveDocument(mangaPdfFile);
-        setCurrentPdfInternalPageIndex(0); 
-        setJumpToPageInput('1');
       } else {
         toast({ variant: "destructive", title: "Unsupported File", description: "Please upload an Image or PDF file." });
       }
@@ -537,7 +541,10 @@ export function MangaRoom() {
       console.error("File Upload Error:", error);
       toast({ variant: "destructive", title: "Upload Error", description: error.message || "Failed to process file." });
       setActiveDocument(null); 
-      if (saveToLibrarySuccess) LocalStorage.saveLastActiveMangaRoomDocId(null); 
+      // Only clear last active ID if it was potentially set for this failed upload attempt AND save failed
+      // This needs careful consideration if saveToLibrarySuccess was false but an ID was still set as active previously.
+      // For now, let's assume if an error occurs, we don't want to save last active ID for this attempt.
+      if (!saveToLibrarySuccess) LocalStorage.saveLastActiveMangaRoomDocId(null); 
     } finally {
       setIsLoadingDocument(false); 
       if (fileInputRef.current) {
