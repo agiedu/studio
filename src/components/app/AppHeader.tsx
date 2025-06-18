@@ -3,10 +3,10 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Moon, Sun, BookOpenText, Library, Star } from 'lucide-react';
+import { Moon, Sun, BookOpenText, Library, Star, Home as HomeIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { MangaTalkLogo } from '@/components/icons/MangaTalkLogo';
-import * as LocalStorage from '@/lib/localStorageService'; // Import for night mode
+import * as LocalStorage from '@/lib/localStorageService';
 
 export function AppHeader() {
   const [isDarkMode, setIsDarkMode] = useState(true);
@@ -18,11 +18,11 @@ export function AppHeader() {
     } else {
       root.classList.remove('dark');
     }
-    LocalStorage.saveNightMode(isDarkMode); // Save night mode preference
+    LocalStorage.saveNightMode(isDarkMode);
   }, [isDarkMode]);
 
   useEffect(() => {
-    setIsDarkMode(LocalStorage.loadNightMode()); // Load night mode preference
+    setIsDarkMode(LocalStorage.loadNightMode());
   }, []);
 
 
@@ -39,6 +39,11 @@ export function AppHeader() {
             <h1 className="text-xl md:text-2xl font-bold font-headline text-primary">MangaTalk</h1>
           </Link>
           <nav className="flex items-center gap-1 md:gap-2">
+            <Button variant="ghost" asChild size="sm">
+              <Link href="/">
+                <HomeIcon className="mr-1 h-4 w-4" /> Home
+              </Link>
+            </Button>
             <Button variant="ghost" asChild size="sm">
               <Link href="/library">
                 <Library className="mr-1 h-4 w-4" /> Library
