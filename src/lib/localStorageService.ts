@@ -28,11 +28,14 @@ const safeLocalStorageSet = (key: string, value: any): boolean => {
     window.localStorage.setItem(key, JSON.stringify(value));
     return true;
   } catch (error: any) {
-    console.error(`Error setting localStorage key "${key}":`, error);
-    if (error instanceof DOMException && (error.name === 'QuotaExceededError' || error.message.toLowerCase().includes('quota'))) {
-      console.error("Local storage quota exceeded. Unable to save more data. Please clear some documents or browser storage.");
-      // The toast message is handled by the component attempting the save
+    let specificMessage = `Error setting localStorage key "${key}"`;
+    // DOMException error codes for quota exceeded can vary slightly by browser
+    // Common ones are 22 (Chrome), 1014 (Firefox for NS_ERROR_DOM_QUOTA_REACHED)
+    // Checking name and message is generally more robust.
+    if (error instanceof DOMException && (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED' || (error.message && error.message.toLowerCase().includes('quota')))) {
+      specificMessage = `QuotaExceededError: Failed to set localStorage key "${key}" because browser storage is full. Please free up space.`;
     }
+    console.error(specificMessage, error); // Log the more specific message and the original error object
     return false;
   }
 };
