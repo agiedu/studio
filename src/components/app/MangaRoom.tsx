@@ -95,7 +95,6 @@ export function MangaRoom() {
     }
   }, [ttsSettings.type]);
 
-  // Ref to hold the latest stopSpeech function for use in cleanups/event handlers
   const stopSpeechFnRef = useRef(stopSpeech);
   useEffect(() => {
     stopSpeechFnRef.current = stopSpeech;
@@ -105,7 +104,7 @@ export function MangaRoom() {
   const loadInitialDocument = useCallback(async () => {
     setIsLoadingInitialDoc(true);
     setIsLoadingDocument(true);
-    stopSpeech(true);
+    stopSpeechFnRef.current(true);
     setSentenceSegments([]);
     setCurrentSentenceIndex(-1);
     setActiveDocument(null);
@@ -115,9 +114,9 @@ export function MangaRoom() {
 
     if (loadFromLibraryIdQuery) {
       docIdToLoad = loadFromLibraryIdQuery;
-      const newUrl = new URL(window.location.href);
-      newUrl.searchParams.delete('loadFromLibraryId');
-      router.replace(newUrl.pathname + newUrl.search, { scroll: false });
+      const currentUrl = new URL(window.location.href);
+      currentUrl.searchParams.delete('loadFromLibraryId');
+      router.replace(currentUrl.pathname + currentUrl.search, { scroll: false });
     } else {
       docIdToLoad = LocalStorage.loadLastActiveMangaRoomDocId();
     }
@@ -127,7 +126,7 @@ export function MangaRoom() {
     if (docIdToLoad) {
       const storedDoc = LocalStorage.getStoredDocumentById(docIdToLoad);
       if (storedDoc) {
-        LocalStorage.saveLastActiveMangaRoomDocId(storedDoc.id);
+        LocalStorage.saveLastActiveMangaRoomDocId(storedDoc.id); // Refresh the "last active" status
         if (storedDoc.type === 'image') {
           const storedImageDoc = storedDoc as StoredImageDocument;
           docToDisplay = {
@@ -135,10 +134,10 @@ export function MangaRoom() {
             title: storedImageDoc.name,
             type: 'image',
             imageDataUrl: storedImageDoc.imageDataUrl,
-            extractedText: "Performing OCR...",
+            extractedText: "Performing OCR...", // Placeholder
           };
           setActiveDocument(docToDisplay);
-          setIsLoadingDocument(false);
+          setIsLoadingDocument(false); // Document metadata loaded, OCR is next step
 
           try {
             const ocrResult = await performOCR(storedImageDoc.imageDataUrl);
@@ -192,7 +191,7 @@ export function MangaRoom() {
       } else {
         toast({ variant: "destructive", title: "Document Not Found", description: `Previously active document (ID: ${docIdToLoad}) no longer in library.` });
         setActiveDocument(null);
-        LocalStorage.saveLastActiveMangaRoomDocId(null);
+        LocalStorage.saveLastActiveMangaRoomDocId(null); // Clear the bad ID
         setIsLoadingDocument(false);
       }
     } else {
@@ -200,11 +199,11 @@ export function MangaRoom() {
       setIsLoadingDocument(false);
     }
     setIsLoadingInitialDoc(false);
-  }, [searchParams, router, toast, stopSpeech]);
+  }, [searchParams, router, toast]); // Removed stopSpeech from deps, using stopSpeechFnRef
 
  useEffect(() => {
     loadInitialDocument();
-  }, [loadInitialDocument]);
+  }, [loadInitialDocument]); // loadInitialDocument is memoized
 
   useEffect(() => {
     LocalStorage.saveTTSSettings(ttsSettings);
@@ -259,7 +258,7 @@ export function MangaRoom() {
       return;
     }
     setIsLoadingPdfPage(true);
-    stopSpeech(true);
+    stopSpeechFnRef.current(true);
     setSentenceSegments([]);
     setCurrentSentenceIndex(-1);
 
@@ -318,7 +317,7 @@ export function MangaRoom() {
       const textContent = await page.getTextContent();
       const directText = textContent.items.map(item => ('str' in item ? item.str : '')).join(" ").trim();
 
-      if (directText.length > 1) {
+      if (directText.length > 1) { // Use direct text if substantial
         textForPage = directText;
         setActiveDocument(prevD => {
           if (prevD && prevD.id === doc.id && prevD.type === 'pdf') {
@@ -328,12 +327,12 @@ export function MangaRoom() {
           }
           return prevD;
         });
-      } else {
+      } else { // Fallback to OCR if direct text is minimal or empty
         setActiveDocument(prevD => {
           if (prevD && prevD.id === doc.id && prevD.type === 'pdf') {
               const updatedPages = [...prevD.processedPages];
               updatedPages[pageNumToRender] = {
-                  ...updatedPages[pageNumToRender],
+                  ...updatedPages[pageNumToRender], // Keep existing image if any
                   imageDataUrl: imageDataUrl || updatedPages[pageNumToRender]?.imageDataUrl || '',
                   extractedText: "Extracting text using OCR..."
               };
@@ -355,7 +354,7 @@ export function MangaRoom() {
         setActiveDocument(prevD => {
           if (prevD && prevD.id === doc.id && prevD.type === 'pdf') {
             const updatedPages = [...prevD.processedPages];
-            updatedPages[pageNumToRender] = { imageDataUrl, extractedText: textForPage };
+            updatedPages[pageNumToRender] = { imageDataUrl, extractedText: textForPage }; // Ensure imageDataUrl is also updated here
             return { ...prevD, processedPages: updatedPages };
           }
           return prevD;
@@ -377,7 +376,7 @@ export function MangaRoom() {
     } finally {
       setIsLoadingPdfPage(false);
     }
-  }, [toast, stopSpeech]);
+  }, [toast]);
 
   useEffect(() => {
     if (activeDocument?.type === 'pdf' && activeDocument.numPages > 0 && currentPdfInternalPageIndex >= 0 && currentPdfInternalPageIndex < activeDocument.numPages) {
@@ -438,7 +437,7 @@ export function MangaRoom() {
     if (!file) return;
 
     setIsLoadingDocument(true);
-    stopSpeech(true);
+    stopSpeechFnRef.current(true);
     setSentenceSegments([]);
     setCurrentSentenceIndex(-1);
      setActiveDocument({
@@ -453,7 +452,7 @@ export function MangaRoom() {
 
 
     const newDocId = Date.now().toString();
-    let saveToLibrarySuccess = false;
+    let mangaFileToActivate: MangaDocument | null = null;
 
     try {
       if (file.type.startsWith('image/')) {
@@ -464,7 +463,7 @@ export function MangaRoom() {
           reader.readAsDataURL(file);
         });
 
-        const mangaImageFile: MangaImageFile = {
+        mangaFileToActivate = {
           id: newDocId,
           title: file.name,
           type: 'image',
@@ -479,10 +478,11 @@ export function MangaRoom() {
           imageDataUrl: imageDataUrl,
           createdAt: Date.now(),
         };
-        saveToLibrarySuccess = LocalStorage.addStoredDocument(storedImageForLibrary);
+        
+        const saveToLibrarySuccess = LocalStorage.addStoredDocument(storedImageForLibrary);
 
         if (saveToLibrarySuccess) {
-          setActiveDocument(mangaImageFile);
+          setActiveDocument(mangaFileToActivate);
           LocalStorage.saveLastActiveMangaRoomDocId(newDocId);
           toast({ title: "Image Uploaded", description: `${file.name} added to library and active for Read2.` });
             try {
@@ -501,8 +501,10 @@ export function MangaRoom() {
                setActiveDocument(prev => prev && prev.id === newDocId && prev.type === 'image' ? { ...prev, extractedText: "OCR failed." } : prev);
             }
         } else {
-          toast({ variant: "destructive", title: "Storage Error", description: `Failed to save ${file.name} to library. Storage might be full.` });
-          setActiveDocument(null);
+          const errorMessage = `Failed to save ${file.name} to library. Browser local storage might be full. Please try deleting some documents from the Library.`;
+          console.warn(`MangaRoom: ${errorMessage}`);
+          toast({ variant: "destructive", title: "Storage Error", description: errorMessage });
+          if (activeDocument?.id === 'temp-loading') setActiveDocument(null);
         }
 
 
@@ -522,7 +524,7 @@ export function MangaRoom() {
         const pdfInstance = await pdfLoadingTask.promise;
         pdfDocCacheRef.current[newDocId] = pdfInstance;
 
-        const mangaPdfFile: MangaPdfFile = {
+        mangaFileToActivate = {
           id: newDocId,
           title: file.name,
           type: 'pdf',
@@ -538,27 +540,29 @@ export function MangaRoom() {
           pdfBase64: pdfBase64,
           createdAt: Date.now(),
         };
-        saveToLibrarySuccess = LocalStorage.addStoredDocument(storedPdfForLibrary);
+        const saveToLibrarySuccess = LocalStorage.addStoredDocument(storedPdfForLibrary);
 
         if (saveToLibrarySuccess) {
-          setActiveDocument(mangaPdfFile);
+          setActiveDocument(mangaFileToActivate);
           LocalStorage.saveLastActiveMangaRoomDocId(newDocId);
           toast({ title: "PDF Uploaded", description: `${file.name} added to library and active for Read2.` });
           setCurrentPdfInternalPageIndex(0);
           setJumpToPageInput('1');
         } else {
-          toast({ variant: "destructive", title: "Storage Error", description: `Failed to save ${file.name} to library. Storage might be full.` });
-          setActiveDocument(null);
+          const errorMessage = `Failed to save ${file.name} to library. Browser local storage might be full. Please try deleting some documents from the Library.`;
+          console.warn(`MangaRoom: ${errorMessage}`);
+          toast({ variant: "destructive", title: "Storage Error", description: errorMessage });
+          if (activeDocument?.id === 'temp-loading') setActiveDocument(null);
         }
 
       } else {
         toast({ variant: "destructive", title: "Unsupported File", description: "Please upload an Image or PDF file." });
-        setActiveDocument(null);
+        if (activeDocument?.id === 'temp-loading') setActiveDocument(null);
       }
     } catch (error: any) {
       console.error("File Upload Error:", error);
       toast({ variant: "destructive", title: "Upload Error", description: error.message || "Failed to process file." });
-      setActiveDocument(null);
+      if (activeDocument?.id === 'temp-loading') setActiveDocument(null);
     } finally {
       setIsLoadingDocument(false);
       if (fileInputRef.current) {
@@ -585,7 +589,7 @@ export function MangaRoom() {
     }
 
     setIsLoadingTTS(true);
-    stopSpeech(false);
+    stopSpeechFnRef.current(false);
     await new Promise(resolve => setTimeout(resolve, 150));
 
     setIsSpeaking(true);
@@ -594,7 +598,7 @@ export function MangaRoom() {
     if (ttsSettings.type === 'local') {
       if (typeof window === 'undefined' || !window.speechSynthesis) {
         toast({ variant: "destructive", title: "TTS Error", description: "Browser Speech Synthesis not supported." });
-        stopSpeech(true); return;
+        stopSpeechFnRef.current(true); return;
       }
 
       const utterance = new SpeechSynthesisUtterance(effectiveTextToRead);
@@ -628,12 +632,12 @@ export function MangaRoom() {
       };
 
       utterance.onend = () => {
-        if (utteranceRef.current === utterance) stopSpeech(true);
+        if (utteranceRef.current === utterance) stopSpeechFnRef.current(true);
       };
       utterance.onerror = (event) => {
          if (utteranceRef.current === utterance) {
             toast({ variant: "destructive", title: "TTS Error", description: event.error || "Failed to play speech." });
-            stopSpeech(true);
+            stopSpeechFnRef.current(true);
         }
       };
       utteranceRef.current = utterance;
@@ -650,13 +654,13 @@ export function MangaRoom() {
             await audioPlayerRef.current.play();
         } else if ('error' in cloudResult) {
           toast({ variant: "destructive", title: "Cloud TTS Error", description: cloudResult.error });
-          stopSpeech(true);
+          stopSpeechFnRef.current(true);
         } else {
             throw new Error("Invalid response from cloud TTS");
         }
       } catch (error: any) {
         toast({ variant: "destructive", title: "Cloud TTS Request Failed", description: error.message || "Unknown error." });
-        stopSpeech(true);
+        stopSpeechFnRef.current(true);
       }
     }
   };
@@ -681,17 +685,17 @@ export function MangaRoom() {
                 setIsPausedState(false);
                 setTimeout(() => {
                     if (utteranceRef.current && isSpeaking && !isPausedState && !window.speechSynthesis.speaking && !window.speechSynthesis.pending) {
-                        stopSpeech(true);
+                        stopSpeechFnRef.current(true);
                     }
                 }, 100);
             } else {
-                stopSpeech(true);
+                stopSpeechFnRef.current(true);
             }
         }
         else if (ttsSettings.type === 'cloud' && audioPlayerRef.current && audioPlayerRef.current.paused) {
             audioPlayerRef.current.play().catch(e => {
                 toast({variant: "destructive", title: "Resume Error", description: "Could not resume audio."});
-                stopSpeech(true);
+                stopSpeechFnRef.current(true);
             });
             setIsPausedState(false);
         }
@@ -739,11 +743,11 @@ export function MangaRoom() {
       player.src = "";
       if (audioPlayerRef.current === player) audioPlayerRef.current = null;
     };
-  }, [ttsSettings.type, isSpeaking, toast]);
+  }, [ttsSettings.type, isSpeaking]); // Removed toast
 
 
   const handleSettingChange = <K extends keyof TTSSettings>(key: K, value: TTSSettings[K]) => {
-    stopSpeech(true);
+    stopSpeechFnRef.current(true);
     setTtsSettings(prev => {
       const newSettings = { ...prev, [key]: value };
       if (key === 'language' && newSettings.type === 'local') {
@@ -764,7 +768,7 @@ export function MangaRoom() {
   };
 
   const navigatePdfPage = (direction: 'next' | 'prev') => {
-    stopSpeech(true);
+    stopSpeechFnRef.current(true);
     const doc = activeDocument;
     if (!doc || doc.type !== 'pdf') return;
 
@@ -801,7 +805,7 @@ export function MangaRoom() {
   };
 
   const handleClearActiveDocument = () => {
-    stopSpeech(true);
+    stopSpeechFnRef.current(true);
     setActiveDocument(null);
     setCurrentPdfInternalPageIndex(0);
     setJumpToPageInput('');
@@ -1077,7 +1081,7 @@ export function MangaRoom() {
                           if (!isNaN(pageNumOneBased) && pageNumOneBased >= 1 && pageNumOneBased <= doc.numPages) {
                             const pageNumZeroBased = pageNumOneBased - 1;
                             if (pageNumZeroBased !== currentPdfInternalPageIndex) {
-                              stopSpeech(true);
+                              stopSpeechFnRef.current(true);
                               setCurrentPdfInternalPageIndex(pageNumZeroBased);
                             }
                           }
@@ -1189,4 +1193,5 @@ export function MangaRoom() {
     </div>
   );
 }
+
 
