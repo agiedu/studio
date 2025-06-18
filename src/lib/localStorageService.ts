@@ -29,9 +29,11 @@ const safeLocalStorageSet = (key: string, value: any): boolean => {
     return true;
   } catch (error) {
     console.warn(`Error setting localStorage key "${key}":`, error);
-    if (error instanceof DOMException && (error.name === 'QuotaExceededError' || error.message.toLowerCase().includes('quota'))) {
-      alert("Local storage quota exceeded. Unable to save more data. Please clear some documents or browser storage.");
-    }
+    // The calling function (e.g., in MangaRoom.tsx) will show a toast,
+    // so the generic alert here is removed to avoid duplication.
+    // if (error instanceof DOMException && (error.name === 'QuotaExceededError' || error.message.toLowerCase().includes('quota'))) {
+    //   alert("Local storage quota exceeded. Unable to save more data. Please clear some documents or browser storage.");
+    // }
     return false;
   }
 };
