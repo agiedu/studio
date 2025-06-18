@@ -3,13 +3,16 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { Moon, Sun, BookOpenText, Library, Star, Home as HomeIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { MangaTalkLogo } from '@/components/icons/MangaTalkLogo';
 import * as LocalStorage from '@/lib/localStorageService';
+import { cn } from '@/lib/utils';
 
 export function AppHeader() {
   const [isDarkMode, setIsDarkMode] = useState(true);
+  const pathname = usePathname();
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -30,6 +33,13 @@ export function AppHeader() {
     setIsDarkMode(!isDarkMode);
   };
 
+  const getLinkClass = (path: string) => {
+    return cn(
+      "flex items-center gap-1 md:gap-2",
+      pathname === path && "bg-accent text-accent-foreground rounded-md"
+    );
+  };
+
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex h-16 items-center justify-between px-4 md:px-6">
@@ -39,22 +49,22 @@ export function AppHeader() {
             <h1 className="text-xl md:text-2xl font-bold font-headline text-primary">MangaTalk</h1>
           </Link>
           <nav className="flex items-center gap-1 md:gap-2">
-            <Button variant="ghost" asChild size="sm">
+            <Button variant="ghost" asChild size="sm" className={getLinkClass('/library')}>
               <Link href="/library">
                 <Library className="mr-1 h-4 w-4" /> Library
               </Link>
             </Button>
-            <Button variant="ghost" asChild size="sm">
+            <Button variant="ghost" asChild size="sm" className={getLinkClass('/reader')}>
               <Link href="/reader">
                 <BookOpenText className="mr-1 h-4 w-4" /> Reader
               </Link>
             </Button>
-            <Button variant="ghost" asChild size="sm">
+            <Button variant="ghost" asChild size="sm" className={getLinkClass('/')}>
               <Link href="/">
                 <HomeIcon className="mr-1 h-4 w-4" /> Read2
               </Link>
             </Button>
-             <Button variant="ghost" asChild size="sm">
+             <Button variant="ghost" asChild size="sm" className={getLinkClass('/favorites')}>
               <Link href="/favorites">
                 <Star className="mr-1 h-4 w-4" /> Favorites
               </Link>
