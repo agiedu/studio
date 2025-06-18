@@ -1,5 +1,4 @@
 
-
 import type { MangaDocument, MangaPdfFile, MangaSubPage, TTSSettings, StoredDocument, FavoriteItem, StoredImageDocument, StoredPdfDocument, StoredTxtDocument } from '@/types';
 
 const PDF_MANGA_DOCUMENT_PAGE_STATES_KEY = 'mangaTalk_pdfDocumentPageStates_v2';
@@ -23,15 +22,17 @@ const safeLocalStorageGet = <T>(key: string, defaultValue: T): T => {
   }
 };
 
-const safeLocalStorageSet = (key: string, value: any): void => {
-  if (typeof window === 'undefined') return;
+const safeLocalStorageSet = (key: string, value: any): boolean => {
+  if (typeof window === 'undefined') return false;
   try {
     window.localStorage.setItem(key, JSON.stringify(value));
+    return true;
   } catch (error) {
     console.warn(`Error setting localStorage key "${key}":`, error);
     if (error instanceof DOMException && (error.name === 'QuotaExceededError' || error.message.toLowerCase().includes('quota'))) {
       alert("Local storage quota exceeded. Unable to save more data. Please clear some documents or browser storage.");
     }
+    return false;
   }
 };
 
@@ -42,11 +43,11 @@ export const loadCurrentPdfPageIndexForDoc = (docId: string): number | undefined
   return states[docId];
 };
 
-export const saveCurrentPdfPageIndexForDoc = (docId: string, pageIndex: number): void => {
-  if (!docId) return;
+export const saveCurrentPdfPageIndexForDoc = (docId: string, pageIndex: number): boolean => {
+  if (!docId) return false;
   const states = safeLocalStorageGet<{ [docId: string]: number }>(PDF_MANGA_DOCUMENT_PAGE_STATES_KEY, {});
   states[docId] = pageIndex;
-  safeLocalStorageSet(PDF_MANGA_DOCUMENT_PAGE_STATES_KEY, states);
+  return safeLocalStorageSet(PDF_MANGA_DOCUMENT_PAGE_STATES_KEY, states);
 };
 
 
@@ -67,38 +68,37 @@ export const loadTTSSettings = (): TTSSettings => {
   }
   return completeSettings;
 };
-export const saveTTSSettings = (settings: TTSSettings): void => safeLocalStorageSet(TTS_SETTINGS_KEY, settings);
+export const saveTTSSettings = (settings: TTSSettings): boolean => safeLocalStorageSet(TTS_SETTINGS_KEY, settings);
 
 // Night Mode (shared)
 export const loadNightMode = (): boolean => safeLocalStorageGet<boolean>(NIGHT_MODE_KEY, true);
-export const saveNightMode = (isNightMode: boolean): void => safeLocalStorageSet(NIGHT_MODE_KEY, isNightMode);
+export const saveNightMode = (isNightMode: boolean): boolean => safeLocalStorageSet(NIGHT_MODE_KEY, isNightMode);
 
 // Library Page specific storage (StoredDocument - shared by MangaRoom for saving)
 export const loadStoredDocuments = (): StoredDocument[] => {
     return safeLocalStorageGet<StoredDocument[]>(STORED_DOCUMENTS_KEY, []);
 };
 
-export const saveStoredDocuments = (documents: StoredDocument[]): void => {
-    safeLocalStorageSet(STORED_DOCUMENTS_KEY, documents);
+export const saveStoredDocuments = (documents: StoredDocument[]): boolean => {
+    return safeLocalStorageSet(STORED_DOCUMENTS_KEY, documents);
 };
 
-export const addStoredDocument = (document: StoredDocument): void => {
+export const addStoredDocument = (document: StoredDocument): boolean => {
     const documents = loadStoredDocuments();
-    // Prevent duplicates by ID
-    if (documents.find(d => d.id === document.id)) {
+    const existingDocIndex = documents.findIndex(d => d.id === document.id);
+    if (existingDocIndex > -1) {
         console.warn(`Document with ID ${document.id} already exists in library. Updating existing.`);
-        const updatedDocuments = documents.map(d => d.id === document.id ? document : d);
-        saveStoredDocuments(updatedDocuments);
-        return;
+        documents[existingDocIndex] = document;
+    } else {
+        documents.unshift(document); 
     }
-    documents.unshift(document); // Add to the beginning
-    saveStoredDocuments(documents);
+    return saveStoredDocuments(documents);
 };
 
-export const deleteStoredDocument = (docId: string): void => {
+export const deleteStoredDocument = (docId: string): boolean => {
     let documents = loadStoredDocuments();
     documents = documents.filter(doc => doc.id !== docId);
-    saveStoredDocuments(documents);
+    return saveStoredDocuments(documents);
 };
 
 export const getStoredDocumentById = (docId: string): StoredDocument | undefined => {
@@ -111,25 +111,25 @@ export const loadFavoriteItems = (): FavoriteItem[] => {
     return safeLocalStorageGet<FavoriteItem[]>(FAVORITE_ITEMS_KEY, []);
 };
 
-export const saveFavoriteItems = (items: FavoriteItem[]): void => {
-    safeLocalStorageSet(FAVORITE_ITEMS_KEY, items);
+export const saveFavoriteItems = (items: FavoriteItem[]): boolean => {
+    return safeLocalStorageSet(FAVORITE_ITEMS_KEY, items);
 };
 
-export const addFavoriteItem = (item: FavoriteItem): void => {
+export const addFavoriteItem = (item: FavoriteItem): boolean => {
     const items = loadFavoriteItems();
-    items.unshift(item); // Add to the beginning
-    saveFavoriteItems(items);
+    items.unshift(item); 
+    return saveFavoriteItems(items);
 };
 
-export const deleteFavoriteItem = (itemId: string): void => {
+export const deleteFavoriteItem = (itemId: string): boolean => {
     let items = loadFavoriteItems();
     items = items.filter(item => item.id !== itemId);
-    saveFavoriteItems(items);
+    return saveFavoriteItems(items);
 };
 
 // For MangaRoom to remember its last active document from the Library
-export const saveLastActiveMangaRoomDocId = (docId: string | null): void => {
-  safeLocalStorageSet(LAST_ACTIVE_MANGAROOM_DOC_ID_KEY, docId);
+export const saveLastActiveMangaRoomDocId = (docId: string | null): boolean => {
+  return safeLocalStorageSet(LAST_ACTIVE_MANGAROOM_DOC_ID_KEY, docId);
 };
 
 export const loadLastActiveMangaRoomDocId = (): string | null => {

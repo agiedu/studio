@@ -76,12 +76,18 @@ export function MangaRoom() {
     stopSpeech(true);
     setSentenceSegments([]);
     setCurrentSentenceIndex(-1);
+    setActiveDocument(null); 
 
     let docIdToLoad: string | null = null;
     const loadFromLibraryIdQuery = searchParams.get('loadFromLibraryId');
 
     if (loadFromLibraryIdQuery) {
       docIdToLoad = loadFromLibraryIdQuery;
+       if (router.pathname === '/' && loadFromLibraryIdQuery) {
+         const newUrl = new URL(window.location.href);
+         newUrl.searchParams.delete('loadFromLibraryId');
+         router.replace(newUrl.pathname + newUrl.search, { scroll: false });
+      }
     } else {
       docIdToLoad = LocalStorage.loadLastActiveMangaRoomDocId();
     }
@@ -91,7 +97,7 @@ export function MangaRoom() {
     if (docIdToLoad) {
       const storedDoc = LocalStorage.getStoredDocumentById(docIdToLoad);
       if (storedDoc) {
-        LocalStorage.saveLastActiveMangaRoomDocId(storedDoc.id); // Refresh last active ID
+        LocalStorage.saveLastActiveMangaRoomDocId(storedDoc.id); 
         if (storedDoc.type === 'image') {
           const storedImageDoc = storedDoc as StoredImageDocument;
           docToDisplay = {
@@ -99,10 +105,10 @@ export function MangaRoom() {
             title: storedImageDoc.name,
             type: 'image',
             imageDataUrl: storedImageDoc.imageDataUrl,
-            extractedText: "Performing OCR...",
+            extractedText: "Performing OCR...", 
           };
           setActiveDocument(docToDisplay);
-          setIsLoadingDocument(false); // Document structure is set, OCR is next
+          setIsLoadingDocument(false); 
 
           try {
             const ocrResult = await performOCR(storedImageDoc.imageDataUrl);
@@ -154,23 +160,21 @@ export function MangaRoom() {
           }
         }
       } else {
-        // Document ID was found (e.g., last active) but document itself is not in library anymore
         toast({ variant: "destructive", title: "Document Not Found", description: `Previously active document (ID: ${docIdToLoad}) no longer in library.` });
         setActiveDocument(null);
         LocalStorage.saveLastActiveMangaRoomDocId(null);
         setIsLoadingDocument(false);
       }
     } else {
-      // No document ID to load (neither from query nor last active)
       setActiveDocument(null);
       setIsLoadingDocument(false);
     }
     setIsLoadingInitialDoc(false);
-  }, [searchParams, toast]); // Removed stopSpeech, setSentenceSegments, setCurrentSentenceIndex from deps as they are reset at start
+  }, [searchParams, router, toast]); 
 
  useEffect(() => {
     loadInitialDocument();
-  }, [loadInitialDocument]); // searchParams is now a dep of loadInitialDocument
+  }, [loadInitialDocument]); 
 
   useEffect(() => {
     LocalStorage.saveTTSSettings(ttsSettings);
@@ -179,10 +183,6 @@ export function MangaRoom() {
   useEffect(() => {
     if (activeDocument?.type === 'pdf' && activeDocument.id) {
       LocalStorage.saveCurrentPdfPageIndexForDoc(activeDocument.id, currentPdfInternalPageIndex);
-    }
-    // Only save if activeDocument is not null
-    if (activeDocument?.id) { 
-        LocalStorage.saveLastActiveMangaRoomDocId(activeDocument.id);
     }
   }, [currentPdfInternalPageIndex, activeDocument]);
 
@@ -313,7 +313,7 @@ export function MangaRoom() {
       const textContent = await page.getTextContent();
       const directText = textContent.items.map(item => ('str' in item ? item.str : '')).join(" ").trim();
 
-      if (directText.length > 1) { 
+      if (directText.length > 1) { // Prioritize direct text if substantial
         textForPage = directText;
         setActiveDocument(prevD => {
           if (prevD && prevD.id === doc.id && prevD.type === 'pdf') {
@@ -436,10 +436,9 @@ export function MangaRoom() {
     stopSpeech(true);
     setSentenceSegments([]);
     setCurrentSentenceIndex(-1);
-    // Consider setting activeDocument to a temporary loading state or null
-    // setActiveDocument(null); 
 
     const newDocId = Date.now().toString();
+    let saveToLibrarySuccess = false;
 
     try {
       if (file.type.startsWith('image/')) {
@@ -465,9 +464,14 @@ export function MangaRoom() {
           imageDataUrl, 
           createdAt: Date.now(),
         };
-        LocalStorage.addStoredDocument(storedImageForLibrary);
-        LocalStorage.saveLastActiveMangaRoomDocId(newDocId);
-        toast({ title: "Image Uploaded", description: `${file.name} added to library and active for Read2.` });
+        saveToLibrarySuccess = LocalStorage.addStoredDocument(storedImageForLibrary);
+        
+        if (saveToLibrarySuccess) {
+          LocalStorage.saveLastActiveMangaRoomDocId(newDocId);
+          toast({ title: "Image Uploaded", description: `${file.name} added to library and active for Read2.` });
+        } else {
+          toast({ variant: "destructive", title: "Storage Error", description: `Failed to save ${file.name} to library. Storage might be full.` });
+        }
         
         setActiveDocument(mangaImageFile);
         
@@ -514,22 +518,26 @@ export function MangaRoom() {
           pdfBase64, 
           createdAt: Date.now(),
         };
-        LocalStorage.addStoredDocument(storedPdfForLibrary);
-        LocalStorage.saveLastActiveMangaRoomDocId(newDocId);
-        toast({ title: "PDF Uploaded", description: `${file.name} added to library and active for Read2.` });
+        saveToLibrarySuccess = LocalStorage.addStoredDocument(storedPdfForLibrary);
+
+        if (saveToLibrarySuccess) {
+          LocalStorage.saveLastActiveMangaRoomDocId(newDocId);
+          toast({ title: "PDF Uploaded", description: `${file.name} added to library and active for Read2.` });
+        } else {
+          toast({ variant: "destructive", title: "Storage Error", description: `Failed to save ${file.name} to library. Storage might be full.` });
+        }
         
         setActiveDocument(mangaPdfFile);
         setCurrentPdfInternalPageIndex(0); 
         setJumpToPageInput('1');
-        // Page processing will be triggered by useEffect watching activeDocument & currentPdfInternalPageIndex
       } else {
         toast({ variant: "destructive", title: "Unsupported File", description: "Please upload an Image or PDF file." });
       }
     } catch (error: any) {
       console.error("File Upload Error:", error);
       toast({ variant: "destructive", title: "Upload Error", description: error.message || "Failed to process file." });
-      setActiveDocument(null); // Clear on error to avoid inconsistent state
-      LocalStorage.saveLastActiveMangaRoomDocId(null); // Clear last active if upload fails badly
+      setActiveDocument(null); 
+      if (saveToLibrarySuccess) LocalStorage.saveLastActiveMangaRoomDocId(null); 
     } finally {
       setIsLoadingDocument(false); 
       if (fileInputRef.current) {
@@ -976,6 +984,7 @@ export function MangaRoom() {
                         disabled={
                             !activeDocument || 
                             isLoadingDocument || 
+                            isLoadingInitialDoc ||
                             isLoadingPdfPage || 
                             (activeDocument.type ==='image' && activeDocument.extractedText === "Performing OCR...") || 
                             (activeDocument.type==='pdf' && (!currentSubPage?.extractedText || currentSubPage.extractedText.startsWith("Loading") || currentSubPage.extractedText.startsWith("Extracting") || currentSubPage.extractedText.startsWith("Error")  ))
@@ -1155,3 +1164,4 @@ export function MangaRoom() {
     </div>
   );
 }
+
