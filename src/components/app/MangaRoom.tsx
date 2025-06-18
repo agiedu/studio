@@ -275,7 +275,7 @@ export function MangaRoom() {
           if (doc.id === pdfDocToProcess.id && doc.type === 'pdf') {
             const updatedProcessedPages = [...doc.processedPages];
             updatedProcessedPages[pageNumToRender] = { imageDataUrl: '', extractedText: `Error processing page: ${errorMsg}`};
-            return { ...doc, processedPages: updatedProcessedPages };
+            return { ...d, processedPages: updatedProcessedPages };
           }
           return d;
         }));
@@ -706,8 +706,13 @@ export function MangaRoom() {
         if (isNaN(pageNumFromInputText) || pageNumFromInputText < 1 || pageNumFromInputText > doc.numPages) {
              setJumpToPageInput((currentPdfInternalPageIndex + 1).toString());
         } else {
-             // No need to jump again on blur if already changed by onChange
              if (jumpToPageInput !== (currentPdfInternalPageIndex+1).toString()) {
+                // This case implies onChange already handled the valid jump.
+                // Ensure the input matches the current page if no valid jump was just made by typing.
+                // This typically means if the user types "5" and current is 5, nothing happens until blur.
+                // Or if they typed "05" and it changed to 5, on blur ensure input is "5".
+                // Or if they typed something invalid and it was corrected, ensure input matches.
+                // Basically, onBlur should make the input field canonical to the current state.
                 setJumpToPageInput((currentPdfInternalPageIndex+1).toString());
              }
         }
@@ -912,7 +917,7 @@ export function MangaRoom() {
       <div className="lg:w-72 lg:sticky lg:top-16 max-h-[calc(100vh-theme(spacing.16))] overflow-y-auto space-y-3 mt-6 lg:mt-0">
           <Card>
             <CardHeader className="p-4">
-               {mangaDocuments.length > 0 && currentDoc ? (
+               {mangaDocuments.length > 0 && currentDoc && (
                 <>
                   <Label htmlFor="document-select" className="mb-1 text-sm font-medium">Document Library</Label>
                   <Select
@@ -947,9 +952,7 @@ export function MangaRoom() {
                     </SelectContent>
                   </Select>
                 </>
-              ) : (
-                <p className="text-xs text-muted-foreground p-4 text-center">No documents uploaded.</p>
-              )}
+              ) }
             </CardHeader>
             <CardContent className="p-4 space-y-3 border-t">
               {currentDoc?.type === 'pdf' && currentDoc.numPages > 0 && (
