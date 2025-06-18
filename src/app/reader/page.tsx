@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { getDocument, GlobalWorkerOptions, version as pdfjsVersion } from 'pdfjs-dist';
 import type { PDFDocumentProxy } from 'pdfjs-dist/types/src/display/api';
 import { useToast } from '@/hooks/use-toast';
@@ -12,16 +13,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, Play, Pause, UploadCloud, Smartphone, Cloud as CloudIcon } from 'lucide-react';
-import { getCloudSpeech } from '@/app/actions'; // Reusing existing action
-
-interface TTSVoice {
-  name: string;
-  lang: string;
-  voiceURI: string;
-  localService: boolean;
-  default: boolean;
-}
+import { Loader2, Play, Pause, Smartphone, Cloud as CloudIcon, AlertTriangle, Info, Star } from 'lucide-react';
+import { getCloudSpeech } from '@/app/actions';
+import * as LocalStorage from '@/lib/localStorageService';
+import type { StoredDocument, TTSVoice, FavoriteItem } from '@/types';
 
 interface ReaderTTSSettings {
   engine: 'local' | 'cloud';
@@ -31,11 +26,32 @@ interface ReaderTTSSettings {
   voiceURI?: string;
 }
 
+// Helper to convert base64 to Uint8Array
+function base64ToUint8Array(base64: string): Uint8Array {
+  try {
+    const binaryString = window.atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+  } catch (e) {
+    console.error("Failed to decode Base64 string for PDF processing:", e);
+    throw new Error("Invalid Base64 data for PDF.");
+  }
+}
+
+
 export default function ReaderPage() {
   const { toast } = useToast();
+  const searchParams = useSearchParams();
+  const docId = searchParams.get('docId');
+
+  const [loadedDocument, setLoadedDocument] = useState<StoredDocument | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [extractedText, setExtractedText] = useState<string>("");
-  const [isLoadingFile, setIsLoadingFile] = useState<boolean>(false);
+  const [isLoadingDocument, setIsLoadingDocument] = useState<boolean>(false);
   const [isLoadingTTS, setIsLoadingTTS] = useState<boolean>(false);
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
   const [isPaused, setIsPaused] = useState<boolean>(false);
@@ -55,8 +71,62 @@ export default function ReaderPage() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsVersion}/pdf.worker.mjs`;
+      setTtsSettings(LocalStorage.loadTTSSettings());
     }
   }, []);
+
+  useEffect(() => {
+    if (docId) {
+      setIsLoadingDocument(true);
+      setExtractedText("");
+      setFileName(null);
+      setLoadedDocument(null);
+      stopSpeech(true);
+
+      const doc = LocalStorage.getStoredDocumentById(docId);
+      if (doc) {
+        setLoadedDocument(doc);
+        setFileName(doc.name);
+        if (doc.type === 'txt') {
+          setExtractedText(doc.textContent);
+          setIsLoadingDocument(false);
+        } else if (doc.type === 'pdf') {
+          processPdfContent(doc.pdfBase64);
+        }
+      } else {
+        toast({ variant: "destructive", title: "Document Not Found", description: "The requested document could not be found in your library." });
+        setExtractedText("Error: Document not found.");
+        setIsLoadingDocument(false);
+      }
+    } else {
+      setExtractedText("No document loaded. Please select a document from your library.");
+      setFileName(null);
+      setLoadedDocument(null);
+      setIsLoadingDocument(false);
+    }
+  }, [docId, toast]);
+
+
+  const processPdfContent = async (pdfBase64: string) => {
+    try {
+      const pdfData = base64ToUint8Array(pdfBase64);
+      const pdf = await getDocument({ data: pdfData }).promise;
+      let fullText = "";
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        fullText += textContent.items.map(item => ('str' in item ? item.str : '')).join(" ") + "\n\n";
+      }
+      setExtractedText(fullText.trim() || "No text could be extracted from this PDF.");
+    } catch (error: any) {
+      console.error("PDF Processing Error:", error);
+      toast({ variant: "destructive", title: "PDF Processing Error", description: error.message || "Failed to extract text from PDF." });
+      setExtractedText("Error processing PDF. It might be image-based, corrupted, or use a format pdf.js cannot read.");
+    } finally {
+      setIsLoadingDocument(false);
+    }
+  };
+
 
   const stopSpeech = useCallback((resetUIState = true) => {
     if (ttsSettings.engine === 'local' && typeof window !== 'undefined' && window.speechSynthesis) {
@@ -97,7 +167,7 @@ export default function ReaderPage() {
       if (!ttsSettings.voiceURI && voices.length > 0) {
         const defaultVoice = voices.find(v => v.lang === ttsSettings.language && v.default) || voices.find(v => v.lang === ttsSettings.language) || voices.find(v => v.default) || voices[0];
         if (defaultVoice) {
-          setTtsSettings(prev => ({ ...prev, voiceURI: defaultVoice.voiceURI }));
+          setTtsSettings(prev => ({ ...prev, voiceURI: defaultVoice.voiceURI, language: defaultVoice.lang }));
         }
       }
     }
@@ -146,88 +216,32 @@ export default function ReaderPage() {
       player.removeEventListener('playing', handleAudioPlaying);
       player.removeEventListener('error', handleAudioError);
       if (player.src && !player.paused) player.pause();
-      player.src = "";
+      player.src = ""; // Release resource
       if (audioPlayerRef.current === player) audioPlayerRef.current = null;
     };
   }, [ttsSettings.engine, isSpeaking, toast, stopSpeech]);
 
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    stopSpeech(true);
-    setIsLoadingFile(true);
-    setFileName(file.name);
-    setExtractedText("");
-
-    const fileExtension = file.name.split('.').pop()?.toLowerCase();
-
-    if (file.type === 'text/plain' || (!file.type && fileExtension === 'txt')) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setExtractedText(e.target?.result as string);
-        setIsLoadingFile(false);
-      };
-      reader.onerror = () => {
-        toast({ variant: "destructive", title: "File Read Error", description: "Could not read TXT file." });
-        setIsLoadingFile(false);
-      };
-      reader.readAsText(file);
-    } else if (file.type === 'application/pdf') {
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const pdfData = e.target?.result as ArrayBuffer;
-        if (!pdfData) {
-          toast({ variant: "destructive", title: "PDF Read Error", description: "Could not read PDF data." });
-          setIsLoadingFile(false);
-          return;
-        }
-        try {
-          const pdf = await getDocument({ data: pdfData }).promise;
-          let fullText = "";
-          for (let i = 1; i <= pdf.numPages; i++) {
-            const page = await pdf.getPage(i);
-            const textContent = await page.getTextContent();
-            fullText += textContent.items.map(item => ('str' in item ? item.str : '')).join(" ") + "\n\n";
-          }
-          setExtractedText(fullText.trim());
-        } catch (error: any) {
-          console.error("PDF Processing Error:", error);
-          toast({ variant: "destructive", title: "PDF Processing Error", description: error.message || "Failed to extract text from PDF." });
-          setExtractedText("Error processing PDF. It might be image-based or corrupted.");
-        } finally {
-          setIsLoadingFile(false);
-        }
-      };
-      reader.onerror = () => {
-        toast({ variant: "destructive", title: "File Read Error", description: "Could not read PDF file." });
-        setIsLoadingFile(false);
-      };
-      reader.readAsArrayBuffer(file);
-    } else {
-      toast({ variant: "destructive", title: "Unsupported File Type", description: `File type "${file.type || fileExtension}" not supported. Please upload a TXT or PDF file.` });
-      setFileName(null);
-      setIsLoadingFile(false);
-    }
-    if (event.target) event.target.value = ''; // Reset file input
-  };
-
   const playPauseSpeech = async () => {
-    if (!extractedText) {
-      toast({ variant: "destructive", title: "No Text", description: "No text available to read." });
+    if (!extractedText || extractedText.startsWith("Error:") || !loadedDocument) {
+      toast({ variant: "destructive", title: "No Text", description: "No valid document text available to read." });
       return;
     }
 
     if (isSpeaking) {
       if (isPaused) { // Resume
         if (ttsSettings.engine === 'local' && typeof window !== 'undefined' && window.speechSynthesis && utteranceRef.current) {
-          if (window.speechSynthesis.paused) {
-            window.speechSynthesis.resume();
-            setIsPaused(false);
-          } else { // State mismatch, force stop.
-             stopSpeech(true);
-          }
+            if (window.speechSynthesis.paused) {
+                window.speechSynthesis.resume();
+                setIsPaused(false);
+                setTimeout(() => {
+                    if (utteranceRef.current && isSpeaking && !isPaused && !window.speechSynthesis.speaking && !window.speechSynthesis.pending) {
+                        stopSpeech(true); 
+                    }
+                }, 100);
+            } else {
+                 stopSpeech(true);
+            }
         } else if (ttsSettings.engine === 'cloud' && audioPlayerRef.current && audioPlayerRef.current.paused) {
           audioPlayerRef.current.play().catch(e => {
             toast({variant: "destructive", title: "Resume Error", description: "Could not resume audio."});
@@ -245,7 +259,7 @@ export default function ReaderPage() {
         }
       }
     } else { // Play
-      stopSpeech(false); // Stop any previous speech, but don't reset UI yet for loading
+      stopSpeech(false);
       setIsLoadingTTS(true);
       setIsSpeaking(true);
       setIsPaused(false);
@@ -282,6 +296,7 @@ export default function ReaderPage() {
           if ('audioUrl' in result && audioPlayerRef.current) {
             audioPlayerRef.current.src = result.audioUrl;
             await audioPlayerRef.current.play();
+            // setLoadingTTS will be set to false by handleAudioPlaying
           } else if ('error' in result) {
             toast({ variant: "destructive", title: "Cloud TTS Error", description: result.error });
             stopSpeech(true);
@@ -296,49 +311,101 @@ export default function ReaderPage() {
 
   const handleSettingChange = <K extends keyof ReaderTTSSettings>(key: K, value: ReaderTTSSettings[K]) => {
     stopSpeech(true);
-    setTtsSettings(prev => ({ ...prev, [key]: value }));
+    const newSettings = { ...ttsSettings, [key]: value };
+    setTtsSettings(newSettings);
+    LocalStorage.saveTTSSettings(newSettings);
+    if (key === 'language' && ttsSettings.engine === 'local') {
+        const suitableVoice = availableVoices.find(v => v.lang === value && v.default) || availableVoices.find(v => v.lang === value);
+        if (suitableVoice) {
+            setTtsSettings(prev => ({...prev, voiceURI: suitableVoice.voiceURI}));
+        } else {
+            setTtsSettings(prev => ({...prev, voiceURI: undefined}));
+        }
+    }
   };
   
   const getButtonState = () => {
+    const canPlay = !!(extractedText && !extractedText.startsWith("Error:") && loadedDocument && !isLoadingDocument);
     if (isLoadingTTS) return { text: "Loading...", icon: <Loader2 className="mr-2 h-4 w-4 animate-spin" />, disabled: true, action: () => {} };
     if (isSpeaking) {
-      return isPaused ? 
+      return isPaused ?
         { text: "Resume", icon: <Play className="mr-2 h-4 w-4" />, disabled: false, action: playPauseSpeech } :
         { text: "Pause", icon: <Pause className="mr-2 h-4 w-4" />, disabled: false, action: playPauseSpeech };
     }
-    return { text: "Play", icon: <Play className="mr-2 h-4 w-4" />, disabled: !extractedText || isLoadingFile, action: playPauseSpeech };
+    return { text: "Play", icon: <Play className="mr-2 h-4 w-4" />, disabled: !canPlay, action: playPauseSpeech };
   };
 
   const buttonState = getButtonState();
 
-  return (
-    <div className="w-full p-4 md:p-6 space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><UploadCloud className="text-primary" /> Upload Document for Reading</CardTitle>
-          <CardDescription>Upload a TXT or PDF (text-based) file. EPUB/MOBI not supported.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid w-full max-w-md items-center gap-1.5">
-            <Label htmlFor="doc-upload">Document File (.txt, .pdf)</Label>
-            <Input id="doc-upload" type="file" accept=".txt,application/pdf" onChange={handleFileUpload} disabled={isLoadingFile} />
-          </div>
-          {isLoadingFile && <p className="mt-2 text-sm text-muted-foreground">Loading file: {fileName}...</p>}
-        </CardContent>
-      </Card>
+  const handleFavoriteSelection = () => {
+    const selection = window.getSelection()?.toString().trim();
+    if (selection && loadedDocument) {
+      const newFavorite: FavoriteItem = {
+        id: Date.now().toString(),
+        text: selection,
+        sourceDocumentId: loadedDocument.id,
+        sourceDocumentName: loadedDocument.name,
+        createdAt: Date.now(),
+      };
+      LocalStorage.addFavoriteItem(newFavorite);
+      toast({ title: "Favorited!", description: `"${selection.substring(0, 30)}..." added to favorites.` });
+    } else if (!selection) {
+      toast({ variant: "destructive", title: "No Selection", description: "Please select text to favorite." });
+    }
+  };
 
-      {fileName && (
+
+  return (
+    <div className="container mx-auto p-4 md:p-6 space-y-6">
+      {!docId && (
         <Card>
           <CardHeader>
-            <CardTitle>Document Content: {fileName}</CardTitle>
+            <CardTitle className="flex items-center gap-2"><Info className="text-primary" /> Document Reader</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground">Please go to your <Button variant="link" className="p-0 h-auto" onClick={() => router.push('/library')}>Library</Button> to select a document to read.</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {isLoadingDocument && docId && (
+        <Card>
+          <CardContent className="pt-6 flex items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary mr-2" />
+            <p>Loading document: {fileName || "Details"}...</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {docId && !isLoadingDocument && !loadedDocument && (
+         <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><AlertTriangle className="text-destructive" /> Document Not Found</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-destructive-foreground">The document with ID "{docId}" could not be found in your library or failed to load.</p>
+            <Button variant="link" onClick={() => router.push('/library')} className="mt-2">Go to Library</Button>
+          </CardContent>
+        </Card>
+      )}
+
+
+      {loadedDocument && !isLoadingDocument && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="truncate" title={fileName || "Document"}>Document: {fileName || "Untitled"}</CardTitle>
+            <CardDescription>Type: {loadedDocument.type.toUpperCase()}</CardDescription>
           </CardHeader>
           <CardContent>
             <Textarea
               value={extractedText}
               readOnly
-              placeholder={isLoadingFile ? "Extracting text..." : "No text extracted or file not loaded."}
-              className="min-h-[300px] max-h-[50vh] text-sm bg-muted/30"
+              placeholder={extractedText.startsWith("Error:") ? extractedText : "Text content will appear here..."}
+              className={`min-h-[300px] max-h-[50vh] text-sm ${extractedText.startsWith("Error:") ? 'bg-destructive/10 text-destructive-foreground' : 'bg-muted/30'}`}
             />
+            <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="mt-2">
+              <Star className="mr-2 h-4 w-4" /> Favorite Selected Text
+            </Button>
           </CardContent>
         </Card>
       )}
@@ -351,7 +418,7 @@ export default function ReaderPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <Label htmlFor="tts-engine">TTS Engine</Label>
-              <Select value={ttsSettings.engine} onValueChange={(v) => handleSettingChange('engine', v as 'local' | 'cloud')} disabled={isSpeaking && !isPaused}>
+              <Select value={ttsSettings.engine} onValueChange={(v) => handleSettingChange('engine', v as 'local' | 'cloud')} disabled={(isSpeaking && !isPaused) || !loadedDocument}>
                 <SelectTrigger id="tts-engine">
                   <SelectValue placeholder="Select engine" />
                 </SelectTrigger>
@@ -367,7 +434,7 @@ export default function ReaderPage() {
                 id="tts-language"
                 value={ttsSettings.language}
                 onChange={(e) => handleSettingChange('language', e.target.value)}
-                disabled={(isSpeaking && !isPaused) || (ttsSettings.engine === 'local' && availableVoices.length === 0)}
+                disabled={(isSpeaking && !isPaused) || (ttsSettings.engine === 'local' && availableVoices.length === 0) || !loadedDocument}
               />
             </div>
           </div>
@@ -375,13 +442,13 @@ export default function ReaderPage() {
           {ttsSettings.engine === 'local' && (
              <div>
               <Label htmlFor="tts-voice">Voice (Local)</Label>
-              <Select 
-                value={ttsSettings.voiceURI} 
-                onValueChange={(v) => handleSettingChange('voiceURI', v)} 
-                disabled={(isSpeaking && !isPaused) || availableVoices.filter(voice => voice.lang.startsWith(ttsSettings.language.split('-')[0])).length === 0}
+              <Select
+                value={ttsSettings.voiceURI}
+                onValueChange={(v) => handleSettingChange('voiceURI', v)}
+                disabled={(isSpeaking && !isPaused) || availableVoices.filter(voice => voice.lang.startsWith(ttsSettings.language.split('-')[0])).length === 0 || !loadedDocument}
               >
                 <SelectTrigger id="tts-voice">
-                  <SelectValue placeholder="Select voice (ensure language is set)" />
+                  <SelectValue placeholder={availableVoices.length > 0 ? "Select voice" : "No voices available for this language/engine"} />
                 </SelectTrigger>
                 <SelectContent className="max-h-60">
                   {availableVoices.filter(voice => voice.lang.startsWith(ttsSettings.language.split('-')[0])).map(voice => (
@@ -390,7 +457,9 @@ export default function ReaderPage() {
                     </SelectItem>
                   ))}
                   {availableVoices.filter(voice => voice.lang.startsWith(ttsSettings.language.split('-')[0])).length === 0 && (
-                    <SelectItem value="no-voice" disabled>No voices for selected language</SelectItem>
+                    <SelectItem value="no-voice" disabled>
+                        {availableVoices.length > 0 ? "No voices for selected language" : "No local voices found in browser"}
+                    </SelectItem>
                   )}
                 </SelectContent>
               </Select>
@@ -399,30 +468,19 @@ export default function ReaderPage() {
 
           <div className="space-y-2">
             <Label htmlFor="tts-rate">Rate: {ttsSettings.rate.toFixed(1)}</Label>
-            <Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isSpeaking && !isPaused}/>
+            <Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={(isSpeaking && !isPaused) || !loadedDocument}/>
           </div>
           <div className="space-y-2">
             <Label htmlFor="tts-pitch">Pitch: {ttsSettings.pitch.toFixed(1)}</Label>
-            <Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isSpeaking && !isPaused}/>
+            <Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={(isSpeaking && !isPaused) || !loadedDocument}/>
           </div>
-          
+
           <Button onClick={buttonState.action} disabled={buttonState.disabled} className="w-full md:w-auto">
             {buttonState.icon}
             {buttonState.text}
           </Button>
         </CardContent>
       </Card>
-       <Card>
-        <CardHeader><CardTitle>Note on UI Language</CardTitle></CardHeader>
-        <CardContent>
-            <p className="text-sm text-muted-foreground">
-                Full UI language switching (e.g., to Chinese) is a complex feature.
-                A language selector could be added here or in the header in the future.
-            </p>
-        </CardContent>
-       </Card>
     </div>
   );
 }
-
-    

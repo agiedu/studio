@@ -3,12 +3,13 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Moon, Sun, BookOpenText } from 'lucide-react';
+import { Moon, Sun, BookOpenText, Library, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { MangaTalkLogo } from '@/components/icons/MangaTalkLogo';
+import * as LocalStorage from '@/lib/localStorageService'; // Import for night mode
 
 export function AppHeader() {
-  const [isDarkMode, setIsDarkMode] = useState(true); // Default to dark mode
+  const [isDarkMode, setIsDarkMode] = useState(true);
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -17,28 +18,11 @@ export function AppHeader() {
     } else {
       root.classList.remove('dark');
     }
-    try {
-      localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
-    } catch (e) {
-      // localStorage not available
-    }
+    LocalStorage.saveNightMode(isDarkMode); // Save night mode preference
   }, [isDarkMode]);
 
   useEffect(() => {
-    try {
-      const storedTheme = localStorage.getItem('theme');
-      if (storedTheme) {
-        setIsDarkMode(storedTheme === 'dark');
-      } else {
-        // If no theme stored, check system preference. Default to dark if no preference.
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        setIsDarkMode(prefersDark);
-      }
-    } catch (e) {
-       // localStorage not available, default to dark
-       setIsDarkMode(true);
-    }
-
+    setIsDarkMode(LocalStorage.loadNightMode()); // Load night mode preference
   }, []);
 
 
@@ -48,24 +32,30 @@ export function AppHeader() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="flex h-16 items-center justify-between px-6">
-        <div className="flex items-center gap-4">
+      <div className="flex h-16 items-center justify-between px-4 md:px-6">
+        <div className="flex items-center gap-2 md:gap-4">
           <Link href="/" className="flex items-center gap-2">
             <MangaTalkLogo className="h-8 w-8" />
-            <h1 className="text-2xl font-bold font-headline text-primary">MangaTalk</h1>
+            <h1 className="text-xl md:text-2xl font-bold font-headline text-primary">MangaTalk</h1>
           </Link>
-          <nav className="flex items-center gap-2">
+          <nav className="flex items-center gap-1 md:gap-2">
+            <Button variant="ghost" asChild size="sm">
+              <Link href="/library">
+                <Library className="mr-1 h-4 w-4" /> Library
+              </Link>
+            </Button>
             <Button variant="ghost" asChild size="sm">
               <Link href="/reader">
-                <BookOpenText className="mr-1 h-4 w-4" /> Document Reader
+                <BookOpenText className="mr-1 h-4 w-4" /> Reader
+              </Link>
+            </Button>
+             <Button variant="ghost" asChild size="sm">
+              <Link href="/favorites">
+                <Star className="mr-1 h-4 w-4" /> Favorites
               </Link>
             </Button>
           </nav>
         </div>
-        {/* Placeholder for future UI language switcher */}
-        {/* <Button variant="ghost" size="icon" aria-label="Switch Language">
-          <Globe className="h-5 w-5" />
-        </Button> */}
         <Button variant="ghost" size="icon" onClick={toggleDarkMode} aria-label="Toggle theme">
           {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
         </Button>
@@ -73,5 +63,3 @@ export function AppHeader() {
     </header>
   );
 }
-
-    

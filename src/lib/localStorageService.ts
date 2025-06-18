@@ -1,11 +1,16 @@
 
-import type { MangaDocument, MangaPdfFile, MangaSubPage, TTSSettings } from '@/types';
 
-const PAGES_KEY = 'mangaTalk_documents_v2';
-const CURRENT_DOCUMENT_INDEX_KEY = 'mangaTalk_currentDocumentIndex_v2';
-const PDF_DOCUMENT_PAGE_STATES_KEY = 'mangaTalk_pdfDocumentPageStates_v2'; // New key for per-document PDF page states
+import type { MangaDocument, MangaPdfFile, MangaSubPage, TTSSettings, StoredDocument, FavoriteItem } from '@/types';
+
+const MANGA_DOCUMENTS_KEY = 'mangaTalk_documents_v2';
+const CURRENT_MANGA_DOCUMENT_INDEX_KEY = 'mangaTalk_currentDocumentIndex_v2';
+const PDF_MANGA_DOCUMENT_PAGE_STATES_KEY = 'mangaTalk_pdfDocumentPageStates_v2';
 const TTS_SETTINGS_KEY = 'mangaTalk_ttsSettings_v2';
 const NIGHT_MODE_KEY = 'mangaTalk_nightMode_v2';
+
+const STORED_DOCUMENTS_KEY = 'mangaTalk_storedDocuments_v1';
+const FAVORITE_ITEMS_KEY = 'mangaTalk_favoriteItems_v1';
+
 
 // Helper to safely access localStorage
 const safeLocalStorageGet = <T>(key: string, defaultValue: T): T => {
@@ -15,7 +20,6 @@ const safeLocalStorageGet = <T>(key: string, defaultValue: T): T => {
     return item ? JSON.parse(item) : defaultValue;
   } catch (error) {
     console.warn(`Error reading localStorage key "${key}":`, error);
-    // window.localStorage.removeItem(key); 
     return defaultValue;
   }
 };
@@ -32,16 +36,18 @@ const safeLocalStorageSet = (key: string, value: any): void => {
   }
 };
 
+// MangaRoom specific storage
 export const loadDocuments = (): MangaDocument[] => {
-  const docs = safeLocalStorageGet<MangaDocument[]>(PAGES_KEY, []);
+  const docs = safeLocalStorageGet<MangaDocument[]>(MANGA_DOCUMENTS_KEY, []);
   return docs.map(doc => {
     if (doc.type === 'pdf') {
       const pdfDoc = doc as MangaPdfFile;
-      if (!pdfDoc.processedPages || pdfDoc.processedPages.length !== pdfDoc.numPages) {
-        const newProcessedPages: MangaSubPage[] = new Array(pdfDoc.numPages).fill(null).map(() => ({ imageDataUrl: '', extractedText: undefined }));
+      const expectedPagesLength = pdfDoc.numPages || 0;
+      if (!pdfDoc.processedPages || pdfDoc.processedPages.length !== expectedPagesLength) {
+        const newProcessedPages: MangaSubPage[] = new Array(expectedPagesLength).fill(null).map(() => ({ imageDataUrl: '', extractedText: undefined }));
         if (pdfDoc.processedPages) {
           pdfDoc.processedPages.forEach((p, i) => {
-            if (i < pdfDoc.numPages && p) {
+            if (i < expectedPagesLength && p) {
               newProcessedPages[i] = {
                 imageDataUrl: p.imageDataUrl || '',
                 extractedText: p.extractedText
@@ -63,34 +69,32 @@ export const loadDocuments = (): MangaDocument[] => {
     return doc;
   });
 };
-export const saveDocuments = (docs: MangaDocument[]): void => safeLocalStorageSet(PAGES_KEY, docs);
+export const saveDocuments = (docs: MangaDocument[]): void => safeLocalStorageSet(MANGA_DOCUMENTS_KEY, docs);
 
-export const loadCurrentDocumentIndex = (): number => safeLocalStorageGet<number>(CURRENT_DOCUMENT_INDEX_KEY, 0);
-export const saveCurrentDocumentIndex = (index: number): void => safeLocalStorageSet(CURRENT_DOCUMENT_INDEX_KEY, index);
+export const loadCurrentDocumentIndex = (): number => safeLocalStorageGet<number>(CURRENT_MANGA_DOCUMENT_INDEX_KEY, 0);
+export const saveCurrentDocumentIndex = (index: number): void => safeLocalStorageSet(CURRENT_MANGA_DOCUMENT_INDEX_KEY, index);
 
-// Per-document PDF page state functions
 type PdfDocumentPageStates = { [docId: string]: number };
 
 export const loadCurrentPdfPageIndexForDoc = (docId: string): number | undefined => {
   if (!docId) return undefined;
-  const states = safeLocalStorageGet<PdfDocumentPageStates>(PDF_DOCUMENT_PAGE_STATES_KEY, {});
+  const states = safeLocalStorageGet<PdfDocumentPageStates>(PDF_MANGA_DOCUMENT_PAGE_STATES_KEY, {});
   return states[docId];
 };
 
 export const saveCurrentPdfPageIndexForDoc = (docId: string, pageIndex: number): void => {
   if (!docId) return;
-  const states = safeLocalStorageGet<PdfDocumentPageStates>(PDF_DOCUMENT_PAGE_STATES_KEY, {});
+  const states = safeLocalStorageGet<PdfDocumentPageStates>(PDF_MANGA_DOCUMENT_PAGE_STATES_KEY, {});
   states[docId] = pageIndex;
-  safeLocalStorageSet(PDF_DOCUMENT_PAGE_STATES_KEY, states);
+  safeLocalStorageSet(PDF_MANGA_DOCUMENT_PAGE_STATES_KEY, states);
 };
 
 export const removeCurrentPdfPageIndexForDoc = (docId: string): void => {
   if (!docId) return;
-  const states = safeLocalStorageGet<PdfDocumentPageStates>(PDF_DOCUMENT_PAGE_STATES_KEY, {});
+  const states = safeLocalStorageGet<PdfDocumentPageStates>(PDF_MANGA_DOCUMENT_PAGE_STATES_KEY, {});
   delete states[docId];
-  safeLocalStorageSet(PDF_DOCUMENT_PAGE_STATES_KEY, states);
+  safeLocalStorageSet(PDF_MANGA_DOCUMENT_PAGE_STATES_KEY, states);
 };
-
 
 export const defaultTTSSettings: TTSSettings = {
   type: 'local',
@@ -107,3 +111,55 @@ export const saveTTSSettings = (settings: TTSSettings): void => safeLocalStorage
 
 export const loadNightMode = (): boolean => safeLocalStorageGet<boolean>(NIGHT_MODE_KEY, true);
 export const saveNightMode = (isNightMode: boolean): void => safeLocalStorageSet(NIGHT_MODE_KEY, isNightMode);
+
+// Library Page specific storage (StoredDocument)
+export const loadStoredDocuments = (): StoredDocument[] => {
+    return safeLocalStorageGet<StoredDocument[]>(STORED_DOCUMENTS_KEY, []);
+};
+
+export const saveStoredDocuments = (documents: StoredDocument[]): void => {
+    safeLocalStorageSet(STORED_DOCUMENTS_KEY, documents);
+};
+
+export const addStoredDocument = (document: StoredDocument): void => {
+    const documents = loadStoredDocuments();
+    documents.unshift(document); // Add to the beginning
+    saveStoredDocuments(documents);
+};
+
+export const deleteStoredDocument = (docId: string): void => {
+    let documents = loadStoredDocuments();
+    documents = documents.filter(doc => doc.id !== docId);
+    saveStoredDocuments(documents);
+};
+
+export const getStoredDocumentById = (docId: string): StoredDocument | undefined => {
+    const documents = loadStoredDocuments();
+    return documents.find(doc => doc.id === docId);
+};
+
+// Favorites Page specific storage (FavoriteItem)
+export const loadFavoriteItems = (): FavoriteItem[] => {
+    return safeLocalStorageGet<FavoriteItem[]>(FAVORITE_ITEMS_KEY, []);
+};
+
+export const saveFavoriteItems = (items: FavoriteItem[]): void => {
+    safeLocalStorageSet(FAVORITE_ITEMS_KEY, items);
+};
+
+export const addFavoriteItem = (item: FavoriteItem): void => {
+    const items = loadFavoriteItems();
+    items.unshift(item); // Add to the beginning
+    saveFavoriteItems(items);
+};
+
+export const deleteFavoriteItem = (itemId: string): void => {
+    let items = loadFavoriteItems();
+    items = items.filter(item => item.id !== itemId);
+    saveFavoriteItems(items);
+};
+
+export const getFavoriteItemById = (itemId: string): FavoriteItem | undefined => {
+    const items = loadFavoriteItems();
+    return items.find(item => item.id === itemId);
+};
