@@ -93,10 +93,11 @@ export function MangaRoom() {
       }
 
       if (docToLoad) {
+        setIsLoadingDocument(true);
         if (docToLoad.type === 'image') {
           const storedImageDoc = docToLoad as StoredImageDocument;
-          setIsLoadingDocument(true);
           try {
+            // For images loaded from library, OCR is performed again as text is not stored in StoredImageDocument
             const ocrResult = await performOCR(storedImageDoc.imageDataUrl);
             const newMangaImageFile: MangaImageFile = {
               id: storedImageDoc.id,
@@ -139,6 +140,8 @@ export function MangaRoom() {
              toast({ variant: "destructive", title: "Error loading PDF", description: e.message });
              setActiveDocument(null);
              LocalStorage.saveLastActiveMangaRoomDocId(null);
+          } finally {
+            setIsLoadingDocument(false);
           }
         }
       }
@@ -156,6 +159,9 @@ export function MangaRoom() {
   useEffect(() => {
     if (activeDocument?.type === 'pdf' && activeDocument.id) {
       LocalStorage.saveCurrentPdfPageIndexForDoc(activeDocument.id, currentPdfInternalPageIndex);
+    }
+    if (activeDocument?.id) {
+        LocalStorage.saveLastActiveMangaRoomDocId(activeDocument.id);
     }
   }, [currentPdfInternalPageIndex, activeDocument]);
 
@@ -348,7 +354,7 @@ export function MangaRoom() {
     setIsLoadingDocument(true);
     setCurrentPdfInternalPageIndex(0);
     setJumpToPageInput('');
-    setActiveDocument(null); // Clear previous active document
+    setActiveDocument(null); 
 
     const newDocId = Date.now().toString();
     const fileInputTarget = event.target;
@@ -378,12 +384,12 @@ export function MangaRoom() {
               id: newDocId,
               name: file.name,
               type: 'image',
-              imageDataUrl: imageDataUrl,
+              imageDataUrl: imageDataUrl, // Store full data URI for the library
               createdAt: Date.now(),
             };
             LocalStorage.addStoredDocument(newImageDocForLibrary);
             LocalStorage.saveLastActiveMangaRoomDocId(newDocId);
-            toast({ title: "Image Uploaded", description: `${file.name} processed and added to library.` });
+            toast({ title: "Image Uploaded & Saved", description: `${file.name} processed and saved to library.` });
 
             if ('error' in ocrResult) {
               toast({ variant: "destructive", title: "OCR Error", description: ocrResult.error });
@@ -443,12 +449,12 @@ export function MangaRoom() {
             id: newDocId,
             name: file.name,
             type: 'pdf',
-            pdfBase64: pdfBase64,
+            pdfBase64: pdfBase64, // Save only base64 part to library
             createdAt: Date.now(),
           };
           LocalStorage.addStoredDocument(newPdfDocForLibrary);
           LocalStorage.saveLastActiveMangaRoomDocId(newDocId);
-          toast({ title: "PDF Uploaded", description: `${file.name} processed and added to library.` });
+          toast({ title: "PDF Uploaded & Saved", description: `${file.name} processed and saved to library.` });
 
         } catch (pdfLoadError: any) {
           console.error("Error loading PDF:", pdfLoadError);
@@ -727,6 +733,8 @@ export function MangaRoom() {
              setJumpToPageInput((currentPdfInternalPageIndex + 1).toString());
         } else {
              if (jumpToPageInput !== (currentPdfInternalPageIndex+1).toString()) {
+                 // This case should be handled by onChange for immediate jump.
+                 // If user types and blurs without hitting enter, reset to current page.
                  setJumpToPageInput((currentPdfInternalPageIndex+1).toString());
              }
         }
@@ -739,7 +747,7 @@ export function MangaRoom() {
     stopSpeech(true);
     if (activeDocument) {
         delete pdfDocCacheRef.current[activeDocument.id];
-        LocalStorage.saveLastActiveMangaRoomDocId(null);
+        LocalStorage.saveLastActiveMangaRoomDocId(null); // Clear last active when user explicitly clears.
     }
     setActiveDocument(null);
     setCurrentPdfInternalPageIndex(0);
