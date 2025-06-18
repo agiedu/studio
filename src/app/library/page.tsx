@@ -123,10 +123,10 @@ export default function LibraryPage() {
   };
 
   const handleReadDocument = (doc: StoredDocument) => {
-    if (doc.type === 'image' || doc.type === 'pdf') {
-      // Navigate to the root page (where MangaRoom is) for images and PDFs
+    if (doc.type === 'image') {
+      // Navigate to the root page (MangaRoom) for images
       router.push(`/?loadFromLibraryId=${doc.id}`); 
-    } else { // TXT
+    } else { // TXT and PDF go to ReaderPage
       router.push(`/reader?docId=${doc.id}`);
     }
   };
