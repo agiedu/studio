@@ -161,7 +161,9 @@ export default function ReaderPage() {
     setFileName(file.name);
     setExtractedText("");
 
-    if (file.type === 'text/plain') {
+    const fileExtension = file.name.split('.').pop()?.toLowerCase();
+
+    if (file.type === 'text/plain' || (!file.type && fileExtension === 'txt')) {
       const reader = new FileReader();
       reader.onload = (e) => {
         setExtractedText(e.target?.result as string);
@@ -204,7 +206,7 @@ export default function ReaderPage() {
       };
       reader.readAsArrayBuffer(file);
     } else {
-      toast({ variant: "destructive", title: "Unsupported File Type", description: "Please upload a TXT or PDF file." });
+      toast({ variant: "destructive", title: "Unsupported File Type", description: `File type "${file.type || fileExtension}" not supported. Please upload a TXT or PDF file.` });
       setFileName(null);
       setIsLoadingFile(false);
     }
