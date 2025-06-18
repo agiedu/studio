@@ -33,7 +33,7 @@ const safeLocalStorageSet = (key: string, value: any): boolean => {
     // Common ones are 22 (Chrome), 1014 (Firefox for NS_ERROR_DOM_QUOTA_REACHED)
     // Checking name and message is generally more robust.
     if (error instanceof DOMException && (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED' || (error.message && error.message.toLowerCase().includes('quota')))) {
-      specificMessage = `QuotaExceededError: Failed to set localStorage key "${key}" because browser storage is full. Please free up space.`;
+      specificMessage = `Error setting localStorage key "${key}": QuotaExceededError: Browser's Local Storage is full. Data for this key was NOT saved. USER ACTION REQUIRED: Please go to the app's Library page and delete some documents to free up space.`;
     }
     console.error(specificMessage, error); // Log the more specific message and the original error object
     return false;
@@ -139,3 +139,4 @@ export const saveLastActiveMangaRoomDocId = (docId: string | null): boolean => {
 export const loadLastActiveMangaRoomDocId = (): string | null => {
   return safeLocalStorageGet<string | null>(LAST_ACTIVE_MANGAROOM_DOC_ID_KEY, null);
 };
+
