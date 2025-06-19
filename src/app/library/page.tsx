@@ -123,13 +123,6 @@ export default function LibraryPage() {
         toast({ variant: "destructive", title: "Unsupported File", description: "Please upload a TXT, PDF, or Image file to the general library." });
       }
 
-      // This specific check was for TXT files, but the else blocks for PDF/Image now also include the detailed toast.
-      // It can be removed or kept for safety, though it might be redundant if `saveSuccess` covers all initial paths.
-      if (!saveSuccess && (file.type === 'text/plain' || file.name.endsWith('.txt'))) {
-        // This might be redundant if the initial saveSuccess block already handles it for TXT
-        // toast({ variant: "destructive", title: "Storage Error", description: `Failed to save ${file.name}. Local storage might be full.` });
-      }
-
     } catch (error: any) {
       toast({ variant: "destructive", title: "Upload Error", description: error.message || "An unknown error occurred." });
     } finally {
