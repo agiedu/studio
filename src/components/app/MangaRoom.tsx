@@ -1243,6 +1243,3 @@ export function MangaRoom() {
     </div>
   );
 }
-
-
-    
