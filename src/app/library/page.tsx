@@ -113,8 +113,10 @@ export default function LibraryPage() {
                   toast({ title: "Synced to Local Device", description: `Secondary sync of "${storedDocForIndexDB.title}" successful. Path: ${localUploadResult.filePath}` });
                 } else {
                   let errorMsg = `Secondary sync of "${storedDocForIndexDB.title || 'document'}" to local device failed.`;
-                  if (localUploadResult?.message) { // Check if localUploadResult itself is defined
+                  if (localUploadResult && localUploadResult.message) { 
                     errorMsg += ` ${localUploadResult.message}`;
+                  } else if (localUploadResult === null || typeof localUploadResult !== 'object' || Object.keys(localUploadResult).length === 0) {
+                    errorMsg += " The application received an empty or invalid response from the server. Check Next.js server console and helper service logs.";
                   } else {
                     errorMsg += " An unexpected issue occurred or the helper service response was unclear. Ensure helper service is running & sends JSON.";
                   }
@@ -178,9 +180,11 @@ export default function LibraryPage() {
           toast({ title: "Synced to Local Device", description: `"${doc.title}" successfully sent. Path: ${localUploadResult.filePath}` });
       } else {
         let errorMsg = `Could not sync "${doc.title}" to local device.`;
-         if (localUploadResult?.message) { // Check if localUploadResult itself is defined
+         if (localUploadResult && localUploadResult.message) { 
             errorMsg += ` ${localUploadResult.message}`;
-        }  else {
+        } else if (localUploadResult === null || typeof localUploadResult !== 'object' || Object.keys(localUploadResult).length === 0) {
+            errorMsg += " The application received an empty or invalid response from the server. Check Next.js server console and helper service logs.";
+        } else {
             errorMsg += " An unexpected issue occurred or the helper service response was unclear. Ensure helper service is running & sends JSON.";
         }
         toast({ variant: "destructive", title: "Local Sync Failed", description: errorMsg, duration: 7000 });
@@ -330,5 +334,4 @@ export default function LibraryPage() {
       </Card>
     </div>
   );
-
-    
+}
