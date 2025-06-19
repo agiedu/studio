@@ -65,16 +65,16 @@ export default function LibraryPage() {
       };
 
       if (file.type.startsWith('image/')) {
-        newDocument = { ...commonDocProps, type: 'image', extractedText: "OCR will be performed if you open this in the reader." };
+        newDocument = { ...commonDocProps, type: 'image', extractedText: undefined };
       } else if (file.type === 'application/pdf') {
          try {
             const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) });
             const pdfInstance = await pdfLoadingTask.promise;
-            newDocument = { ...commonDocProps, type: 'pdf', numPages: pdfInstance.numPages };
+            newDocument = { ...commonDocProps, type: 'pdf', numPages: pdfInstance.numPages, ocrTextPerPage: {} };
           } catch (pdfError: any) {
             console.warn(`[LibraryPage] Could not get PDF page count for ${file.name}:`, pdfError);
             toast({ variant: "default", title: "PDF Info", description: `Uploaded PDF "${file.name}". Page count determination issue: ${pdfError.message}.` });
-            newDocument = { ...commonDocProps, type: 'pdf', numPages: undefined };
+            newDocument = { ...commonDocProps, type: 'pdf', numPages: undefined, ocrTextPerPage: {} };
           }
       } else if (file.type === 'application/epub+zip' || file.name.toLowerCase().endsWith('.epub')) {
         newDocument = { ...commonDocProps, type: 'epub', originalType: 'application/epub+zip' };
@@ -113,11 +113,14 @@ export default function LibraryPage() {
     try {
       await IndexedDBService.deleteDocumentById(docId);
       toast({ title: "Document Deleted", description: `"${titleForConfirm}" removed from browser storage.` });
-      fetchDocuments();
+      
+      // Check if the deleted document was the last active one
       const lastActiveId = await IndexedDBService.getLastActiveDocId();
       if (lastActiveId === docId) {
         await IndexedDBService.saveLastActiveDocId(null);
       }
+      
+      fetchDocuments(); // Refresh the list after deletion and potential last active ID update
     } catch (error:any) {
       toast({ variant: "destructive", title: "Delete Error", description: `Failed to delete document "${titleForConfirm}". ${error.message}` });
       console.error(`[LibraryPage] Error deleting document "${docId}" from IndexedDB:`, error);
