@@ -551,7 +551,11 @@ export function MangaRoom() {
                 duration: 10000 
             });
             console.warn(`MangaRoom: Failed to save ${file.name} to Manga Room library due to storage quota. Document not persisted.`);
-             if (activeDocument?.id === 'temp-loading') setActiveDocument(null);
+            // Ensure activeDocument is cleared if it was the temp-loading one
+            const currentActiveDoc = activeDocument; // Capture current state for check
+            if (currentActiveDoc?.id === 'temp-loading') {
+                 setActiveDocument(null);
+            }
         }
 
       } else if (file.type === 'application/pdf') {
@@ -600,17 +604,26 @@ export function MangaRoom() {
                 duration: 10000 
             });
             console.warn(`MangaRoom: Failed to save ${file.name} to Manga Room library due to storage quota. Document not persisted.`);
-            if (activeDocument?.id === 'temp-loading') setActiveDocument(null);
+            const currentActiveDoc = activeDocument; // Capture current state for check
+             if (currentActiveDoc?.id === 'temp-loading') {
+                 setActiveDocument(null);
+            }
         }
       } else {
         toast({ variant: "destructive", title: "Unsupported File", description: "Please upload an Image or PDF file for Manga Room." });
-         if (activeDocument?.id === 'temp-loading') setActiveDocument(null);
+        const currentActiveDoc = activeDocument;
+        if (currentActiveDoc?.id === 'temp-loading') {
+            setActiveDocument(null);
+        }
       }
 
     } catch (error: any) {
       console.error("File Upload Error:", error);
       toast({ variant: "destructive", title: "Upload Error", description: error.message || "Failed to process file." });
-      if (activeDocument?.id === 'temp-loading') setActiveDocument(null);
+      const currentActiveDoc = activeDocument;
+      if (currentActiveDoc?.id === 'temp-loading') {
+        setActiveDocument(null);
+      }
     } finally {
       setIsLoadingDocument(false);
       if (fileInputRef.current) {
