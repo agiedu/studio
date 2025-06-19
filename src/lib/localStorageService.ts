@@ -1,5 +1,4 @@
 
-
 import type { TTSSettings, StoredDocument, FavoriteItem, Read2StoredDocument } from '@/types';
 
 const PDF_MANGA_DOCUMENT_PAGE_STATES_KEY = 'mangaTalk_pdfDocumentPageStates_v2';
@@ -92,7 +91,7 @@ export const addStoredDocument = (document: StoredDocument): boolean => {
     if (existingDocIndex > -1) {
         documents[existingDocIndex] = document;
     } else {
-        documents.unshift(document);
+        documents.unshift(document); // Add new documents to the beginning
     }
     return saveStoredDocuments(documents);
 };
@@ -123,7 +122,7 @@ export const addRead2StoredDocument = (document: Read2StoredDocument): boolean =
     if (existingDocIndex > -1) {
         documents[existingDocIndex] = document;
     } else {
-        documents.unshift(document);
+        documents.unshift(document); // Add new documents to the beginning
     }
     return saveRead2StoredDocuments(documents);
 };
@@ -151,7 +150,7 @@ export const saveFavoriteItems = (items: FavoriteItem[]): boolean => {
 
 export const addFavoriteItem = (item: FavoriteItem): boolean => {
     const items = loadFavoriteItems();
-    items.unshift(item);
+    items.unshift(item); // Add new favorites to the beginning
     return saveFavoriteItems(items);
 };
 
@@ -169,4 +168,3 @@ export const saveLastActiveMangaRoomDocId = (docId: string | null): boolean => {
 export const loadLastActiveMangaRoomDocId = (): string | null => {
   return safeLocalStorageGet<string | null>(LAST_ACTIVE_MANGAROOM_DOC_ID_KEY, null);
 };
-
