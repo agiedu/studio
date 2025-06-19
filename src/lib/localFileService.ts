@@ -11,65 +11,79 @@ interface UploadResponse {
 }
 
 export async function uploadFileToLocalServer(file: File): Promise<{ success: boolean; message: string; filePath?: string }> {
-  const formData = new FormData();
-  formData.append("file", file);
-
+  // Top-level try-catch to ensure we always return a structured response
   try {
+    const formData = new FormData();
+    formData.append("file", file);
+    console.log('[localFileService] Attempting to upload file:', file.name, 'to', LOCAL_SERVER_URL);
+
     const response = await fetch(LOCAL_SERVER_URL, {
       method: "POST",
       body: formData,
     });
+    console.log('[localFileService] Received response status:', response.status, response.statusText);
+
+    const responseText = await response.text(); // Get raw text first
+    // Log only a snippet of response text to avoid flooding logs with large HTML error pages
+    console.log('[localFileService] Received response text (first 300 chars):', responseText.substring(0,300));
+
 
     if (!response.ok) {
-      let errorMessage = `Failed to upload file to local server. Status: ${response.status} ${response.statusText || ''}`.trim();
-      try {
-        const errorBody = await response.text(); // Get raw text first
-        if (errorBody) {
-            try {
-                const errorResult: UploadResponse = JSON.parse(errorBody);
-                errorMessage = errorResult.message || errorMessage;
-            } catch (parseError) {
-                // If not JSON, include part of the text body if it's not too long and seems like an error message
-                if (errorBody.length < 500 && (errorBody.toLowerCase().includes('error') || response.status >= 500)) {
-                     errorMessage += `\nServer response: ${errorBody.substring(0, 200)}${errorBody.length > 200 ? '...' : ''}`;
-                }
-                console.warn("Local server error response was not JSON, or was an HTML error page. Status:", response.status, parseError);
-            }
+      let errorMessage = `Local server request failed. Status: ${response.status} ${response.statusText || ''}`.trim();
+      if (responseText) {
+        try {
+          const errorResult: UploadResponse = JSON.parse(responseText);
+          errorMessage = errorResult.message || `Local server error: ${responseText.substring(0,150)}`;
+          console.log('[localFileService] Parsed error response from local server:', errorResult);
+        } catch (parseError) {
+          console.warn("[localFileService] Local server error response was not JSON. Status:", response.status, parseError);
+          // Provide a more user-friendly part of the raw response if it looks like HTML.
+          if (responseText.trim().toLowerCase().startsWith("<html>") || responseText.trim().toLowerCase().startsWith("<!doctype html>")) {
+            errorMessage += `\nLocal server returned an HTML page (possibly an error page).`;
+          } else {
+            errorMessage += `\nRaw response snippet: ${responseText.substring(0, 150)}${responseText.length > 150 ? '...' : ''}`;
+          }
         }
-      } catch (e) {
-        console.warn("Could not read error response body from local server:", e);
       }
+      console.error('[localFileService] Upload failed (response not ok):', errorMessage);
       return { success: false, message: errorMessage };
     }
 
     // If response.ok is true
-    const resultText = await response.text();
-    if (!resultText) {
-        return { success: false, message: "Local server returned a successful status but an empty response."};
+    if (!responseText) {
+      const emptyResponseMessage = "Local server returned a successful status but an empty response body.";
+      console.warn('[localFileService]', emptyResponseMessage);
+      return { success: false, message: emptyResponseMessage };
     }
 
     try {
-        const result: UploadResponse = JSON.parse(resultText);
+      const result: UploadResponse = JSON.parse(responseText);
+      console.log('[localFileService] Parsed successful response from local server:', result);
 
-        if (result.status === "ok" && result.path) {
-          return { success: true, message: `File saved locally at: ${result.path}`, filePath: result.path };
-        } else {
-          return { success: false, message: result.message || "Local server reported an issue with saving the file, but returned a 2xx status." };
-        }
+      if (result.status === "ok" && result.path) {
+        return { success: true, message: `File saved locally at: ${result.path}`, filePath: result.path };
+      } else {
+        const issueMessage = result.message || "Local server indicated an issue with saving the file (but returned 2xx status).";
+        console.warn('[localFileService] Issue in successful response:', issueMessage);
+        return { success: false, message: issueMessage };
+      }
     } catch (error: any) {
-      console.error("Error parsing successful response from local server (expected JSON):", error);
-      return { success: false, message: `Local server returned a 2xx status, but the response was not valid JSON. Response: ${resultText.substring(0, 200)}${resultText.length > 200 ? '...' : ''}` };
+      const parseErrorMessage = `Local server returned a 2xx status, but the response was not valid JSON. Response snippet: ${responseText.substring(0, 150)}${responseText.length > 150 ? '...' : ''}`;
+      console.error("[localFileService] Error parsing successful JSON response from local server:", error, "Raw text snippet:", responseText.substring(0,150));
+      return { success: false, message: parseErrorMessage };
     }
 
-  } catch (error: any) {
-    console.error("Error uploading file to local server:", error);
-    let connectMessage = "Could not connect to the local file saving service. Please ensure it is running on your device (at http://localhost:3001) and try again.";
-    if (error.message && error.message.toLowerCase().includes('failed to fetch')) {
-         connectMessage = "Connection to the local file saving service failed. Please ensure it's running and accessible at http://localhost:3001.";
+  } catch (error: any) { // This is the outer catch for any error within this Server Action
+    console.error("[localFileService] CRITICAL UNHANDLED ERROR in uploadFileToLocalServer:", error);
+    let connectMessage = "A critical error occurred while trying to communicate with the local file saving service.";
+
+    if (error instanceof TypeError && error.message.toLowerCase().includes('failed to fetch')) {
+         connectMessage = "Connection to the local file saving service failed (network error). Please ensure it's running at http://localhost:3001 and that there are no CORS issues if your local server is configured to require them.";
     } else if (error.message) {
-        connectMessage += ` Details: ${error.message}`;
+        connectMessage += ` Details: ${error.message.substring(0,150)}${error.message.length > 150 ? '...' : ''}`;
+    } else {
+        connectMessage += " An unknown internal error or network issue occurred.";
     }
     return { success: false, message: connectMessage };
   }
 }
-
