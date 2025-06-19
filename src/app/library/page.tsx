@@ -38,7 +38,7 @@ export default function LibraryPage() {
     fetchDocuments();
   }, [fetchDocuments]);
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -58,7 +58,7 @@ export default function LibraryPage() {
           fileData: fileBuffer,
           originalType: file.type,
           createdAt: Date.now(),
-          // extractedText will be populated in MangaRoom if needed
+          // extractedText will be populated in MangaRoom if needed or by a dedicated OCR step if primary storage is just the file
         };
       } else if (file.type === 'application/pdf') {
         try {
@@ -67,7 +67,7 @@ export default function LibraryPage() {
           if (typeof window !== 'undefined' && !GlobalWorkerOptions.workerSrc) {
             GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${version}/pdf.worker.mjs`;
           }
-          const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) });
+          const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) }); // Use a copy for pdf.js
           const pdfInstance = await pdfLoadingTask.promise;
           numPagesForPdf = pdfInstance.numPages;
         } catch (pdfError: any) {
@@ -97,28 +97,33 @@ export default function LibraryPage() {
 
         // Secondary action: attempt to sync to local device via helper service
         const formDataForLocalService = new FormData();
-        formDataForLocalService.append('file', new File([storedDocForIndexDB.fileData], storedDocForIndexDB.title || 'untitled_file', { type: storedDocForIndexDB.originalType }));
-        
-        console.log("[LibraryPage] Attempting secondary sync to local device for:", storedDocForIndexDB.title);
-        try {
-            const localUploadResult = await uploadFileToLocalServer(formDataForLocalService);
-            if (localUploadResult?.success && localUploadResult.filePath) {
-              toast({ title: "Synced to Local Device", description: `Secondary sync of "${storedDocForIndexDB.title}" successful. Path: ${localUploadResult.filePath}` });
-            } else {
-              let errorMsg = `Secondary sync of "${storedDocForIndexDB.title || 'document'}" to local device failed.`;
-              if (localUploadResult && Object.keys(localUploadResult).length === 0 && localUploadResult.constructor === Object) {
-                errorMsg += " The application received an empty or unexpected response from the server. Ensure helper service is running & sends JSON. Check Next.js server console and local helper service logs.";
-              } else if (localUploadResult?.message) {
-                errorMsg += ` ${localUploadResult.message}`;
-              } else {
-                errorMsg += " No specific error message received from server. Ensure helper service is running & sends JSON. Check Next.js server console and local helper service logs.";
-              }
-              toast({ variant: "default", title: "Local Sync Info (Secondary)", description: errorMsg });
-              console.warn("[LibraryPage] Secondary local sync failed. Server Action Response:", localUploadResult);
+        // Ensure fileData is present before creating File object
+        if (storedDocForIndexDB.fileData) {
+            formDataForLocalService.append('file', new File([storedDocForIndexDB.fileData], storedDocForIndexDB.title || 'untitled_file', { type: storedDocForIndexDB.originalType }));
+            
+            console.log("[LibraryPage] Attempting secondary sync to local device for:", storedDocForIndexDB.title);
+            try {
+                const localUploadResult = await uploadFileToLocalServer(formDataForLocalService);
+                if (localUploadResult?.success && localUploadResult.filePath) {
+                  toast({ title: "Synced to Local Device", description: `Secondary sync of "${storedDocForIndexDB.title}" successful. Path: ${localUploadResult.filePath}` });
+                } else {
+                  let errorMsg = `Secondary sync of "${storedDocForIndexDB.title || 'document'}" to local device failed.`;
+                  if (localUploadResult && Object.keys(localUploadResult).length === 0 && localUploadResult.constructor === Object) {
+                    errorMsg += " The application received an empty or unexpected response from the server. Ensure helper service is running & sends JSON. Check Next.js server console and local helper service logs.";
+                  } else if (localUploadResult?.message) {
+                    errorMsg += ` ${localUploadResult.message}`;
+                  } else {
+                    errorMsg += " No specific error message received from server. Ensure helper service is running & sends JSON. Check Next.js server console and local helper service logs.";
+                  }
+                  toast({ variant: "default", title: "Local Sync Info (Secondary)", description: errorMsg });
+                  console.warn("[LibraryPage] Secondary local sync failed. Server Action Response:", localUploadResult);
+                }
+            } catch (serverActionError: any) {
+                 console.error("[LibraryPage] Error calling uploadFileToLocalServer Server Action:", serverActionError);
+                 toast({ variant: "destructive", title: "Local Sync Error (Client)", description: `Failed to initiate sync for "${storedDocForIndexDB.title || 'document'}": ${serverActionError.message}. Check console for details.` });
             }
-        } catch (serverActionError: any) {
-             console.error("[LibraryPage] Error calling uploadFileToLocalServer Server Action:", serverActionError);
-             toast({ variant: "destructive", title: "Local Sync Error (Client)", description: `Failed to initiate sync for "${storedDocForIndexDB.title || 'document'}": ${serverActionError.message}. Check console for details.` });
+        } else {
+            console.warn("[LibraryPage] Cannot perform secondary sync: fileData is missing from storedDocForIndexDB for", storedDocForIndexDB.title);
         }
       }
     } catch (error: any) {
@@ -130,9 +135,9 @@ export default function LibraryPage() {
         fileInputRef.current.value = "";
       }
     }
-  };
+  }, [fetchDocuments, toast]);
 
-  const handleDeleteDocument = async (docId: string, docTitle?: string) => {
+  const handleDeleteDocument = useCallback(async (docId: string, docTitle?: string) => {
     const titleForConfirm = docTitle || 'this document';
     if (!window.confirm(`Are you sure you want to delete "${titleForConfirm}" from your browser storage? This action cannot be undone.`)) {
       return;
@@ -149,9 +154,9 @@ export default function LibraryPage() {
       toast({ variant: "destructive", title: "Delete Error", description: `Failed to delete document "${titleForConfirm}". ${error.message}` });
       console.error(`[LibraryPage] Error deleting document "${docId}" from IndexedDB:`, error);
     }
-  };
+  }, [fetchDocuments, toast]);
 
-  const handleSyncToDevice = async (doc: StoredMangaDocument) => {
+  const handleSyncToDevice = useCallback(async (doc: StoredMangaDocument) => {
     if (!doc.fileData || !doc.title || !doc.originalType) {
         toast({variant: "destructive", title: "Sync Error", description: "Document data is incomplete for syncing."});
         return;
@@ -187,7 +192,7 @@ export default function LibraryPage() {
     } finally {
         setIsSyncing(null);
     }
-  };
+  }, [toast]);
 
   return (
     <div className="container mx-auto p-4 md:p-6 space-y-6">
