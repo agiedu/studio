@@ -485,14 +485,17 @@ export function MangaRoom() {
     stopSpeechFnRef.current(true);
     setSentenceSegments([]);
     setCurrentSentenceIndex(-1);
+    // Set a temporary processing state for activeDocument
     setActiveDocument({
-      id: 'temp-loading',
+      id: 'temp-processing-doc', // Unique ID for temporary state
       title: file.name,
       type: file.type.startsWith('image/') ? 'image' : 'pdf',
-      // @ts-ignore temp state
+      // @ts-ignore - these are for the temporary MangaDocument shape
+      imageDataUrl: file.type.startsWith('image/') ? '' : undefined, // Placeholder
       extractedText: file.type.startsWith('image/') ? "Processing uploaded image..." : undefined,
-      // @ts-ignore temp state
-      processedPages: file.type.startsWith('pdf/') ? [{imageDataUrl:'', extractedText: 'Processing uploaded PDF...'}] : undefined,
+      numPages: file.type.startsWith('pdf/') ? 0 : undefined,
+      pdfDataUrl: file.type.startsWith('pdf/') ? '' : undefined, // Placeholder
+      processedPages: file.type.startsWith('pdf/') ? [] : undefined,
     });
 
     const newDocId = Date.now().toString();
@@ -508,6 +511,16 @@ export function MangaRoom() {
           reader.readAsDataURL(file);
         });
 
+        // Update activeDocument with image data before OCR
+        setActiveDocument(prev => ({
+            ...(prev as MangaImageFile), // Cast to ensure type, ID should be temp-processing-doc
+            id: 'temp-processing-doc',
+            title: file.name,
+            type: 'image',
+            imageDataUrl: imageDataUrl,
+            extractedText: "Performing OCR...",
+        }));
+
         let ocrText = "OCR pending...";
         try {
             const ocrResult = await performOCR(imageDataUrl);
@@ -521,6 +534,13 @@ export function MangaRoom() {
            toast({ variant: "destructive", title: "OCR Processing Error during upload", description: ocrError.message || "Unknown OCR error." });
            ocrText = `OCR failed: ${ocrError.message || "Unknown OCR error."}`;
         }
+        
+        // Update activeDocument with OCR text
+         setActiveDocument(prev => ({
+            ...(prev as MangaImageFile),
+            id: 'temp-processing-doc',
+            extractedText: ocrText,
+        }));
 
         documentToSaveToLibrary = {
           id: newDocId,
@@ -550,12 +570,7 @@ export function MangaRoom() {
                 description: `Failed to save ${file.name} to Manga Room library. Browser local storage is likely full. Please delete items from the Library page to free up space. This is a browser limitation, not an application bug.`, 
                 duration: 10000 
             });
-            console.warn(`MangaRoom: Failed to save ${file.name} to Manga Room library due to storage quota. Document not persisted.`);
-            // Ensure activeDocument is cleared if it was the temp-loading one
-            const currentActiveDoc = activeDocument; // Capture current state for check
-            if (currentActiveDoc?.id === 'temp-loading') {
-                 setActiveDocument(null);
-            }
+            setActiveDocument(null); // Reset on save failure
         }
 
       } else if (file.type === 'application/pdf') {
@@ -565,6 +580,17 @@ export function MangaRoom() {
           reader.onerror = reject;
           reader.readAsDataURL(file);
         });
+        
+        // Update activeDocument for PDF processing
+        setActiveDocument(prev => ({
+            ...(prev as MangaPdfFile),
+            id: 'temp-processing-doc',
+            title: file.name,
+            type: 'pdf',
+            pdfDataUrl: pdfDataUrlFull,
+            numPages: 0, // Will be updated
+            processedPages: [{imageDataUrl:'', extractedText: 'Processing uploaded PDF...'}],
+        }));
 
         const pdfBase64 = pdfDataUrlFull.split(',')[1];
         if (!pdfBase64) throw new Error("Could not read PDF file content for Base64.");
@@ -603,27 +629,17 @@ export function MangaRoom() {
                 description: `Failed to save ${file.name} to Manga Room library. Browser local storage is likely full. Please delete items from the Library page to free up space. This is a browser limitation, not an application bug.`, 
                 duration: 10000 
             });
-            console.warn(`MangaRoom: Failed to save ${file.name} to Manga Room library due to storage quota. Document not persisted.`);
-            const currentActiveDoc = activeDocument; // Capture current state for check
-             if (currentActiveDoc?.id === 'temp-loading') {
-                 setActiveDocument(null);
-            }
+            setActiveDocument(null); // Reset on save failure
         }
       } else {
         toast({ variant: "destructive", title: "Unsupported File", description: "Please upload an Image or PDF file for Manga Room." });
-        const currentActiveDoc = activeDocument;
-        if (currentActiveDoc?.id === 'temp-loading') {
-            setActiveDocument(null);
-        }
+        setActiveDocument(null); // Reset for unsupported file
       }
 
     } catch (error: any) {
       console.error("File Upload Error:", error);
       toast({ variant: "destructive", title: "Upload Error", description: error.message || "Failed to process file." });
-      const currentActiveDoc = activeDocument;
-      if (currentActiveDoc?.id === 'temp-loading') {
-        setActiveDocument(null);
-      }
+      setActiveDocument(null); // Reset on any other error
     } finally {
       setIsLoadingDocument(false);
       if (fileInputRef.current) {
@@ -637,7 +653,7 @@ export function MangaRoom() {
     const selectedText = typeof window !== 'undefined' ? window.getSelection()?.toString().trim() : '';
     const effectiveTextToRead = selectedText || textToRead;
 
-    if (!effectiveTextToRead || isLoadingPdfPage || !activeDocument ||
+    if (!effectiveTextToRead || isLoadingPdfPage || !activeDocument || activeDocument.id === 'temp-processing-doc' ||
         effectiveTextToRead.startsWith("Error:") ||
         effectiveTextToRead.startsWith("Processing") ||
         effectiveTextToRead.startsWith("Loading") ||
@@ -883,7 +899,7 @@ export function MangaRoom() {
   const handleFavoriteSelection = () => {
     const selection = window.getSelection()?.toString().trim();
     const currentDocForFavorite = activeDocument;
-    if (selection && currentDocForFavorite) {
+    if (selection && currentDocForFavorite && currentDocForFavorite.id !== 'temp-processing-doc') {
       const newFavorite: FavoriteItem = {
         id: Date.now().toString(),
         text: selection,
@@ -895,8 +911,8 @@ export function MangaRoom() {
       toast({ title: "Favorited!", description: `"${selection.substring(0, 30)}..." added to favorites.` });
     } else if (!selection) {
       toast({ variant: "destructive", title: "No Selection", description: "Please select text to favorite." });
-    } else if (!currentDocForFavorite) {
-      toast({ variant: "destructive", title: "No Document", description: "Cannot favorite text without an active document." });
+    } else if (!currentDocForFavorite || currentDocForFavorite.id === 'temp-processing-doc') {
+      toast({ variant: "destructive", title: "No Document", description: "Cannot favorite text without a saved document or while processing." });
     }
   };
 
@@ -915,7 +931,7 @@ export function MangaRoom() {
                     !isLoadingDocument &&
                     !isLoadingInitialDoc &&
                     activeDocument &&
-                    activeDocument.id !== 'temp-loading' && 
+                    activeDocument.id !== 'temp-processing-doc' && 
                     !(activeDocument.type === 'image' && activeDocument.extractedText === "Performing OCR...") &&
                     !(activeDocument.type === 'image' && activeDocument.extractedText === "Processing uploaded image...") &&
                     !(activeDocument.type === 'pdf' && currentSubPage?.extractedText?.startsWith("Loading")) &&
@@ -971,12 +987,12 @@ export function MangaRoom() {
               disabled={isLoadingDocument || isLoadingInitialDoc}
             />
           </div>
-          {(isLoadingDocument && activeDocument?.id === 'temp-loading' && !isLoadingInitialDoc) && <p className="mt-2 text-sm text-muted-foreground">Processing uploaded file...</p>}
+          {(isLoadingDocument && activeDocument?.id === 'temp-processing-doc' && !isLoadingInitialDoc) && <p className="mt-2 text-sm text-muted-foreground">Processing uploaded file: {activeDocument?.title}</p>}
         </CardContent>
       </Card>
 
       <div className="flex-grow space-y-6">
-          {activeDocument && activeDocument.id !== 'temp-loading' && !isLoadingDocument && !isLoadingInitialDoc && (
+          {activeDocument && activeDocument.id !== 'temp-processing-doc' && !isLoadingDocument && !isLoadingInitialDoc && (
             <>
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -1072,7 +1088,7 @@ export function MangaRoom() {
                         className="mt-3"
                         disabled={
                             !activeDocument ||
-                            activeDocument.id === 'temp-loading' ||
+                            activeDocument.id === 'temp-processing-doc' ||
                             isLoadingDocument ||
                             isLoadingInitialDoc ||
                             isLoadingPdfPage ||
@@ -1086,6 +1102,17 @@ export function MangaRoom() {
             )}
             </>
           )}
+          
+          {/* Shows a message if a document is being processed via upload */}
+          {activeDocument && activeDocument.id === 'temp-processing-doc' && !isLoadingInitialDoc && (
+            <Card>
+              <CardContent className="pt-6 flex items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-primary mr-2" />
+                <p>Processing: {activeDocument.title}</p>
+              </CardContent>
+            </Card>
+          )}
+
 
           {!activeDocument && !isLoadingDocument && !isLoadingInitialDoc &&(
             <Card className="text-center">
@@ -1099,15 +1126,9 @@ export function MangaRoom() {
             </Card>
           )}
 
-          {isLoadingDocument && activeDocument && activeDocument.id === 'temp-loading' && !isLoadingInitialDoc && (
-             <div className="flex flex-col flex-grow items-center justify-center p-4">
-                <Loader2 className="h-12 w-12 animate-spin text-primary" />
-                <p className="mt-4 text-muted-foreground">Processing document details...</p>
-            </div>
-          )}
       </div>
 
-      {activeDocument && activeDocument.id !== 'temp-loading' && !isLoadingDocument && !isLoadingInitialDoc && (
+      {activeDocument && activeDocument.id !== 'temp-processing-doc' && !isLoadingDocument && !isLoadingInitialDoc && (
         <div className="space-y-4">
             <Card>
             <CardHeader className="p-4">
