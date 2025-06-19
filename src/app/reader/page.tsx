@@ -50,8 +50,10 @@ export default function ReaderPage() {
 
   const [txtContent, setTxtContent] = useState<string>("");
   
-  const [imageSrc, setImageSrc] = useState<string | null>(null);
+  const imageSrcRef = useRef<string | null>(null); // Use ref for imageSrc to avoid stale closures if used in callbacks without it being a direct dependency
+  const [displayedImageSrc, setDisplayedImageSrc] = useState<string | null>(null); // For React to re-render the image
   const currentImageObjectUrlRef = useRef<string | null>(null);
+
   const [isPerformingOcr, setIsPerformingOcr] = useState(false);
 
   const [currentTextForTTS, setCurrentTextForTTS] = useState<string>("");
@@ -95,61 +97,61 @@ export default function ReaderPage() {
   }, []);
   
   useEffect(() => {
-    const docId = searchParams.get('docId');
+    const loadDocument = async () => {
+      // Reset states before loading new document
+      setActiveDoc(null);
+      setPdfDocProxy(null);
+      setCurrentPdfPageNum(1);
+      setPdfTotalPages(0);
+      setPdfPageImage(null);
+      setPdfPageIsTextBased(true);
+      setIsRenderingPdfPage(false);
+      
+      if (currentImageObjectUrlRef.current) { URL.revokeObjectURL(currentImageObjectUrlRef.current); currentImageObjectUrlRef.current = null; }
+      imageSrcRef.current = null;
+      setDisplayedImageSrc(null);
 
-    // Initial reset of states before loading new document
-    setActiveDoc(null);
-    setPdfDocProxy(null);
-    setCurrentPdfPageNum(1);
-    setPdfTotalPages(0);
-    setPdfPageImage(null);
-    setPdfPageIsTextBased(true);
-    setIsRenderingPdfPage(false);
-    
-    setImageSrc(null); // Clear imageSrc state
-    // Note: currentImageObjectUrlRef is cleaned up by the return function of this effect
+      setTxtContent("");
+      setCurrentTextForTTS("");
+      setDocErrorMessage(null);
+      setIsLoadingDoc(true); 
+      stopSpeech(true); 
 
-    setTxtContent("");
-    setCurrentTextForTTS("");
-    setDocErrorMessage(null);
-    setIsLoadingDoc(true); 
-    stopSpeech(true); // Stop any speech from a previous document
+      if (epubViewerRef.current) { epubViewerRef.current.innerHTML = ''; }
+      if (epubRenditionRef.current) { epubRenditionRef.current.destroy(); epubRenditionRef.current = null; }
+      if (epubBookRef.current) { epubBookRef.current = null; }
 
-    // Clear EPUB viewer content
-    if (epubViewerRef.current) {
-        epubViewerRef.current.innerHTML = '';
-    }
-    // Note: epubRenditionRef and epubBookRef are cleaned up by the return function
+      let docIdToLoad = searchParams.get('docId');
 
-    if (!docId) {
-      setDocErrorMessage("No document ID provided. Please select a document from the Library.");
-      setIsLoadingDoc(false);
-      // Return the cleanup function even if no docId, to clean up potential previous state
-      return () => {
-        stopSpeech(true);
-        if (epubRenditionRef.current) { epubRenditionRef.current.destroy(); epubRenditionRef.current = null; }
-        if (epubBookRef.current) { epubBookRef.current = null; }
-        if (currentImageObjectUrlRef.current) { URL.revokeObjectURL(currentImageObjectUrlRef.current); currentImageObjectUrlRef.current = null; }
-      };
-    }
+      if (!docIdToLoad) {
+        const lastActiveId = await IndexedDBService.getLastActiveDocId();
+        if (lastActiveId) {
+          docIdToLoad = lastActiveId;
+          // Optionally, update URL: router.replace(`/reader?docId=${lastActiveId}`, { scroll: false });
+        } else {
+          setDocErrorMessage("No document selected. Please choose one from the Library.");
+          setIsLoadingDoc(false);
+          return;
+        }
+      }
+      
+      if (!docIdToLoad) { // Should only happen if no URL param AND no last active after all checks
+         setDocErrorMessage("No document selected and no previously active document found. Please go to the Library.");
+         setIsLoadingDoc(false);
+         return;
+      }
 
-    IndexedDBService.getDocumentById(docId)
-      .then(async (doc) => {
+      try {
+        const doc = await IndexedDBService.getDocumentById(docIdToLoad);
         if (!doc) {
-          setDocErrorMessage(`Document with ID "${docId}" not found.`);
+          setDocErrorMessage(`Document with ID "${docIdToLoad}" not found.`);
+          await IndexedDBService.saveLastActiveDocId(null); // Clear if doc not found
           setIsLoadingDoc(false);
           return;
         }
 
-        // Explicitly clean up refs from a potentially previous doc loaded in the same component instance
-        // This complements the main cleanup function which handles unmounts/dependency changes
-        if (epubRenditionRef.current) { epubRenditionRef.current.destroy(); epubRenditionRef.current = null; }
-        if (epubBookRef.current) { epubBookRef.current = null; }
-        if (currentImageObjectUrlRef.current) { URL.revokeObjectURL(currentImageObjectUrlRef.current); currentImageObjectUrlRef.current = null; }
-        // setImageSrc(null); // Already set to null during initial reset phase of this effect run
-
         setActiveDoc(doc as ActiveMangaDocument);
-        await IndexedDBService.saveLastActiveDocId(docId);
+        await IndexedDBService.saveLastActiveDocId(docIdToLoad);
 
         if (doc.type === 'pdf') {
           try {
@@ -166,17 +168,20 @@ export default function ReaderPage() {
         } else if (doc.type === 'epub') {
           if (!epubViewerRef.current) {
             setDocErrorMessage("EPUB viewer element not ready.");
-            setIsLoadingDoc(false);
+            setIsLoadingDoc(false); // Early exit if viewer not ready
             return;
           }
           try {
             const ePubModule = await import('epubjs');
             const ePub = ePubModule.default;
-            epubBookRef.current = ePub(doc.fileData);
-            await epubBookRef.current.ready;
-            epubRenditionRef.current = epubBookRef.current.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "auto" });
+            const book = ePub(doc.fileData);
+            epubBookRef.current = book;
+            await book.ready;
             
-            epubRenditionRef.current.on('displayed', async (section: any) => {
+            const rendition = book.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "auto" });
+            epubRenditionRef.current = rendition;
+            
+            rendition.on('displayed', async (section: any) => {
               try {
                 const contents = section.contents || (section.document ? section.document.body : null);
                 let text = "";
@@ -189,7 +194,7 @@ export default function ReaderPage() {
                 setCurrentTextForTTS(text || "Could not extract text from this EPUB section.");
               } catch (textExtractError: any) { console.error("Error extracting text from EPUB section:", textExtractError); setCurrentTextForTTS(`Error extracting text from EPUB: ${textExtractError.message}`); }
             });
-            await epubRenditionRef.current.display();
+            await rendition.display();
           } catch (e: any) {
             console.error("Error loading or rendering EPUB:", e);
             const errorMsg = e instanceof Error ? e.message : String(e);
@@ -207,37 +212,32 @@ export default function ReaderPage() {
         } else if (doc.type === 'image') {
           const blob = new Blob([doc.fileData], { type: doc.originalType });
           const newUrl = URL.createObjectURL(blob);
-          currentImageObjectUrlRef.current = newUrl; // Track this new URL
-          setImageSrc(newUrl); // Set state to trigger re-render
+          currentImageObjectUrlRef.current = newUrl;
+          imageSrcRef.current = newUrl;
+          setDisplayedImageSrc(newUrl);
           setCurrentTextForTTS(doc.extractedText || "Image loaded. Perform OCR to extract text for reading aloud.");
         } else if (doc.type === 'mobi') {
           setDocErrorMessage("MOBI file format is not directly supported for reading. Please convert it to EPUB or PDF.");
           setCurrentTextForTTS("MOBI files cannot be read directly. Please convert to a supported format like EPUB or PDF.");
         }
         setIsLoadingDoc(false);
-      })
-      .catch(err => {
-        console.error("Error loading document from IndexedDB:", err);
+      } catch (err: any) {
+        console.error("Error loading document from IndexedDB or processing:", err);
         setDocErrorMessage(`Error loading document: ${err.message}`);
         setCurrentTextForTTS(`Error loading document: ${err.message}`);
         setIsLoadingDoc(false);
-      });
-      
-    return () => { // Cleanup function
-      stopSpeech(true);
-      if (epubRenditionRef.current) {
-        epubRenditionRef.current.destroy();
-        epubRenditionRef.current = null;
-      }
-      if (epubBookRef.current) {
-        epubBookRef.current = null;
-      }
-      if (currentImageObjectUrlRef.current) {
-        URL.revokeObjectURL(currentImageObjectUrlRef.current);
-        currentImageObjectUrlRef.current = null;
       }
     };
-  }, [searchParams, router, stopSpeech]);
+
+    loadDocument();
+      
+    return () => { 
+      stopSpeech(true);
+      if (epubRenditionRef.current) { epubRenditionRef.current.destroy(); epubRenditionRef.current = null; }
+      if (epubBookRef.current) { epubBookRef.current = null; } // epubBookRef itself doesn't have a destroy method usually
+      if (currentImageObjectUrlRef.current) { URL.revokeObjectURL(currentImageObjectUrlRef.current); currentImageObjectUrlRef.current = null; }
+    };
+  }, [searchParams, router, stopSpeech]); // stopSpeech is stable due to useCallback
   
   useEffect(() => {
     if (activeDoc?.type === 'pdf' && pdfDocProxy && currentPdfPageNum > 0 && currentPdfPageNum <= pdfTotalPages) {
@@ -290,14 +290,11 @@ export default function ReaderPage() {
         dataUrlToProcess = pdfPageImage;
     } else if (activeDoc?.type === 'image' && activeDoc.fileData) {
         try {
-          // Use the currentImageObjectUrlRef if available and valid, otherwise generate new data URL
-          // This avoids re-converting arraybuffer if image is already displayed.
-          // However, for OCR, a direct base64 data URL is generally preferred by Genkit flow.
-          if (imageSrc && imageSrc.startsWith('blob:')) { // If it's an object URL
+          if (imageSrcRef.current && imageSrcRef.current.startsWith('blob:')) { 
              dataUrlToProcess = await IndexedDBService.arrayBufferToBase64DataURL(activeDoc.fileData, activeDoc.originalType);
-          } else if (imageSrc) { // If it's already a data URL (less likely with current setup)
-             dataUrlToProcess = imageSrc;
-          } else { // Fallback to conversion if imageSrc not set or invalid type
+          } else if (imageSrcRef.current) { 
+             dataUrlToProcess = imageSrcRef.current;
+          } else { 
              dataUrlToProcess = await IndexedDBService.arrayBufferToBase64DataURL(activeDoc.fileData, activeDoc.originalType);
           }
         } catch (conversionError) {
@@ -366,25 +363,23 @@ export default function ReaderPage() {
  useEffect(() => {
     if (typeof window !== 'undefined' && window.speechSynthesis && ttsSettings.type === 'local') {
       const voices = availableVoices.length > 0 ? availableVoices : window.speechSynthesis.getVoices().map(v => ({ name: v.name, lang: v.lang, voiceURI: v.voiceURI, localService: v.localService, default: v.default }));
-      if(voices.length === 0 && availableVoices.length === 0) return; // Voices not loaded yet
-
-      const currentSystemVoices = window.speechSynthesis.getVoices(); // Get fresh system voices for setting actual SpeechSynthesisVoice
+      if(voices.length === 0 && availableVoices.length === 0) return; 
 
       let voiceToSet: TTSVoice | undefined = ttsSettings.voiceURI ? voices.find(v => v.voiceURI === ttsSettings.voiceURI) : undefined;
       let langToSet = ttsSettings.language;
       let settingsChanged = false;
 
-      if (!voiceToSet || (voiceToSet && !voiceToSet.lang.startsWith(ttsSettings.language.split('-')[0]))) {
+      if (!voiceToSet || (voiceToSet && voiceToSet.lang && !voiceToSet.lang.startsWith(ttsSettings.language.split('-')[0]))) {
         const defaultForLang = voices.find(v => v.lang === ttsSettings.language && v.default) ||
                                voices.find(v => v.lang === ttsSettings.language) ||
                                voices.find(v => v.lang?.startsWith(ttsSettings.language.split('-')[0]) && v.default) ||
                                voices.find(v => v.lang?.startsWith(ttsSettings.language.split('-')[0]));
-        if (defaultForLang) {
+        if (defaultForLang && defaultForLang.lang) {
           voiceToSet = defaultForLang;
           langToSet = defaultForLang.lang;
         } else {
           const absoluteFallback = voices.find(v => v.default && v.lang) || (voices.length > 0 ? voices[0] : undefined);
-          if (absoluteFallback) {
+          if (absoluteFallback && absoluteFallback.lang) {
             voiceToSet = absoluteFallback;
             langToSet = absoluteFallback.lang;
           }
@@ -396,12 +391,14 @@ export default function ReaderPage() {
          setTtsSettings(prev => ({ ...prev, voiceURI: newVoiceURI }));
          settingsChanged = true;
       }
-      if (langToSet !== ttsSettings.language) {
+      if (langToSet && langToSet !== ttsSettings.language) {
          setTtsSettings(prev => ({ ...prev, language: langToSet }));
          settingsChanged = true;
       }
 
       if(settingsChanged) LocalStorageService.saveTTSSettings({...ttsSettings, voiceURI: newVoiceURI, language: langToSet});
+      else LocalStorageService.saveTTSSettings(ttsSettings);
+
 
     } else if (ttsSettings.type === 'cloud') {
       if (ttsSettings.voiceURI) {
@@ -413,7 +410,7 @@ export default function ReaderPage() {
     } else {
          LocalStorageService.saveTTSSettings(ttsSettings);
     }
-  }, [ttsSettings.type, ttsSettings.language, ttsSettings.voiceURI, availableVoices, ttsSettings]);
+  }, [ttsSettings.type, ttsSettings.language, ttsSettings.voiceURI, availableVoices]); // Removed ttsSettings dependency
 
 
   useEffect(() => {
@@ -450,7 +447,8 @@ export default function ReaderPage() {
       "This PDF page seems to be an image. Use OCR to extract text.",
       "Performing OCR...", "No document ID provided", "Document with ID",
       "EPUB viewer element not ready", "MOBI file format is not directly supported",
-      "OCR completed, but no text found."
+      "OCR completed, but no text found.",
+      "No document selected.", "No document selected and no previously active document found."
     ];
 
     if (!effectiveTextToRead || invalidMessages.some(msg => effectiveTextToRead.startsWith(msg)) || effectiveTextToRead.length < MIN_TTS_TEXT_LENGTH) {
@@ -483,7 +481,7 @@ export default function ReaderPage() {
 
         if (ttsSettings.voiceURI) voiceToUse = systemVoices.find(v => v.voiceURI === ttsSettings.voiceURI);
         
-        if (!voiceToUse && ttsSettings.language) { // Try to find based on language
+        if (!voiceToUse && ttsSettings.language) { 
             voiceToUse = systemVoices.find(v => v.lang === ttsSettings.language && v.default) ||
                          systemVoices.find(v => v.lang === ttsSettings.language) ||
                          systemVoices.find(v => v.lang?.startsWith(ttsSettings.language.split('-')[0]) && v.default) ||
@@ -496,8 +494,7 @@ export default function ReaderPage() {
         } else if (systemVoices.length === 0 && availableVoices.length === 0) { 
           toast({variant: "destructive", title: "TTS Error", description: "No speech synthesis voices available in this browser."}); stopSpeech(true); return; 
         }
-        // If still no voiceToUse but voices are available, browser will pick one based on utterance.lang
-
+        
         utterance.onend = () => { if(utteranceRef.current === utterance) stopSpeech(true); };
         utterance.onerror = (event) => { if(utteranceRef.current === utterance) { toast({ variant: "destructive", title: "TTS Error", description: event.error || "Speech failed." }); stopSpeech(true); }};
         utteranceRef.current = utterance; 
@@ -539,7 +536,8 @@ export default function ReaderPage() {
       "This PDF page seems to be an image. Use OCR to extract text.",
       "Performing OCR...", "No document ID provided", "Document with ID",
       "EPUB viewer element not ready", "MOBI file format is not directly supported",
-      "OCR completed, but no text found."
+      "OCR completed, but no text found.",
+      "No document selected.", "No document selected and no previously active document found."
     ];
     if (selection && activeDoc && !invalidMessages.some(msg => selection.startsWith(msg)) && selection.length >= MIN_TTS_TEXT_LENGTH) {
       LocalStorageService.addFavoriteItem({ id: Date.now().toString(), text: selection, sourceDocumentId: activeDoc.id, sourceDocumentName: activeDoc.title, createdAt: Date.now() });
@@ -578,7 +576,8 @@ export default function ReaderPage() {
       "This PDF page seems to be an image. Use OCR to extract text.",
       "Performing OCR...", "No document ID provided", "Document with ID",
       "EPUB viewer element not ready", "MOBI file format is not directly supported",
-      "OCR completed, but no text found."
+      "OCR completed, but no text found.",
+      "No document selected.", "No document selected and no previously active document found."
     ];
     const canPlay = !!(effectiveText && !invalidMessages.some(msg => effectiveText.startsWith(msg)) && effectiveText.length >= MIN_TTS_TEXT_LENGTH && activeDoc && !isLoadingDoc && !isPerformingOcr);
     
@@ -603,11 +602,11 @@ export default function ReaderPage() {
   }
   
   const showOcrButtonForPdf = activeDoc?.type === 'pdf' && !pdfPageIsTextBased && pdfPageImage && !isRenderingPdfPage;
-  const showOcrButtonForImage = activeDoc?.type === 'image' && imageSrc && (!activeDoc.extractedText || currentTextForTTS.startsWith("Image loaded. Perform OCR"));
+  const showOcrButtonForImage = activeDoc?.type === 'image' && displayedImageSrc && (!activeDoc.extractedText || currentTextForTTS.startsWith("Image loaded. Perform OCR"));
 
 
   return (
-    <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)]">
+    <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)]"> {/* Adjusted for typical header height */}
       <div className="flex-grow overflow-y-auto bg-muted/20 p-2 md:p-4 relative">
         {docErrorMessage && activeDoc && (activeDoc.type === 'epub' || activeDoc.type === 'pdf') && (
             <div className="absolute inset-x-0 top-4 mx-auto w-fit max-w-md bg-destructive/10 border border-destructive text-destructive p-3 rounded-md shadow-lg z-10 flex items-start gap-2">
@@ -642,9 +641,9 @@ export default function ReaderPage() {
         {!isLoadingDoc && activeDoc?.type === 'txt' && (
           <pre className="whitespace-pre-wrap p-4 bg-background rounded-md shadow-inner text-sm font-mono h-full overflow-y-auto select-text">{txtContent}</pre>
         )}
-        {!isLoadingDoc && activeDoc?.type === 'image' && imageSrc && (
+        {!isLoadingDoc && activeDoc?.type === 'image' && displayedImageSrc && (
             <div className="flex flex-col items-center">
-                <NextImage src={imageSrc} alt={activeDoc.title || 'Uploaded Image'} width={800} height={600} style={{objectFit: 'contain'}} className="max-w-full max-h-[calc(100vh-15rem)] shadow-lg border rounded-md" />
+                <NextImage src={displayedImageSrc} alt={activeDoc.title || 'Uploaded Image'} width={800} height={600} style={{objectFit: 'contain'}} className="max-w-full max-h-[calc(100vh-15rem)] shadow-lg border rounded-md" />
                 {showOcrButtonForImage &&
                     <Button onClick={handlePerformOcr} disabled={isPerformingOcr} className="mt-3">
                         {isPerformingOcr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />} Perform OCR on Image
@@ -684,7 +683,9 @@ export default function ReaderPage() {
                     <BookOpen className="h-5 w-5 text-primary"/> {activeDoc?.title || "No Document Loaded"}
                 </CardTitle>
                 {activeDoc && <CardDescription className="text-xs">Type: {activeDoc.type.toUpperCase()}{activeDoc.type === 'pdf' && pdfTotalPages > 0 ? `, ${currentPdfPageNum}/${pdfTotalPages} pages` : ''}</CardDescription>}
-                 {!activeDoc && !isLoadingDoc && <CardDescription className="text-xs text-destructive">No document is currently loaded or an error occurred.</CardDescription>}
+                 {!activeDoc && !isLoadingDoc && !docErrorMessage && <CardDescription className="text-xs">No document loaded. Select one from the library or refresh if one was previously active.</CardDescription>}
+                 {docErrorMessage && <CardDescription className="text-xs text-destructive">{docErrorMessage}</CardDescription>}
+
             </CardHeader>
         </Card>
         
@@ -751,5 +752,4 @@ export default function ReaderPage() {
     </div>
   );
 }
-
     
