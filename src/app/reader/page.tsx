@@ -25,6 +25,7 @@ import { cn } from '@/lib/utils';
 
 const PDF_DEFAULT_SCALE = 1.5;
 const MIN_PDF_TEXT_LENGTH_FOR_DIRECT_READ = 20; // Min characters to consider a PDF page "text-based"
+const MIN_TTS_TEXT_LENGTH = 5; // Min characters for text to be considered speakable
 
 export default function ReaderPage() {
   const { toast } = useToast();
@@ -38,7 +39,7 @@ export default function ReaderPage() {
   const [pdfDocProxy, setPdfDocProxy] = useState<PDFDocumentProxy | null>(null);
   const [currentPdfPageNum, setCurrentPdfPageNum] = useState(1);
   const [pdfTotalPages, setPdfTotalPages] = useState(0);
-  const [pdfPageImage, setPdfPageImage] = useState<string | null>(null);
+  const [pdfPageImage, setPdfPageImage] = useState<string | null>(null); // For OCRing image-based PDF pages
   const [isRenderingPdfPage, setIsRenderingPdfPage] = useState(false);
   const [pdfScale, setPdfScale] = useState(PDF_DEFAULT_SCALE);
   const [pdfPageIsTextBased, setPdfPageIsTextBased] = useState(true);
@@ -49,7 +50,7 @@ export default function ReaderPage() {
 
   const [txtContent, setTxtContent] = useState<string>("");
   
-  const [imageSrc, setImageSrc] = useState<string | null>(null);
+  const [imageSrc, setImageSrc] = useState<string | null>(null); // For standalone image documents
   const [isPerformingOcr, setIsPerformingOcr] = useState(false);
 
   const [currentTextForTTS, setCurrentTextForTTS] = useState<string>("");
@@ -70,19 +71,28 @@ export default function ReaderPage() {
   }, []);
 
   const stopSpeech = useCallback((resetUIState = true) => {
-    if (ttsSettings.type === 'local' && typeof window !== 'undefined' && window.speechSynthesis) {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel();
-    } else if (audioPlayerRef.current) {
+    }
+    if (audioPlayerRef.current) {
       audioPlayerRef.current.pause();
-      try { if (audioPlayerRef.current.src && audioPlayerRef.current.readyState >= HTMLMediaElement.HAVE_METADATA) audioPlayerRef.current.currentTime = 0; } catch (e) { /* ignore */ }
+      if (audioPlayerRef.current.src && audioPlayerRef.current.readyState >= HTMLMediaElement.HAVE_METADATA) {
+          try { audioPlayerRef.current.currentTime = 0; } catch (e) { /* ignore */ }
+      }
+      // audioPlayerRef.current.src = ""; // Avoid changing src here, can cause issues if play is called soon after
     }
     if (utteranceRef.current) {
-      utteranceRef.current.onend = null; utteranceRef.current.onboundary = null; utteranceRef.current.onerror = null; utteranceRef.current = null;
+      utteranceRef.current.onend = null;
+      utteranceRef.current.onboundary = null;
+      utteranceRef.current.onerror = null;
+      utteranceRef.current = null;
     }
-    if(resetUIState) {
-      setIsSpeaking(false); setIsPaused(false); setIsLoadingTTS(false);
+    if (resetUIState) {
+      setIsSpeaking(false);
+      setIsPaused(false);
+      setIsLoadingTTS(false);
     }
-  }, [ttsSettings.type]);
+  }, []); // No dependencies needed as it accesses refs and global objects
 
   const resetReaderState = useCallback(() => {
     setActiveDoc(null);
@@ -101,7 +111,7 @@ export default function ReaderPage() {
     
     setTxtContent("");
     if (imageSrc) {
-      URL.revokeObjectURL(imageSrc);
+      URL.revokeObjectURL(imageSrc); // Revoke old image URL
       setImageSrc(null);
     }
     setCurrentTextForTTS("");
@@ -110,6 +120,7 @@ export default function ReaderPage() {
     stopSpeech(true);
   }, [imageSrc, epubRendition, stopSpeech]);
   
+  // Load document from IndexedDB
   useEffect(() => {
     const docId = searchParams.get('docId');
     if (!docId) {
@@ -118,7 +129,7 @@ export default function ReaderPage() {
       return;
     }
 
-    resetReaderState();
+    resetReaderState(); // Reset state before loading new doc
 
     IndexedDBService.getDocumentById(docId)
       .then(async (doc) => {
@@ -145,10 +156,10 @@ export default function ReaderPage() {
         } else if (doc.type === 'epub') {
           if (!epubViewerRef.current) {
             setDocErrorMessage("EPUB viewer element not ready.");
-            setIsLoadingDoc(false);
+            setIsLoadingDoc(false); // Stop loading if viewer not ready
             return;
           }
-          epubViewerRef.current.innerHTML = '';
+          epubViewerRef.current.innerHTML = ''; // Clear previous EPUB
           try {
             const ePubModule = await import('epubjs');
             const ePub = ePubModule.default;
@@ -166,7 +177,7 @@ export default function ReaderPage() {
                 setCurrentTextForTTS(text || "Could not extract text from this EPUB section.");
               } catch (textExtractError: any) { console.error("Error extracting text from EPUB section:", textExtractError); setCurrentTextForTTS(`Error extracting text from EPUB: ${textExtractError.message}`); }
             });
-            await renditionInstance.display();
+            await renditionInstance.display(); // This will trigger the 'displayed' event
           } catch (e: any) {
             console.error("Error loading or rendering EPUB:", e);
             const errorMsg = e instanceof Error ? e.message : String(e);
@@ -201,14 +212,17 @@ export default function ReaderPage() {
       
     return () => {
       stopSpeech(true);
-      if (imageSrc) URL.revokeObjectURL(imageSrc); 
+      if (imageSrc) URL.revokeObjectURL(imageSrc); // Clean up Object URL on unmount or doc change
     };
-  }, [searchParams, router, resetReaderState]); // Added router to dep array as good practice
+  }, [searchParams, router, resetReaderState]); // imageSrc was removed from deps of resetReaderState, so no loop expected.
   
+  // Render PDF page and extract text
   useEffect(() => {
     if (activeDoc?.type === 'pdf' && pdfDocProxy && currentPdfPageNum > 0 && currentPdfPageNum <= pdfTotalPages) {
+      stopSpeech(true); // Stop speech when navigating PDF pages
       setIsRenderingPdfPage(true);
       setPdfPageImage(null); 
+      setPdfPageIsTextBased(true); // Assume text-based until proven otherwise
       setCurrentTextForTTS("Loading PDF page...");
       LocalStorageService.saveCurrentPdfPageIndexForDoc(activeDoc.id, currentPdfPageNum);
 
@@ -221,7 +235,7 @@ export default function ReaderPage() {
         
         if (context) {
           await page.render({ canvasContext: context, viewport }).promise;
-          setPdfPageImage(canvas.toDataURL('image/png'));
+          setPdfPageImage(canvas.toDataURL('image/png')); // Store image for potential OCR
         }
         
         const textContent = await page.getTextContent();
@@ -243,21 +257,22 @@ export default function ReaderPage() {
         setIsRenderingPdfPage(false);
       });
     }
-  }, [pdfDocProxy, currentPdfPageNum, pdfTotalPages, pdfScale, activeDoc]);
+  }, [pdfDocProxy, currentPdfPageNum, pdfTotalPages, pdfScale, activeDoc?.id, stopSpeech]);
+
 
   const handlePerformOcr = async () => {
+    stopSpeech(true); // Stop any ongoing speech
     let dataUrlToProcess: string | null = null;
 
     if (activeDoc?.type === 'pdf' && pdfPageImage && !pdfPageIsTextBased) {
-        dataUrlToProcess = pdfPageImage;
-    } else if (activeDoc?.type === 'image' && activeDoc.fileData) { // Ensure fileData exists
-        // For images, we need to get the base64 data URL from the ArrayBuffer
+        dataUrlToProcess = pdfPageImage; // This is already a data URL
+    } else if (activeDoc?.type === 'image' && activeDoc.fileData) {
         try {
           dataUrlToProcess = await IndexedDBService.arrayBufferToBase64DataURL(activeDoc.fileData, activeDoc.originalType);
         } catch (conversionError) {
           toast({variant: "destructive", title: "OCR Error", description: "Could not prepare image data for OCR."});
           console.error("Error converting image ArrayBuffer to Base64 for OCR:", conversionError);
-          return;
+          return; // Exit if conversion fails
         }
     }
     
@@ -273,14 +288,10 @@ export default function ReaderPage() {
         if ('extractedText' in result) {
             const ocrText = result.extractedText || "OCR completed, but no text found.";
             setCurrentTextForTTS(ocrText);
-            if (activeDoc?.type === 'image') { 
+            if (activeDoc?.type === 'image' && activeDoc) { 
                 const updatedDoc = { ...activeDoc, extractedText: ocrText };
                 await IndexedDBService.saveDocument(updatedDoc);
-                setActiveDoc(updatedDoc); // Update activeDoc in state
-            }
-             if (activeDoc?.type === 'pdf' && !pdfPageIsTextBased) {
-                // For PDF, the OCR text is transient and just updates currentTextForTTS
-                // No need to save it back to the PDF document itself
+                setActiveDoc(updatedDoc); 
             }
         } else {
             setCurrentTextForTTS(`OCR Error: ${result.error}`);
@@ -294,13 +305,15 @@ export default function ReaderPage() {
     }
   };
 
+  // Load TTS settings from localStorage
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const loadedSettings = LocalStorageService.loadTTSSettings();
-      setTtsSettings(prevGlobalDefaults => ({ ...prevGlobalDefaults, ...loadedSettings, type: loadedSettings.type || 'local', engine: loadedSettings.engine || loadedSettings.type || 'local' }));
+      setTtsSettings(prev => ({ ...prev, ...loadedSettings, type: loadedSettings.type || 'local', engine: loadedSettings.engine || loadedSettings.type || 'local' }));
     }
   }, []);
 
+  // Populate voice list for local TTS
   const populateVoiceList = useCallback(() => {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       const voices = window.speechSynthesis.getVoices().map(v => ({ name: v.name, lang: v.lang, voiceURI: v.voiceURI, localService: v.localService, default: v.default }));
@@ -313,54 +326,102 @@ export default function ReaderPage() {
     if (typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.onvoiceschanged !== undefined) {
       window.speechSynthesis.onvoiceschanged = populateVoiceList;
     }
-    return () => {
-      if (typeof window !== 'undefined' && window.speechSynthesis) window.speechSynthesis.onvoiceschanged = null;
-      stopSpeech(true);
+    return () => { // Cleanup
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+          window.speechSynthesis.onvoiceschanged = null;
+      }
+      stopSpeech(true); // Ensure speech stops on unmount
     };
   }, [populateVoiceList, stopSpeech]);
   
-  useEffect(() => {
-    if (ttsSettings.type === 'local' && availableVoices.length > 0) {
-        const currentVoice = availableVoices.find(v => v.voiceURI === ttsSettings.voiceURI && v.lang && v.lang.startsWith(ttsSettings.language.split('-')[0]));
-        if (!currentVoice) { 
-            const defaultVoiceForLang = 
-                availableVoices.find(v => v.lang === ttsSettings.language && v.default) ||
-                availableVoices.find(v => v.lang === ttsSettings.language) ||
-                availableVoices.find(v => v.lang && v.lang.startsWith(ttsSettings.language.split('-')[0]) && v.default) ||
-                availableVoices.find(v => v.lang && v.lang.startsWith(ttsSettings.language.split('-')[0]));
-            
-            if (defaultVoiceForLang && defaultVoiceForLang.lang) {
-                setTtsSettings(prev => ({ ...prev, voiceURI: defaultVoiceForLang.voiceURI, language: defaultVoiceForLang.lang }));
-            } else { 
-                 const anyDefaultVoice = availableVoices.find(v => v.default && v.lang) || (availableVoices.length > 0 ? availableVoices[0] : null);
-                 if(anyDefaultVoice && anyDefaultVoice.lang) {
-                    setTtsSettings(prev => ({ ...prev, voiceURI: anyDefaultVoice.voiceURI, language: anyDefaultVoice.lang }));
-                 } else { 
-                    setTtsSettings(prev => ({ ...prev, voiceURI: undefined }));
-                 }
-            }
+  // Effect to set a default voice based on language and engine, and save settings
+ useEffect(() => {
+    if (typeof window !== 'undefined' && window.speechSynthesis && ttsSettings.type === 'local') {
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length === 0 && availableVoices.length === 0) { // Voices not loaded yet
+        // We rely on onvoiceschanged to populate availableVoices and re-trigger this effect.
+        return;
+      }
+      const currentVoices = voices.length > 0 ? voices : availableVoices;
+      if(currentVoices.length === 0) return;
+
+
+      let voiceToSet = ttsSettings.voiceURI ? currentVoices.find(v => v.voiceURI === ttsSettings.voiceURI) : null;
+      let langToSet = ttsSettings.language;
+
+      // If current voice is invalid for current language, or no voiceURI is set, find a suitable one
+      if (!voiceToSet || (voiceToSet && !voiceToSet.lang.startsWith(ttsSettings.language.split('-')[0]))) {
+        const defaultForLang = currentVoices.find(v => v.lang === ttsSettings.language && v.default) ||
+                               currentVoices.find(v => v.lang === ttsSettings.language) ||
+                               currentVoices.find(v => v.lang?.startsWith(ttsSettings.language.split('-')[0]) && v.default) ||
+                               currentVoices.find(v => v.lang?.startsWith(ttsSettings.language.split('-')[0]));
+        if (defaultForLang) {
+          voiceToSet = defaultForLang;
+          langToSet = defaultForLang.lang;
+        } else {
+          const absoluteFallback = currentVoices.find(v => v.default && v.lang) || (currentVoices.length > 0 ? currentVoices[0] : null);
+          if (absoluteFallback) {
+            voiceToSet = absoluteFallback;
+            langToSet = absoluteFallback.lang;
+          }
         }
+      }
+      
+      const newVoiceURI = voiceToSet ? voiceToSet.voiceURI : undefined;
+      if (newVoiceURI !== ttsSettings.voiceURI || langToSet !== ttsSettings.language) {
+         setTtsSettings(prev => ({ ...prev, voiceURI: newVoiceURI, language: langToSet }));
+      }
     } else if (ttsSettings.type === 'cloud') {
-        setTtsSettings(prev => ({ ...prev, voiceURI: undefined }));
+      if (ttsSettings.voiceURI) { // Cloud shouldn't have a voiceURI
+         setTtsSettings(prev => ({ ...prev, voiceURI: undefined }));
+      }
     }
-  }, [ttsSettings.type, ttsSettings.language, availableVoices]);
+    LocalStorageService.saveTTSSettings(ttsSettings); // Save on any ttsSettings change
+  }, [ttsSettings.type, ttsSettings.language, ttsSettings.voiceURI, availableVoices]); // Note: ttsSettings.voiceURI is a dependency
 
 
-  useEffect(() => { LocalStorageService.saveTTSSettings(ttsSettings); }, [ttsSettings]);
-  
+  // Setup audio player for cloud TTS
   useEffect(() => {
     const player = new Audio();
     audioPlayerRef.current = player;
-    const handleAudioEnded = () => stopSpeech(true);
-    const handleAudioPlaying = () => { if (ttsSettings.type === 'cloud' && isSpeaking) setIsLoadingTTS(false); };
-    const handleAudioError = () => { toast({variant: "destructive", title: "Audio Error", description: "Failed to play audio."}); stopSpeech(true); };
-    player.addEventListener('ended', handleAudioEnded); player.addEventListener('playing', handleAudioPlaying); player.addEventListener('error', handleAudioError);
-    return () => {
-      player.removeEventListener('ended', handleAudioEnded); player.removeEventListener('playing', handleAudioPlaying); player.removeEventListener('error', handleAudioError);
-      if (player.src && !player.paused) player.pause(); player.src = ""; if(audioPlayerRef.current === player) audioPlayerRef.current = null;
-    };
-  }, [ttsSettings.type, isSpeaking, toast, stopSpeech]);
 
+    const handleAudioEnded = () => {
+        if (audioPlayerRef.current === player && isSpeaking && ttsSettings.type === 'cloud') {
+            stopSpeech(true);
+        }
+    };
+    const handleAudioPlaying = () => {
+        if (audioPlayerRef.current === player && ttsSettings.type === 'cloud' && isSpeaking) {
+             setIsLoadingTTS(false);
+        }
+    };
+    const handleAudioError = (e: Event) => {
+        if (audioPlayerRef.current === player && isSpeaking && ttsSettings.type === 'cloud') {
+            toast({variant: "destructive", title: "Audio Error", description: "Failed to play cloud TTS audio."});
+            console.error("Cloud TTS Audio Error:", e);
+            stopSpeech(true);
+        }
+    };
+
+    player.addEventListener('ended', handleAudioEnded);
+    player.addEventListener('playing', handleAudioPlaying);
+    player.addEventListener('error', handleAudioError);
+
+    return () => {
+        player.removeEventListener('ended', handleAudioEnded);
+        player.removeEventListener('playing', handleAudioPlaying);
+        player.removeEventListener('error', handleAudioError);
+        if (player.src && !player.paused) {
+            player.pause();
+        }
+        // player.src = ""; // Clear src on cleanup
+        if (audioPlayerRef.current === player) { // Avoid race condition if a new player was created
+            audioPlayerRef.current = null;
+        }
+    };
+  }, [ttsSettings.type, isSpeaking, stopSpeech, toast]); // isSpeaking helps manage isLoadingTTS, stopSpeech/toast are stable
+
+  // Main TTS play/pause logic
   const playPauseSpeech = async () => {
     const selection = typeof window !== 'undefined' ? window.getSelection() : null;
     const selectedTextFromSelection = selection?.toString().trim();
@@ -372,24 +433,29 @@ export default function ReaderPage() {
       "EPUB viewer element not", "EPUB section loaded, but text extraction",
       "This PDF page has no selectable text", "MOBI files cannot be read directly.",
       "This PDF page seems to be an image. Use OCR to extract text.",
-      "Performing OCR..."
+      "Performing OCR...", "No document ID provided", "Document with ID",
+      "EPUB viewer element not ready", "MOBI file format is not directly supported"
     ];
 
-    if (!effectiveTextToRead || invalidMessages.some(msg => effectiveTextToRead.startsWith(msg)) || effectiveTextToRead.length < 5) {
-      toast({ variant: "destructive", title: "No Valid Text", description: "No valid text available to read, document is still loading/processing, or text is too short." });
+    if (!effectiveTextToRead || invalidMessages.some(msg => effectiveTextToRead.startsWith(msg)) || effectiveTextToRead.length < MIN_TTS_TEXT_LENGTH) {
+      toast({ variant: "destructive", title: "No Valid Text", description: "No valid text to read, document processing, or text too short." });
       return;
     }
 
-    if (isSpeaking) {
-      if (isPaused) { 
+    if (isSpeaking) { // If currently speaking (or supposed to be)
+      if (isPaused) { // If paused, resume
         if (ttsSettings.type === 'local' && utteranceRef.current && window.speechSynthesis?.paused) { window.speechSynthesis.resume(); setIsPaused(false); }
         else if (ttsSettings.type === 'cloud' && audioPlayerRef.current?.paused) { audioPlayerRef.current.play().catch(() => stopSpeech(true)); setIsPaused(false); }
-      } else { 
+      } else { // If speaking (not paused), then pause
         if (ttsSettings.type === 'local' && utteranceRef.current && window.speechSynthesis?.speaking) { window.speechSynthesis.pause(); setIsPaused(true); }
         else if (ttsSettings.type === 'cloud' && audioPlayerRef.current && !audioPlayerRef.current.paused) { audioPlayerRef.current.pause(); setIsPaused(true); }
       }
-    } else { 
-      stopSpeech(false); setIsLoadingTTS(true); setIsSpeaking(true); setIsPaused(false);
+    } else { // Not currently speaking, so start speech
+      stopSpeech(false); // Stop any previous speech but keep UI until loading starts
+      setIsLoadingTTS(true); // Set loading true
+      setIsSpeaking(true);   // Set speaking true
+      setIsPaused(false);    // Ensure not paused
+
       if (ttsSettings.type === 'local') {
         if (typeof window === 'undefined' || !window.speechSynthesis) { toast({ variant: "destructive", title: "TTS Error", description: "Browser Speech Synthesis not supported." }); stopSpeech(true); return; }
         
@@ -397,34 +463,34 @@ export default function ReaderPage() {
         utterance.lang = ttsSettings.language; utterance.pitch = ttsSettings.pitch; utterance.rate = ttsSettings.rate;
         
         const voices = window.speechSynthesis.getVoices();
-        let voiceToUse = voices.find(v => v.voiceURI === ttsSettings.voiceURI && v.lang && v.lang.startsWith(ttsSettings.language.split('-')[0]));
+        let voiceToUse: SpeechSynthesisVoice | undefined = undefined;
+        if (ttsSettings.voiceURI) voiceToUse = voices.find(v => v.voiceURI === ttsSettings.voiceURI);
         
-        if (!voiceToUse) { // Fallback voice selection logic
+        if (!voiceToUse) {
             voiceToUse = voices.find(v => v.lang === ttsSettings.language && v.default) ||
                          voices.find(v => v.lang === ttsSettings.language) ||
-                         voices.find(v => v.lang && v.lang.startsWith(ttsSettings.language.split('-')[0]) && v.default) ||
-                         voices.find(v => v.lang && v.lang.startsWith(ttsSettings.language.split('-')[0])) ||
-                         (voices.length > 0 ? voices.find(v => v.default && v.lang) || voices[0] : null);
+                         voices.find(v => v.lang?.startsWith(ttsSettings.language.split('-')[0]) && v.default) ||
+                         voices.find(v => v.lang?.startsWith(ttsSettings.language.split('-')[0]));
         }
-        if (voiceToUse) {
-          utterance.voice = voiceToUse;
-          // Potentially update ttsSettings if a fallback voice's language is more specific
-          if (voiceToUse.lang !== ttsSettings.language) {
-            // Be cautious with direct state updates here to avoid loops.
-            // Consider if this auto-update is desired or if it should be a user action.
-            // For now, we use the found voice but don't auto-update settings display.
-          }
-        } else {
-          toast({variant: "default", title: "Voice Note", description: `No specific voice found for ${ttsSettings.language} & URI. Using browser default.`});
-        }
+        if (!voiceToUse && voices.length > 0) voiceToUse = voices.find(v => v.default && v.lang) || voices[0];
+
+        if (voiceToUse) utterance.voice = voiceToUse;
+        else if (voices.length === 0) { toast({variant: "destructive", title: "TTS Error", description: "No speech synthesis voices available."}); stopSpeech(true); return; }
+        // If still no voiceToUse but voices.length > 0, browser picks one based on utterance.lang
 
         utterance.onend = () => { if(utteranceRef.current === utterance) stopSpeech(true); };
         utterance.onerror = (event) => { if(utteranceRef.current === utterance) { toast({ variant: "destructive", title: "TTS Error", description: event.error || "Speech failed." }); stopSpeech(true); }};
-        utteranceRef.current = utterance; window.speechSynthesis.speak(utterance); setIsLoadingTTS(false);
-      } else { 
+        utteranceRef.current = utterance; 
+        window.speechSynthesis.speak(utterance); 
+        setIsLoadingTTS(false); // Set loading false once speak is initiated
+      } else { // Cloud TTS
         try {
-          const result = await getCloudSpeech(effectiveTextToRead, ttsSettings.language);
-          if ('audioUrl' in result && audioPlayerRef.current) { audioPlayerRef.current.src = result.audioUrl; await audioPlayerRef.current.play(); }
+          const result = await getCloudSpeech(effectiveTextToRead, ttsSettings.language); // language might not be used by cloudTTS flow
+          if ('audioUrl' in result && audioPlayerRef.current) { 
+            audioPlayerRef.current.src = result.audioUrl; 
+            await audioPlayerRef.current.play(); 
+            // setIsLoadingTTS(false) will be handled by 'playing' event listener
+          }
           else if ('error' in result) { toast({ variant: "destructive", title: "Cloud TTS Error", description: result.error }); stopSpeech(true); }
         } catch (e: any) { toast({ variant: "destructive", title: "Cloud TTS Failed", description: e.message }); stopSpeech(true); }
       }
@@ -435,21 +501,10 @@ export default function ReaderPage() {
     stopSpeech(true);
     setTtsSettings(prev => {
       let newSettings = { ...prev, [key]: value };
-      if ((key === 'language' || (key === 'type' && value === 'local')) && newSettings.type === 'local' && availableVoices.length > 0) {
-          const langToConsider = (key === 'language' && typeof value === 'string') ? value : newSettings.language;
-          const suitableVoice = 
-              availableVoices.find(v => v.lang === langToConsider && v.default) ||
-              availableVoices.find(v => v.lang === langToConsider) ||
-              availableVoices.find(v => v.lang && v.lang.startsWith(langToConsider.split('-')[0]) && v.default) ||
-              availableVoices.find(v => v.lang && v.lang.startsWith(langToConsider.split('-')[0]));
-          
-          if (suitableVoice && suitableVoice.lang) {
-              newSettings.voiceURI = suitableVoice.voiceURI;
-              newSettings.language = suitableVoice.lang; 
-          } else {
-              newSettings.voiceURI = undefined; 
-          }
-      } else if (key === 'type' && value === 'cloud') {
+      // Default voice selection logic is now primarily in the useEffect for ttsSettings
+      // This simplifies handleSettingChange.
+      // If type changes to cloud, voiceURI should be cleared.
+      if (key === 'type' && value === 'cloud') {
           newSettings.voiceURI = undefined;
       }
       return newSettings;
@@ -458,19 +513,21 @@ export default function ReaderPage() {
 
   const handleFavoriteSelection = () => {
     const selection = window.getSelection()?.toString().trim() || currentTextForTTS;
-    const invalidMessages = [ 
+    // Re-use invalidMessages from playPauseSpeech for consistency
+     const invalidMessages = [
       "Error:", "Failed to load", "Loading PDF page...", "MOBI files cannot", 
       "Image loaded. Perform OCR", "No text content found", "Could not extract text",
       "EPUB viewer element not", "EPUB section loaded, but text extraction",
       "This PDF page has no selectable text", "MOBI files cannot be read directly.",
       "This PDF page seems to be an image. Use OCR to extract text.",
-      "Performing OCR..."
+      "Performing OCR...", "No document ID provided", "Document with ID",
+      "EPUB viewer element not ready", "MOBI file format is not directly supported"
     ];
-    if (selection && activeDoc && !invalidMessages.some(msg => selection.startsWith(msg)) && selection.length >= 5) {
+    if (selection && activeDoc && !invalidMessages.some(msg => selection.startsWith(msg)) && selection.length >= MIN_TTS_TEXT_LENGTH) {
       LocalStorageService.addFavoriteItem({ id: Date.now().toString(), text: selection, sourceDocumentId: activeDoc.id, sourceDocumentName: activeDoc.title, createdAt: Date.now() });
       toast({ title: "Favorited!", description: `"${selection.substring(0,50)}..." added.`});
     } else {
-      toast({ variant: "destructive", title: "No Valid Text", description: "Ensure valid text (min 5 chars) is available or selected to favorite." });
+      toast({ variant: "destructive", title: "No Valid Text", description: `Ensure valid text (min ${MIN_TTS_TEXT_LENGTH} chars) is available or selected to favorite.` });
     }
   };
 
@@ -501,21 +558,23 @@ export default function ReaderPage() {
       "EPUB viewer element not", "EPUB section loaded, but text extraction",
       "This PDF page has no selectable text", "MOBI files cannot be read directly.",
       "This PDF page seems to be an image. Use OCR to extract text.",
-      "Performing OCR..."
+      "Performing OCR...", "No document ID provided", "Document with ID",
+      "EPUB viewer element not ready", "MOBI file format is not directly supported"
     ];
-    const canPlay = !!(effectiveText && !invalidMessages.some(msg => effectiveText.startsWith(msg)) && effectiveText.length >=5 && activeDoc);
+    const canPlay = !!(effectiveText && !invalidMessages.some(msg => effectiveText.startsWith(msg)) && effectiveText.length >= MIN_TTS_TEXT_LENGTH && activeDoc && !isLoadingDoc && !isPerformingOcr);
     
     if (isLoadingTTS) return { text: "Loading...", icon: <Loader2 className="mr-1 h-4 w-4 animate-spin" />, disabled: true };
-    if (isSpeaking) return isPaused ? { text: "Resume", icon: <Play className="mr-1 h-4 w-4" />, disabled: false } : { text: "Pause", icon: <Pause className="mr-1 h-4 w-4" />, disabled: false };
+    if (isSpeaking && !isPaused) return { text: "Pause", icon: <Pause className="mr-1 h-4 w-4" />, disabled: false };
+    if (isSpeaking && isPaused) return { text: "Resume", icon: <Play className="mr-1 h-4 w-4" />, disabled: false };
     return { text: selectedText ? "Play Selected" : "Play Text", icon: <Play className="mr-1 h-4 w-4" />, disabled: !canPlay };
   };
   const buttonState = getButtonState();
 
-  if (isLoadingDoc && !activeDoc) {
+  if (isLoadingDoc && !activeDoc && !docErrorMessage) { // Show loading only if no error and no active doc yet
     return <div className="flex items-center justify-center h-full flex-grow"><Loader2 className="h-12 w-12 animate-spin text-primary" /><p className="ml-4 text-lg">Loading document...</p></div>;
   }
   
-  if (docErrorMessage && !activeDoc) {
+  if (docErrorMessage && (!activeDoc || (activeDoc && activeDoc.type !== 'pdf' && activeDoc.type !== 'epub' && activeDoc.type !== 'txt' && activeDoc.type !== 'image') ) ) { // Show full page error if doc load totally failed or type is unrenderable
     return <div className="flex flex-col items-center justify-center h-full flex-grow p-4 text-center">
         <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
         <h2 className="text-xl font-semibold mb-2">Error Loading Document</h2>
@@ -529,9 +588,10 @@ export default function ReaderPage() {
 
 
   return (
-    <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)]">
+    <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)]"> {/* AppHeader is 4rem (h-16) */}
       <div className="flex-grow overflow-y-auto bg-muted/20 p-2 md:p-4 relative">
-        {docErrorMessage && activeDoc && (
+        {/* Inline error for recoverable issues, like EPUB corruption */}
+        {docErrorMessage && activeDoc && (activeDoc.type === 'epub' || activeDoc.type === 'pdf') && (
             <div className="absolute inset-x-0 top-4 mx-auto w-fit max-w-md bg-destructive/10 border border-destructive text-destructive p-3 rounded-md shadow-lg z-10 flex items-start gap-2">
                 <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
                 <div>
@@ -548,7 +608,7 @@ export default function ReaderPage() {
           <div className="flex flex-col items-center">
             {isRenderingPdfPage && !pdfPageImage && <Loader2 className="h-10 w-10 animate-spin my-8" />}
             {pdfPageImage && <NextImage src={pdfPageImage} alt={`Page ${currentPdfPageNum}`} width={0} height={0} sizes="100vw" style={{ width: 'auto', height: 'auto', maxHeight: 'calc(100vh - 12rem)', maxWidth: '100%', objectFit: 'contain' }} className="shadow-lg border rounded-md" />}
-            {!pdfPageImage && !isRenderingPdfPage && !docErrorMessage && <div className="my-8 text-muted-foreground">{(pdfDocProxy && pdfTotalPages > 0) ? `Rendering page ${currentPdfPageNum}...` : 'No PDF page to display.'}</div>}
+            {!pdfPageImage && !isRenderingPdfPage && !docErrorMessage && (pdfDocProxy && pdfTotalPages > 0) && <div className="my-8 text-muted-foreground">{`Rendering page ${currentPdfPageNum}...`}</div>}
              {showOcrButtonForPdf && (
                 <Button onClick={handlePerformOcr} disabled={isPerformingOcr} className="mt-3">
                     {isPerformingOcr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />} Perform OCR on PDF Page
@@ -605,7 +665,7 @@ export default function ReaderPage() {
                 <CardTitle className="text-base truncate flex items-center gap-1">
                     <BookOpen className="h-5 w-5 text-primary"/> {activeDoc?.title || "No Document Loaded"}
                 </CardTitle>
-                {activeDoc && <CardDescription className="text-xs">Type: {activeDoc.type.toUpperCase()}{activeDoc.type === 'pdf' && pdfTotalPages > 0 ? `, ${pdfTotalPages} pages` : ''}</CardDescription>}
+                {activeDoc && <CardDescription className="text-xs">Type: {activeDoc.type.toUpperCase()}{activeDoc.type === 'pdf' && pdfTotalPages > 0 ? `, ${currentPdfPageNum}/${pdfTotalPages} pages` : ''}</CardDescription>}
                  {!activeDoc && !isLoadingDoc && <CardDescription className="text-xs text-destructive">No document is currently loaded or an error occurred.</CardDescription>}
             </CardHeader>
         </Card>
@@ -665,7 +725,7 @@ export default function ReaderPage() {
             )}
             <div className="space-y-1"><Label htmlFor="tts-rate" className="text-xs">Rate: {ttsSettings.rate.toFixed(1)}</Label><Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={(isSpeaking && !isPaused) || isLoadingDoc}/></div>
             <div className="space-y-1"><Label htmlFor="tts-pitch" className="text-xs">Pitch: {ttsSettings.pitch.toFixed(1)}</Label><Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={(isSpeaking && !isPaused) || isLoadingDoc}/></div>
-            <Button onClick={playPauseSpeech} disabled={buttonState.disabled || isLoadingDoc || isPerformingOcr} variant={isSpeaking && !isPaused ? "outline" : "default"} className="w-full h-9 text-sm">{buttonState.icon} {buttonState.text}</Button>
+            <Button onClick={playPauseSpeech} disabled={buttonState.disabled} variant={isSpeaking && !isPaused ? "outline" : "default"} className="w-full h-9 text-sm">{buttonState.icon} {buttonState.text}</Button>
             <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full mt-2" disabled={!activeDoc || isLoadingDoc || isPerformingOcr}><Star className="mr-2 h-4 w-4" /> Favorite Text/Selection</Button>
           </CardContent>
         </Card>
