@@ -33,7 +33,7 @@ const safeLocalStorageSet = (key: string, value: any): boolean => {
     // Common ones are 22 (Chrome), 1014 (Firefox for NS_ERROR_DOM_QUOTA_REACHED)
     // Checking name and message is generally more robust.
     if (error instanceof DOMException && (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED' || (error.message && error.message.toLowerCase().includes('quota')))) {
-      specificMessage = `Error setting localStorage key "${key}": QuotaExceededError: Browser's Local Storage is full. Data for this key was NOT saved. USER ACTION REQUIRED: Please go to the app's Library page and delete some documents to free up space.`;
+      specificMessage = `Error setting localStorage key "${key}": QUOTA_EXCEEDED_ERROR. Browser's Local Storage is FULL. The document was NOT saved. USER ACTION REQUIRED: Go to the app's Library page and DELETE some existing documents to free up space. This is a browser limitation, not an application bug.`;
     }
     console.error(specificMessage, error); // Log the more specific message and the original error object
     return false;
@@ -91,7 +91,7 @@ export const addStoredDocument = (document: StoredDocument): boolean => {
     const documents = loadStoredDocuments();
     const existingDocIndex = documents.findIndex(d => d.id === document.id);
     if (existingDocIndex > -1) {
-        console.warn(`Document with ID ${document.id} already exists in library. Updating existing.`);
+        // console.warn(`Document with ID ${document.id} already exists in library. Updating existing.`);
         documents[existingDocIndex] = document;
     } else {
         documents.unshift(document); 
