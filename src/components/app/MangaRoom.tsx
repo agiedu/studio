@@ -127,19 +127,22 @@ export function MangaRoom() {
     let storedDoc: Read2StoredDocument | StoredImageDocument | StoredPdfDocument | undefined | null = null;
 
     if (docIdToLoad) {
-      if (sourceQuery === 'read2' || !sourceQuery) { // Default to Read2 list if source ambiguous or last active
+      // Prioritize loading from Read2 list if source is 'read2' or if it's a last active MangaRoom doc
+      if (sourceQuery === 'read2' || (!sourceQuery && LocalStorage.getRead2StoredDocumentById(docIdToLoad))) {
         storedDoc = LocalStorage.getRead2StoredDocumentById(docIdToLoad);
       } else if (sourceQuery === 'general') { // Specifically from general library
         const generalStoredDoc = LocalStorage.getStoredDocumentById(docIdToLoad);
         if (generalStoredDoc && (generalStoredDoc.type === 'image' || generalStoredDoc.type === 'pdf')) {
           storedDoc = generalStoredDoc as StoredImageDocument | StoredPdfDocument;
         }
+      } else if (!sourceQuery) { // Fallback for last active general doc if not found in Read2 list
+         storedDoc = LocalStorage.getStoredDocumentById(docIdToLoad);
       }
 
 
       if (storedDoc) {
-        // Only save as last active MangaRoom doc if it's inherently a Read2 type or was loaded for Read2
-        if (storedDoc.type === 'image' || (storedDoc.type === 'pdf' && (sourceQuery === 'read2' || LocalStorage.getRead2StoredDocumentById(storedDoc.id)))) {
+        // Only save as last active MangaRoom doc if it's from the Read2 list or was loaded for MangaRoom
+        if (LocalStorage.getRead2StoredDocumentById(storedDoc.id)) {
             LocalStorage.saveLastActiveMangaRoomDocId(storedDoc.id);
         }
 
@@ -168,11 +171,11 @@ export function MangaRoom() {
                 return prevDoc;
               });
               
-              // Update the stored document in its original list
               const updatedStoredImageDoc: StoredImageDocument = {...storedImageDoc, extractedText: ocrText };
-              if (sourceQuery === 'read2' || LocalStorage.getRead2StoredDocumentById(storedImageDoc.id)) {
+              // Update the document in its correct list
+              if (LocalStorage.getRead2StoredDocumentById(storedImageDoc.id)) {
                  LocalStorage.addRead2StoredDocument(updatedStoredImageDoc);
-              } else if (sourceQuery === 'general') {
+              } else if (LocalStorage.getStoredDocumentById(storedImageDoc.id)) { // if it came from general
                  LocalStorage.addStoredDocument(updatedStoredImageDoc);
               }
               
@@ -217,7 +220,7 @@ export function MangaRoom() {
         }
       } else {
         if (docIdToLoad) { // Only toast if we were actually trying to load a specific ID
-          toast({ variant: "destructive", title: "Document Not Found", description: `Previously active document (ID: ${docIdToLoad}) no longer in library.` });
+          toast({ variant: "destructive", title: "Document Not Found", description: `Previously active document (ID: ${docIdToLoad}) no longer in any library.` });
         }
         setActiveDocument(null);
         LocalStorage.saveLastActiveMangaRoomDocId(null);
@@ -228,7 +231,7 @@ export function MangaRoom() {
       setIsLoadingDocument(false);
     }
     setIsLoadingInitialDoc(false);
-  }, [searchParams, router, toast]); // Removed toast from deps for initial load
+  }, [searchParams, router, toast]);
 
  useEffect(() => {
     loadInitialDocument();
@@ -307,6 +310,7 @@ export function MangaRoom() {
     try {
       let pdfDocInstance = pdfDocCacheRef.current[doc.id];
       if (!pdfDocInstance) {
+        // Try to load from Read2 store first, then general store
         const storedDoc = LocalStorage.getRead2StoredDocumentById(doc.id) || LocalStorage.getStoredDocumentById(doc.id);
         
         if (!storedDoc || storedDoc.type !== 'pdf' || !('pdfBase64' in storedDoc && storedDoc.pdfBase64)) {
@@ -524,6 +528,15 @@ export function MangaRoom() {
           });
           LocalStorage.saveLastActiveMangaRoomDocId(newDocId);
           toast({ title: "Image Uploaded", description: `${file.name} added to 'Manga Room Uploads' library & active.` });
+        } else {
+            console.warn(`MangaRoom: Failed to save ${file.name} to Manga Room library. Browser local storage might be full. Please try deleting some documents from the Library.`);
+            toast({ 
+                variant: "destructive", 
+                title: "Storage Quota Exceeded", 
+                description: `Failed to save ${file.name} to Manga Room library. Browser local storage is likely full. Please delete items from the Library page to free up space. This is a browser limitation, not an application bug.`, 
+                duration: 10000 
+            });
+            if (activeDocument?.id === 'temp-loading') setActiveDocument(null);
         }
 
       } else if (file.type === 'application/pdf') {
@@ -564,21 +577,19 @@ export function MangaRoom() {
           toast({ title: "PDF Uploaded", description: `${file.name} added to 'Manga Room Uploads' library & active.` });
           setCurrentPdfInternalPageIndex(0);
           setJumpToPageInput('1');
+        } else {
+             console.warn(`MangaRoom: Failed to save ${file.name} to Manga Room library. Browser local storage might be full. Please try deleting some documents from the Library.`);
+            toast({ 
+                variant: "destructive", 
+                title: "Storage Quota Exceeded", 
+                description: `Failed to save ${file.name} to Manga Room library. Browser local storage is likely full. Please delete items from the Library page to free up space. This is a browser limitation, not an application bug.`, 
+                duration: 10000 
+            });
+            if (activeDocument?.id === 'temp-loading') setActiveDocument(null);
         }
       } else {
         toast({ variant: "destructive", title: "Unsupported File", description: "Please upload an Image or PDF file for Manga Room." });
-      }
-
-      if (!saveToRead2LibrarySuccess && activeDocument?.id === 'temp-loading') {
-        // This is where the quota exceeded error from LocalStorageService would have led to false
-        console.warn(`MangaRoom: Failed to save ${file.name} to Manga Room library. Browser local storage might be full. Please try deleting some documents from the Library.`);
-        toast({ 
-            variant: "destructive", 
-            title: "Storage Quota Exceeded", 
-            description: `Failed to save ${file.name} to Manga Room library. Browser local storage is likely full. Please delete items from the Library page to free up space. This is a browser limitation, not an application bug.`, 
-            duration: 10000 
-        });
-        setActiveDocument(null); // Clear the temporary loading state
+         if (activeDocument?.id === 'temp-loading') setActiveDocument(null);
       }
 
     } catch (error: any) {
@@ -765,7 +776,7 @@ export function MangaRoom() {
       player.src = "";
       if (audioPlayerRef.current === player) audioPlayerRef.current = null;
     };
-  }, [ttsSettings.type, isSpeaking]);
+  }, [ttsSettings.type, isSpeaking, toast]);
 
 
   const handleSettingChange = <K extends keyof TTSSettings>(key: K, value: TTSSettings[K]) => {

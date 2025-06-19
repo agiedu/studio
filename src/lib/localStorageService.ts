@@ -1,5 +1,5 @@
 
-import type { TTSSettings, StoredDocument, FavoriteItem, Read2StoredDocument } from '@/types';
+import type { TTSSettings, StoredDocument, FavoriteItem, Read2StoredDocument, StoredImageDocument, StoredPdfDocument } from '@/types';
 
 const PDF_MANGA_DOCUMENT_PAGE_STATES_KEY = 'mangaTalk_pdfDocumentPageStates_v2';
 const TTS_SETTINGS_KEY = 'mangaTalk_ttsSettings_v2';
@@ -135,7 +135,12 @@ export const deleteRead2StoredDocument = (docId: string): boolean => {
 
 export const getRead2StoredDocumentById = (docId: string): Read2StoredDocument | undefined => {
     const documents = loadRead2StoredDocuments();
-    return documents.find(doc => doc.id === docId);
+    const read2Doc = documents.find(doc => doc.id === docId);
+    // Ensure it conforms to Read2StoredDocument, which can be StoredImageDocument or StoredPdfDocument
+    if (read2Doc && (read2Doc.type === 'image' || read2Doc.type === 'pdf')) {
+        return read2Doc as StoredImageDocument | StoredPdfDocument;
+    }
+    return undefined;
 };
 
 
