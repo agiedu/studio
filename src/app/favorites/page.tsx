@@ -39,7 +39,15 @@ export default function FavoritesPage() {
 
   useEffect(() => {
     setFavoriteItems(LocalStorage.loadFavoriteItems());
-    setTtsSettings(LocalStorage.loadTTSSettings() as FavoritesTTSSettings);
+    const loadedSettings = LocalStorage.loadTTSSettings();
+    // Ensure engine from global settings is applied to favorites specific settings
+    setTtsSettings(prev => ({
+        ...prev, // Keep rate, pitch, etc. from favorites potentially
+        type: loadedSettings.type, // from global
+        engine: loadedSettings.engine || loadedSettings.type || 'local', // ensure engine exists
+        language: loadedSettings.language, // from global
+        voiceURI: loadedSettings.voiceURI // from global
+    }));
   }, []);
   
   const stopSpeechGlobal = useCallback((resetUIState = true) => {
@@ -76,7 +84,6 @@ export default function FavoritesPage() {
     }
   }, []);
 
-  // Effect to populate voice list initially and on voiceschanged event
   useEffect(() => {
     populateVoiceList();
     if (typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.onvoiceschanged !== undefined) {
@@ -90,45 +97,72 @@ export default function FavoritesPage() {
     };
   }, [populateVoiceList, stopSpeechGlobal]);
 
-  // Effect to set a default voice once voices are loaded and if no voice is selected for the current language
    useEffect(() => {
-    if (availableVoices.length > 0 && ttsSettings.engine === 'local') {
-      const currentVoiceIsValidForLanguage = availableVoices.some(
-        (v) => v.voiceURI === ttsSettings.voiceURI && v.lang.startsWith(ttsSettings.language.split('-')[0])
-      );
+    if (ttsSettings.engine === 'local') {
+      if (availableVoices.length > 0) {
+        const currentLang = ttsSettings.language;
+        const currentVoiceURI = ttsSettings.voiceURI;
 
-      if (!ttsSettings.voiceURI || !currentVoiceIsValidForLanguage) {
-        const defaultVoice =
-          availableVoices.find((v) => v.lang === ttsSettings.language && v.default) ||
-          availableVoices.find((v) => v.lang === ttsSettings.language) ||
-          availableVoices.find((v) => v.lang.startsWith(ttsSettings.language.split('-')[0]) && v.default) ||
-          availableVoices.find((v) => v.lang.startsWith(ttsSettings.language.split('-')[0])) ||
-          availableVoices.find((v) => v.default) ||
-          (availableVoices.length > 0 ? availableVoices[0] : undefined);
+        const currentVoiceIsValidForLanguage = availableVoices.some(
+          (v) => v.voiceURI === currentVoiceURI && v.lang && v.lang.startsWith(currentLang.split('-')[0])
+        );
 
-        if (defaultVoice) {
-           if (ttsSettings.voiceURI !== defaultVoice.voiceURI || ttsSettings.language !== defaultVoice.lang) {
-            const newSettings = {
-                ...ttsSettings,
-                voiceURI: defaultVoice.voiceURI,
-                language: defaultVoice.lang, 
-            };
-            setTtsSettings(newSettings);
-            LocalStorage.saveTTSSettings(newSettings);
+        if (!currentVoiceURI || !currentVoiceIsValidForLanguage) {
+          const defaultVoice =
+            availableVoices.find((v) => v.lang === currentLang && v.default) ||
+            availableVoices.find((v) => v.lang === currentLang) ||
+            availableVoices.find((v) => v.lang && v.lang.startsWith(currentLang.split('-')[0]) && v.default) ||
+            availableVoices.find((v) => v.lang && v.lang.startsWith(currentLang.split('-')[0])) ||
+            availableVoices.find((v) => v.default && v.lang) || // Any default voice that has a lang
+            availableVoices.find(v => v.lang) || // First voice that has a lang
+            (availableVoices.length > 0 ? availableVoices[0] : undefined);
+
+
+          if (defaultVoice && defaultVoice.lang) { // Ensure defaultVoice and its lang are usable
+            if (currentVoiceURI !== defaultVoice.voiceURI || currentLang !== defaultVoice.lang) {
+              setTtsSettings(prevSettings => {
+                const newSettings = {
+                  ...prevSettings,
+                  voiceURI: defaultVoice.voiceURI,
+                  language: defaultVoice.lang, // Align language with the chosen voice
+                };
+                // Only save if settings actually changed
+                if (prevSettings.voiceURI !== newSettings.voiceURI || prevSettings.language !== newSettings.language) {
+                  LocalStorage.saveTTSSettings(newSettings);
+                }
+                return newSettings;
+              });
+            }
+          } else if (currentVoiceURI) { // No suitable default voice found, but a voiceURI is set, clear it
+            setTtsSettings(prevSettings => {
+              const newSettings = { ...prevSettings, voiceURI: undefined };
+              if (prevSettings.voiceURI !== newSettings.voiceURI) {
+                 LocalStorage.saveTTSSettings(newSettings);
+              }
+              return newSettings;
+            });
           }
-        } else if (ttsSettings.voiceURI) { 
-            const newSettings = {...ttsSettings, voiceURI: undefined };
-            setTtsSettings(newSettings);
-            LocalStorage.saveTTSSettings(newSettings);
         }
+      } else if (ttsSettings.voiceURI) { // No voices available at all, but voiceURI is set (e.g. from previous load)
+         setTtsSettings(prevSettings => {
+            const newSettings = { ...prevSettings, voiceURI: undefined };
+            if (prevSettings.voiceURI !== newSettings.voiceURI) {
+              LocalStorage.saveTTSSettings(newSettings);
+            }
+            return newSettings;
+          });
       }
     } else if (ttsSettings.engine === 'cloud' && ttsSettings.voiceURI) {
-        // If engine switched to cloud and voiceURI is still set, clear it
-        const newSettings = {...ttsSettings, voiceURI: undefined };
-        setTtsSettings(newSettings);
-        LocalStorage.saveTTSSettings(newSettings);
+      // If engine is cloud, local voiceURI is not applicable
+      setTtsSettings(prevSettings => {
+        const newSettings = { ...prevSettings, voiceURI: undefined };
+        if (prevSettings.voiceURI !== newSettings.voiceURI) {
+            LocalStorage.saveTTSSettings(newSettings);
+        }
+        return newSettings;
+      });
     }
-  }, [availableVoices, ttsSettings.language, ttsSettings.engine, ttsSettings.voiceURI, ttsSettings]);
+  }, [availableVoices, ttsSettings.language, ttsSettings.engine, ttsSettings.voiceURI]);
 
 
   useEffect(() => {
@@ -233,44 +267,44 @@ export default function FavoritesPage() {
   
   const handleSettingChange = <K extends keyof FavoritesTTSSettings>(key: K, value: FavoritesTTSSettings[K]) => {
     stopSpeechGlobal(true);
-    let newSettings = { ...ttsSettings, [key]: value };
+    
+    setTtsSettings(prevSettings => {
+        let newSettings = { ...prevSettings, [key]: value };
 
-    if (key === 'language' && newSettings.engine === 'local') {
-        const newLanguage = value as string;
-        const suitableDefaultVoice = 
-            availableVoices.find(v => v.lang === newLanguage && v.default) ||
-            availableVoices.find(v => v.lang === newLanguage) ||
-            availableVoices.find(v => v.lang.startsWith(newLanguage.split('-')[0]) && v.default) ||
-            availableVoices.find(v => v.lang.startsWith(newLanguage.split('-')[0]));
-        
-        if (suitableDefaultVoice) {
-            // If changing language, set voice to a suitable one for that language
-            newSettings = { ...newSettings, voiceURI: suitableDefaultVoice.voiceURI, language: suitableDefaultVoice.lang };
-        } else {
-            // No suitable voice for new language, clear voiceURI
-            newSettings = { ...newSettings, voiceURI: undefined };
-        }
-    } else if (key === 'engine') {
-        if (value === 'cloud') {
-            newSettings = { ...newSettings, voiceURI: undefined }; // Cloud engine doesn't use local voiceURI
-        } else { // Switching to local
-            // Trigger re-evaluation of default voice for current language when switching to local
-            const currentLang = newSettings.language;
+        if (key === 'language' && newSettings.engine === 'local') {
+            const newLanguage = value as string;
             const suitableDefaultVoice = 
-                availableVoices.find(v => v.lang === currentLang && v.default) ||
-                availableVoices.find(v => v.lang === currentLang) ||
-                availableVoices.find(v => v.lang.startsWith(currentLang.split('-')[0]) && v.default) ||
-                availableVoices.find(v => v.lang.startsWith(currentLang.split('-')[0]));
-            if (suitableDefaultVoice) {
-                 newSettings = { ...newSettings, voiceURI: suitableDefaultVoice.voiceURI, language: suitableDefaultVoice.lang };
+                availableVoices.find(v => v.lang === newLanguage && v.default) ||
+                availableVoices.find(v => v.lang === newLanguage) ||
+                availableVoices.find(v => v.lang && v.lang.startsWith(newLanguage.split('-')[0]) && v.default) ||
+                availableVoices.find(v => v.lang && v.lang.startsWith(newLanguage.split('-')[0]));
+            
+            if (suitableDefaultVoice && suitableDefaultVoice.lang) {
+                newSettings = { ...newSettings, voiceURI: suitableDefaultVoice.voiceURI, language: suitableDefaultVoice.lang };
             } else {
-                 newSettings = { ...newSettings, voiceURI: undefined };
+                newSettings = { ...newSettings, voiceURI: undefined }; // Keep user's typed language if no voice matches
+            }
+        } else if (key === 'engine') {
+            if (value === 'cloud') {
+                newSettings = { ...newSettings, voiceURI: undefined }; 
+            } else { // Switching to local
+                const currentLang = newSettings.language;
+                const suitableDefaultVoice = 
+                    availableVoices.find(v => v.lang === currentLang && v.default) ||
+                    availableVoices.find(v => v.lang === currentLang) ||
+                    availableVoices.find(v => v.lang && v.lang.startsWith(currentLang.split('-')[0]) && v.default) ||
+                    availableVoices.find(v => v.lang && v.lang.startsWith(currentLang.split('-')[0]));
+                if (suitableDefaultVoice && suitableDefaultVoice.lang) {
+                     newSettings = { ...newSettings, voiceURI: suitableDefaultVoice.voiceURI, language: suitableDefaultVoice.lang };
+                } else {
+                     newSettings = { ...newSettings, voiceURI: undefined };
+                }
             }
         }
-    }
-    
-    setTtsSettings(newSettings);
-    LocalStorage.saveTTSSettings(newSettings);
+        
+        LocalStorage.saveTTSSettings(newSettings); // Save the final computed newSettings
+        return newSettings;
+    });
   };
 
 
@@ -306,14 +340,14 @@ export default function FavoritesPage() {
                         <Select 
                             value={ttsSettings.voiceURI || ""} 
                             onValueChange={(v) => handleSettingChange('voiceURI', v)} 
-                            disabled={!!speakingItemId && !pausedItemId || availableVoices.filter(voice => voice.lang.startsWith(ttsSettings.language.split('-')[0])).length === 0}
+                            disabled={!!speakingItemId && !pausedItemId || availableVoices.filter(voice => voice.lang && voice.lang.startsWith(ttsSettings.language.split('-')[0])).length === 0}
                         >
                             <SelectTrigger id="fav-tts-voice"><SelectValue placeholder={availableVoices.length > 0 ? "Select voice" : "No voices available"} /></SelectTrigger>
                             <SelectContent className="max-h-60">
-                            {availableVoices.filter(voice => voice.lang.startsWith(ttsSettings.language.split('-')[0])).map(voice => (
+                            {availableVoices.filter(voice => voice.lang && voice.lang.startsWith(ttsSettings.language.split('-')[0])).map(voice => (
                                 <SelectItem key={voice.voiceURI || voice.name} value={voice.voiceURI}>{voice.name} ({voice.lang})</SelectItem>
                             ))}
-                            {availableVoices.filter(voice => voice.lang.startsWith(ttsSettings.language.split('-')[0])).length === 0 && (
+                            {availableVoices.filter(voice => voice.lang && voice.lang.startsWith(ttsSettings.language.split('-')[0])).length === 0 && (
                                 <SelectItem value="no-voice-fav" disabled>{availableVoices.length > 0 ? "No voices for language" : "No local voices"}</SelectItem>
                             )}
                             </SelectContent>
