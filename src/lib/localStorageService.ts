@@ -62,7 +62,7 @@ export const defaultTTSSettings: TTSSettings = {
   rate: 1,
   pitch: 1,
   voiceURI: undefined,
-  engine: 'local', 
+  engine: 'local',
 };
 export const loadTTSSettings = (): TTSSettings => {
   const settings = safeLocalStorageGet<TTSSettings>(TTS_SETTINGS_KEY, defaultTTSSettings);
@@ -93,7 +93,7 @@ export const addStoredDocument = (document: StoredDocument): boolean => {
     if (existingDocIndex > -1) {
         documents[existingDocIndex] = document;
     } else {
-        documents.unshift(document); 
+        documents.unshift(document);
     }
     return saveStoredDocuments(documents);
 };
@@ -120,7 +120,7 @@ export const saveFavoriteItems = (items: FavoriteItem[]): boolean => {
 
 export const addFavoriteItem = (item: FavoriteItem): boolean => {
     const items = loadFavoriteItems();
-    items.unshift(item); 
+    items.unshift(item);
     return saveFavoriteItems(items);
 };
 
