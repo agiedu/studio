@@ -32,10 +32,8 @@ const safeLocalStorageSet = (key: string, value: any): boolean => {
     let specificMessage = `Error setting localStorage key "${key}"`;
     if (error instanceof DOMException && (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED' || (error.message && error.message.toLowerCase().includes('quota')))) {
       specificMessage = `Error setting localStorage key "${key}": QUOTA_EXCEEDED_ERROR. Browser's Local Storage is FULL. The document was NOT saved. USER ACTION REQUIRED: Go to the app's Library page and DELETE some existing documents to free up space. This is a browser limitation, not an application bug.`;
-       console.error(specificMessage, error); // Log the specific quota error message
-    } else {
-      console.error(specificMessage, error); // Log general error
     }
+    console.error(specificMessage, error); // Log the specific error message
     return false;
   }
 };
