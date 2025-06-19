@@ -108,137 +108,141 @@ export function MangaRoom() {
     setSentenceSegments([]);
     setCurrentSentenceIndex(-1);
     setActiveDocument(null);
+    
+    try {
+      let docIdToLoad: string | null = null;
+      const loadFromLibraryIdQuery = searchParams.get('loadFromLibraryId');
+      const sourceQuery = searchParams.get('source'); // 'read2' or 'general'
 
-    let docIdToLoad: string | null = null;
-    const loadFromLibraryIdQuery = searchParams.get('loadFromLibraryId');
-    const sourceQuery = searchParams.get('source'); // 'read2' or 'general'
-
-    if (loadFromLibraryIdQuery) {
-      docIdToLoad = loadFromLibraryIdQuery;
-      const currentUrl = new URL(window.location.href);
-      currentUrl.searchParams.delete('loadFromLibraryId');
-      currentUrl.searchParams.delete('source');
-      router.replace(currentUrl.pathname + currentUrl.search, { scroll: false });
-    } else {
-      docIdToLoad = LocalStorage.loadLastActiveMangaRoomDocId();
-    }
-
-    let docToDisplay: MangaDocument | null = null;
-    let storedDoc: Read2StoredDocument | StoredImageDocument | StoredPdfDocument | undefined | null = null;
-
-    if (docIdToLoad) {
-      // Prioritize loading from Read2 library if source is 'read2' or if doc exists there
-      if (sourceQuery === 'read2' || (!sourceQuery && LocalStorage.getRead2StoredDocumentById(docIdToLoad))) {
-        storedDoc = LocalStorage.getRead2StoredDocumentById(docIdToLoad);
-      } else if (sourceQuery === 'general') { // If source is 'general', load from general library
-        const generalStoredDoc = LocalStorage.getStoredDocumentById(docIdToLoad);
-        if (generalStoredDoc && (generalStoredDoc.type === 'image' || generalStoredDoc.type === 'pdf')) {
-          storedDoc = generalStoredDoc as StoredImageDocument | StoredPdfDocument;
-        }
-      } else if (!sourceQuery) { // Fallback if no source specified, check general then read2
-         const generalDoc = LocalStorage.getStoredDocumentById(docIdToLoad);
-         if (generalDoc && (generalDoc.type === 'image' || generalDoc.type === 'pdf')) {
-            storedDoc = generalDoc as StoredImageDocument | StoredPdfDocument;
-         } else {
-            storedDoc = LocalStorage.getRead2StoredDocumentById(docIdToLoad); // Check Read2 if not in general
-         }
+      if (loadFromLibraryIdQuery) {
+        docIdToLoad = loadFromLibraryIdQuery;
+        const currentUrl = new URL(window.location.href);
+        currentUrl.searchParams.delete('loadFromLibraryId');
+        currentUrl.searchParams.delete('source');
+        router.replace(currentUrl.pathname + currentUrl.search, { scroll: false });
+      } else {
+        docIdToLoad = LocalStorage.loadLastActiveMangaRoomDocId();
       }
 
+      let docToDisplay: MangaDocument | null = null;
+      let storedDoc: Read2StoredDocument | StoredImageDocument | StoredPdfDocument | undefined | null = null;
 
-      if (storedDoc) {
-        // Only save as last active if it's a document from the Read2 library
-        if (LocalStorage.getRead2StoredDocumentById(storedDoc.id)) {
-            LocalStorage.saveLastActiveMangaRoomDocId(storedDoc.id);
+      if (docIdToLoad) {
+        if (sourceQuery === 'read2' || (!sourceQuery && LocalStorage.getRead2StoredDocumentById(docIdToLoad))) {
+          storedDoc = LocalStorage.getRead2StoredDocumentById(docIdToLoad);
+        } else if (sourceQuery === 'general') {
+          const generalStoredDoc = LocalStorage.getStoredDocumentById(docIdToLoad);
+          if (generalStoredDoc && (generalStoredDoc.type === 'image' || generalStoredDoc.type === 'pdf')) {
+            storedDoc = generalStoredDoc as StoredImageDocument | StoredPdfDocument;
+          }
+        } else if (!sourceQuery) {
+           const generalDoc = LocalStorage.getStoredDocumentById(docIdToLoad);
+           if (generalDoc && (generalDoc.type === 'image' || generalDoc.type === 'pdf')) {
+              storedDoc = generalDoc as StoredImageDocument | StoredPdfDocument;
+           } else {
+              storedDoc = LocalStorage.getRead2StoredDocumentById(docIdToLoad);
+           }
         }
 
-
-        if (storedDoc.type === 'image') {
-          const storedImageDoc = storedDoc as StoredImageDocument;
-          docToDisplay = {
-            id: storedImageDoc.id,
-            title: storedImageDoc.name,
-            type: 'image',
-            imageDataUrl: storedImageDoc.imageDataUrl,
-            extractedText: storedImageDoc.extractedText || "Performing OCR...",
-          };
-          setActiveDocument(docToDisplay);
-          setIsLoadingDocument(false);
-
-          if (!storedImageDoc.extractedText || storedImageDoc.extractedText === "Performing OCR...") {
-            try {
-              const ocrResult = await performOCR(storedImageDoc.imageDataUrl);
-              const ocrText = 'extractedText' in ocrResult ? ocrResult.extractedText : "OCR failed. Select text manually.";
-              
-              setActiveDocument(prevDoc => {
-                if (prevDoc && prevDoc.id === storedImageDoc.id && prevDoc.type === 'image') {
-                  return { ...prevDoc, extractedText: ocrText };
-                }
-                return prevDoc;
-              });
-              
-              // Update the stored document in its respective library
-              const updatedStoredImageDoc: StoredImageDocument = {...storedImageDoc, extractedText: ocrText };
-              if (LocalStorage.getRead2StoredDocumentById(storedImageDoc.id)) { // if it was from Read2 lib
-                 LocalStorage.addRead2StoredDocument(updatedStoredImageDoc);
-              } else if (LocalStorage.getStoredDocumentById(storedImageDoc.id)) { // if it was from general lib
-                 LocalStorage.addStoredDocument(updatedStoredImageDoc);
-              }
-              
-              if ('error' in ocrResult && ocrResult.error) {
-                toast({ variant: "destructive", title: "OCR Error on Load", description: ocrResult.error });
-              }
-            } catch (e: any) {
-              toast({ variant: "destructive", title: "Error processing image on load", description: e.message });
-              setActiveDocument(prev => prev && prev.id === storedImageDoc.id && prev.type === 'image' ? {...prev, extractedText: `Error during OCR: ${e.message}`} : prev);
-            }
+        if (storedDoc) {
+          if (LocalStorage.getRead2StoredDocumentById(storedDoc.id)) {
+              LocalStorage.saveLastActiveMangaRoomDocId(storedDoc.id);
           }
 
-        } else if (storedDoc.type === 'pdf') {
-          const storedPdfDoc = storedDoc as StoredPdfDocument;
-          try {
-            if (!pdfDocCacheRef.current[storedPdfDoc.id]) {
-                 const pdfBytes = base64ToUint8Array(storedPdfDoc.pdfBase64);
-                 const loadingTask = getDocument({data: pdfBytes});
-                 pdfDocCacheRef.current[storedPdfDoc.id] = await loadingTask.promise;
-            }
-            const pdfInstance = pdfDocCacheRef.current[storedPdfDoc.id];
-
+          if (storedDoc.type === 'image') {
+            const storedImageDoc = storedDoc as StoredImageDocument;
             docToDisplay = {
-              id: storedPdfDoc.id,
-              title: storedPdfDoc.name,
-              type: 'pdf',
-              pdfDataUrl: `data:application/pdf;base64,${storedPdfDoc.pdfBase64}`,
-              numPages: pdfInstance.numPages,
-              processedPages: new Array(pdfInstance.numPages).fill(null).map(() => ({ imageDataUrl: '', extractedText: undefined })),
+              id: storedImageDoc.id,
+              title: storedImageDoc.name,
+              type: 'image',
+              imageDataUrl: storedImageDoc.imageDataUrl,
+              extractedText: storedImageDoc.extractedText || "Performing OCR...",
             };
             setActiveDocument(docToDisplay);
-            const savedPageIndex = LocalStorage.loadCurrentPdfPageIndexForDoc(storedPdfDoc.id);
-            setCurrentPdfInternalPageIndex(savedPageIndex !== undefined ? savedPageIndex : 0);
-            setJumpToPageInput(savedPageIndex !== undefined ? (savedPageIndex+1).toString() : '1');
-          } catch (e: any) {
-             toast({ variant: "destructive", title: "Error loading PDF", description: e.message });
-             setActiveDocument(null);
-             if (LocalStorage.getRead2StoredDocumentById(storedDoc.id)) { // Only clear last active for Read2 docs
-                LocalStorage.saveLastActiveMangaRoomDocId(null);
-             }
-          } finally {
             setIsLoadingDocument(false);
+
+            if (!storedImageDoc.extractedText || storedImageDoc.extractedText === "Performing OCR...") {
+              try {
+                const ocrResult = await performOCR(storedImageDoc.imageDataUrl);
+                const ocrText = 'extractedText' in ocrResult ? ocrResult.extractedText : "OCR failed. Select text manually.";
+                
+                setActiveDocument(prevDoc => {
+                  if (prevDoc && prevDoc.id === storedImageDoc.id && prevDoc.type === 'image') {
+                    return { ...prevDoc, extractedText: ocrText };
+                  }
+                  return prevDoc;
+                });
+                
+                const updatedStoredImageDoc: StoredImageDocument = {...storedImageDoc, extractedText: ocrText };
+                if (LocalStorage.getRead2StoredDocumentById(storedImageDoc.id)) {
+                   LocalStorage.addRead2StoredDocument(updatedStoredImageDoc);
+                } else if (LocalStorage.getStoredDocumentById(storedImageDoc.id)) {
+                   LocalStorage.addStoredDocument(updatedStoredImageDoc);
+                }
+                
+                if ('error' in ocrResult && ocrResult.error) {
+                  toast({ variant: "destructive", title: "OCR Error on Load", description: ocrResult.error });
+                }
+              } catch (e: any) {
+                toast({ variant: "destructive", title: "Error processing image on load", description: e.message });
+                setActiveDocument(prev => prev && prev.id === storedImageDoc.id && prev.type === 'image' ? {...prev, extractedText: `Error during OCR: ${e.message}`} : prev);
+              }
+            }
+
+          } else if (storedDoc.type === 'pdf') {
+            const storedPdfDoc = storedDoc as StoredPdfDocument;
+            try {
+              if (!pdfDocCacheRef.current[storedPdfDoc.id]) {
+                   const pdfBytes = base64ToUint8Array(storedPdfDoc.pdfBase64);
+                   const loadingTask = getDocument({data: pdfBytes});
+                   pdfDocCacheRef.current[storedPdfDoc.id] = await loadingTask.promise;
+              }
+              const pdfInstance = pdfDocCacheRef.current[storedPdfDoc.id];
+
+              docToDisplay = {
+                id: storedPdfDoc.id,
+                title: storedPdfDoc.name,
+                type: 'pdf',
+                pdfDataUrl: `data:application/pdf;base64,${storedPdfDoc.pdfBase64}`,
+                numPages: pdfInstance.numPages,
+                processedPages: new Array(pdfInstance.numPages).fill(null).map(() => ({ imageDataUrl: '', extractedText: undefined })),
+              };
+              setActiveDocument(docToDisplay);
+              const savedPageIndex = LocalStorage.loadCurrentPdfPageIndexForDoc(storedPdfDoc.id);
+              setCurrentPdfInternalPageIndex(savedPageIndex !== undefined ? savedPageIndex : 0);
+              setJumpToPageInput(savedPageIndex !== undefined ? (savedPageIndex+1).toString() : '1');
+            } catch (e: any) {
+               toast({ variant: "destructive", title: "Error loading PDF", description: e.message });
+               setActiveDocument(null);
+               if (LocalStorage.getRead2StoredDocumentById(storedDoc.id)) {
+                  LocalStorage.saveLastActiveMangaRoomDocId(null);
+               }
+            } finally {
+              setIsLoadingDocument(false);
+            }
           }
+        } else {
+          if (docIdToLoad) {
+            toast({ variant: "destructive", title: "Document Not Found", description: `Previously active document (ID: ${docIdToLoad}) no longer in any library.` });
+          }
+          setActiveDocument(null);
+          LocalStorage.saveLastActiveMangaRoomDocId(null);
+          setIsLoadingDocument(false);
         }
       } else {
-        if (docIdToLoad) {
-          toast({ variant: "destructive", title: "Document Not Found", description: `Previously active document (ID: ${docIdToLoad}) no longer in any library.` });
-        }
         setActiveDocument(null);
-        LocalStorage.saveLastActiveMangaRoomDocId(null); // Clear if doc not found
         setIsLoadingDocument(false);
       }
-    } else {
-      setActiveDocument(null);
-      setIsLoadingDocument(false);
+    } catch (error: any) {
+        console.error("Critical error during initial document load:", error);
+        toast({ variant: "destructive", title: "Initialization Error", description: `Could not initialize the document view: ${error.message || "Unknown error"}. Please try refreshing.`});
+        setActiveDocument(null);
+        LocalStorage.saveLastActiveMangaRoomDocId(null);
+        setIsLoadingDocument(false);
+    } finally {
+        setIsLoadingInitialDoc(false);
     }
-    setIsLoadingInitialDoc(false);
-  }, [searchParams, router, toast]);
+  }, [searchParams, router, toast, stopSpeechFnRef]);
 
  useEffect(() => {
     loadInitialDocument();
@@ -317,7 +321,6 @@ export function MangaRoom() {
     try {
       let pdfDocInstance = pdfDocCacheRef.current[doc.id];
       if (!pdfDocInstance) {
-        // Check both libraries if not in cache
         const storedDocFromRead2 = LocalStorage.getRead2StoredDocumentById(doc.id);
         const storedDocFromGeneral = LocalStorage.getStoredDocumentById(doc.id);
         const storedDoc = storedDocFromRead2 || storedDocFromGeneral;
@@ -508,13 +511,15 @@ export function MangaRoom() {
         let ocrText = "OCR pending...";
         try {
             const ocrResult = await performOCR(imageDataUrl);
-            ocrText = 'extractedText' in ocrResult ? ocrResult.extractedText : "OCR failed.";
-            if ('error' in ocrResult && ocrResult.error) {
-                toast({ variant: "destructive", title: "OCR Error during upload", description: ocrResult.error });
+            if ('extractedText' in ocrResult) {
+                ocrText = ocrResult.extractedText;
+            } else {
+                ocrText = ocrResult.error || "OCR processing failed.";
+                toast({ variant: "destructive", title: "OCR Error during upload", description: ocrText });
             }
         } catch (ocrError: any) {
-           toast({ variant: "destructive", title: "OCR Processing Error during upload", description: ocrError.message });
-           ocrText = "OCR failed during upload.";
+           toast({ variant: "destructive", title: "OCR Processing Error during upload", description: ocrError.message || "Unknown OCR error." });
+           ocrText = `OCR failed: ${ocrError.message || "Unknown OCR error."}`;
         }
 
         documentToSaveToLibrary = {
@@ -1239,3 +1244,5 @@ export function MangaRoom() {
   );
 }
 
+
+    
