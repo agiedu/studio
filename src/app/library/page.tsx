@@ -11,7 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { UploadCloud, AlertTriangle, Info, ServerCrash, Trash2, BookOpen, FileText, Image as ImageIcon, RefreshCw, Loader2, Save } from 'lucide-react';
 import * as IndexedDBService from '@/lib/indexedDBService';
 import type { StoredMangaDocument } from '@/types';
-import { uploadFileToLocalServer } from '@/lib/localFileService'; // Server Action
+import { uploadFileToLocalServer } from '@/lib/localFileService';
 
 export default function LibraryPage() {
   const { toast } = useToast();
@@ -50,29 +50,39 @@ export default function LibraryPage() {
       let docToStore: StoredMangaDocument;
 
       if (file.type.startsWith('image/')) {
+        // For images, OCR is done in MangaRoom if needed. Here, just store.
+        let extractedText: string | undefined = undefined;
+        // Optionally, if you wanted basic OCR here (adds complexity to library upload):
+        // try {
+        //   const dataUrlForOcr = await IndexedDBService.arrayBufferToBase64DataURL(fileBuffer, file.type);
+        //   const ocrResult = await performOCR(dataUrlForOcr); // Assuming performOCR is imported if used
+        //   extractedText = 'extractedText' in ocrResult ? ocrResult.extractedText : undefined;
+        // } catch (ocrError) {
+        //   console.warn("[LibraryPage] OCR during upload failed (optional):", ocrError);
+        // }
+
         docToStore = {
           id: docId,
           title: file.name,
           type: 'image',
           fileData: fileBuffer,
           originalType: file.type,
-          extractedText: undefined,
+          extractedText: extractedText, // Store if OCR was done, otherwise undefined
           createdAt: Date.now(),
         };
       } else if (file.type === 'application/pdf') {
-        // PDF.js processing for numPages can be intensive here.
-        // Consider doing it on demand or storing numPages after first open in MangaRoom
-        // For now, we'll store it if possible, but be mindful of performance.
         let numPages;
         try {
             const { getDocument, GlobalWorkerOptions, version } = await import('pdfjs-dist');
-            GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${version}/pdf.worker.mjs`;
+            if (typeof window !== 'undefined' && !GlobalWorkerOptions.workerSrc) {
+                 GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${version}/pdf.worker.mjs`;
+            }
             const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) });
             const pdfInstance = await pdfLoadingTask.promise;
             numPages = pdfInstance.numPages;
         } catch (pdfError) {
             console.warn("[LibraryPage] Could not get PDF page count during upload:", pdfError);
-            toast({variant: "default", title: "PDF Info", description: "Uploaded PDF. Page count will be determined when opened."});
+            toast({variant: "default", title: "PDF Info", description: "Uploaded PDF. Page count will be determined when opened in Read2 if not here."});
         }
 
         docToStore = {
@@ -95,13 +105,21 @@ export default function LibraryPage() {
       fetchDocuments(); // Refresh list
 
       // Attempt to sync to local device as a secondary action
-      // This is fire-and-forget from the perspective of this upload flow's primary success
       console.log(`[LibraryPage] Attempting secondary sync for "${file.name}" after saving to IndexedDB.`);
-      const syncResult = await uploadFileToLocalServer(new File([docToStore.fileData], docToStore.title || 'untitled', {type: docToStore.originalType}));
+      
+      const formDataForLocalService = new FormData();
+      formDataForLocalService.append('file', new File([docToStore.fileData], docToStore.title || 'untitled_file', { type: docToStore.originalType }));
+      
+      const syncResult = await uploadFileToLocalServer(formDataForLocalService);
+
       if (syncResult.success) {
         toast({ title: "Synced to Local Device", description: `Secondary sync of "${file.name}" successful. Path: ${syncResult.filePath}` });
       } else {
-        toast({ variant: "default", title: "Local Sync Info (Secondary)", description: `"${file.name}" saved in browser. Secondary sync to local device failed or service not running: ${syncResult.message?.substring(0,100)}` });
+        let description = `"${file.name}" saved in browser. Secondary sync to local device failed or service not running: ${syncResult.message?.substring(0,100)}`;
+        if (Object.keys(syncResult).length === 0) { // Empty object
+            description = `"${file.name}" saved in browser. Secondary sync to local device failed: Server Action returned an empty response. Check Next.js server console and helper service logs.`;
+        }
+        toast({ variant: "default", title: "Local Sync Info (Secondary)", description: description });
       }
 
     } catch (error: any) {
@@ -143,7 +161,7 @@ export default function LibraryPage() {
 
     try {
       const file = new File([doc.fileData], doc.title, { type: doc.originalType });
-      const formData = new FormData(); // Server Action expects FormData
+      const formData = new FormData(); 
       formData.append('file', file);
 
       const localUploadResult = await uploadFileToLocalServer(formData);
@@ -152,7 +170,7 @@ export default function LibraryPage() {
           toast({ title: "Synced to Local Device", description: `"${doc.title}" successfully sent. Path: ${localUploadResult.filePath}` });
       } else {
         let description = "Could not sync to local device. Ensure the helper service is running and check its console.";
-        if (localUploadResult && Object.keys(localUploadResult).length === 0) { // Check for empty object specifically
+        if (localUploadResult && Object.keys(localUploadResult).length === 0) { 
             description = `Sync of "${doc.title}" failed: The application received an empty response from the server. Check Next.js server console and helper service logs.`;
         } else if (localUploadResult && localUploadResult.message) {
             description = `Sync of "${doc.title}" failed: ${localUploadResult.message}`;
@@ -178,7 +196,7 @@ export default function LibraryPage() {
           <CardTitle className="flex items-center gap-2"><UploadCloud className="text-primary" /> Add Document to Browser Storage</CardTitle>
           <CardDescription>
             Upload PDF or Image files. They will be stored directly in **this browser's internal storage (IndexedDB)**, making them available for offline reading within MangaTalk on this device.
-            You can optionally "Sync to Device" to also save a copy to your computer's file system via the MangaTalk local helper service (if it's running).
+            You can optionally use &quot;Sync to Device&quot; to also save a copy to your computer&apos;s file system via the MangaTalk local helper service (if it&apos;s running and configured).
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -199,10 +217,10 @@ export default function LibraryPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><BookOpen className="text-primary" /> Documents Stored in This Browser</CardTitle>
+          <CardTitle className="flex items-center gap-2"><BookOpen className="text-primary" /> Documents Stored in This Browser (IndexedDB)</CardTitle>
           <CardDescription>
-            Below is a list of documents currently stored in this browser's internal storage (IndexedDB).
-            Click "Open in Read2" to view and read them. You can delete them from browser storage or attempt to sync a copy to your local device (requires the MangaTalk helper service to be running).
+            Below is a list of documents currently stored in this browser&apos;s internal storage.
+            Click &quot;Open in Read2&quot; to view. You can delete them or attempt to sync a copy to your local device.
           </CardDescription>
           <Button variant="outline" size="sm" onClick={fetchDocuments} disabled={isLoading || isUploading} className="mt-2 w-fit">
             <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} /> Refresh List
@@ -223,7 +241,7 @@ export default function LibraryPage() {
                       <p className="text-base font-medium truncate" title={doc.title}>{doc.title || 'Untitled Document'}</p>
                       <p className="text-xs text-muted-foreground">
                         Type: {doc.originalType} | Stored: {new Date(doc.createdAt || 0).toLocaleDateString()}
-                        {doc.type === 'pdf' && doc.numPages && ` | Pages: ${doc.numPages}`}
+                        {doc.type === 'pdf' && doc.numPages !== undefined && ` | Pages: ${doc.numPages}`}
                       </p>
                     </div>
                   </div>
@@ -238,7 +256,7 @@ export default function LibraryPage() {
                         variant="outline"
                         onClick={() => handleSyncToDevice(doc)}
                         disabled={isSyncing === doc.id || isUploading}
-                        className="w-[150px]" // Adjusted width
+                        className="w-[150px]" 
                         title="Saves a copy to your computer via the local helper service."
                     >
                         {isSyncing === doc.id ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />} Sync to Device
@@ -254,34 +272,34 @@ export default function LibraryPage() {
         </CardContent>
         {storedDocuments.length > 0 && (
           <CardFooter>
-            <p className="text-xs text-muted-foreground">These documents are stored in your browser's IndexedDB. Clearing your browser's site data for MangaTalk will remove them.</p>
+            <p className="text-xs text-muted-foreground">These documents are stored in your browser&apos;s IndexedDB. Clearing your browser&apos;s site data for MangaTalk will remove them.</p>
           </CardFooter>
         )}
       </Card>
 
       <Card className="border-destructive bg-destructive/5">
         <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-destructive-foreground"><ServerCrash className="h-6 w-6" /> Understanding the "Sync to Device" Feature</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-destructive-foreground"><ServerCrash className="h-6 w-6" /> Understanding the &quot;Sync to Device&quot; Feature</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-destructive-foreground/90">
             <p className="font-semibold text-base">
-                The "Sync to Device" button attempts to save a copy of your browser-stored document to your computer's file system.
+                The &quot;Sync to Device&quot; button attempts to save a copy of your browser-stored document to your computer&apos;s file system.
                 This requires the **MangaTalk local helper service** (e.g., a `server.js` Node.js script) to be **RUNNING** on your computer and accessible at `http://localhost:3001/upload`.
             </p>
             <p className="font-medium">
-                If "Sync to Device" fails (e.g., with errors like <span className="font-bold">&quot;Failed to connect,&quot;</span> <span className="font-bold">&quot;fetch failed,&quot;</span> <span className="font-bold">&quot;Connection Refused,&quot;</span> or <span className="font-bold">&quot;unexpected response&quot;</span>), it means MangaTalk could not communicate with your local helper service.
+                If &quot;Sync to Device&quot; fails (e.g., with errors like <span className="font-bold">&quot;Failed to connect,&quot;</span> <span className="font-bold">&quot;fetch failed,&quot;</span> <span className="font-bold">&quot;Connection Refused,&quot;</span> or <span className="font-bold">&quot;unexpected response&quot;</span>), it means MangaTalk could not communicate with your local helper service.
             </p>
-             <p className="font-semibold mt-3">Troubleshooting "Sync to Device":</p>
+             <p className="font-semibold mt-3">Troubleshooting &quot;Sync to Device&quot;:</p>
              <ol className="list-decimal pl-5 space-y-1.5">
                 <li><strong>CRITICAL: START YOUR LOCAL HELPER SERVICE.</strong> Open a terminal/command prompt, navigate to the directory containing your helper service script (e.g., `server.js`), and run it (e.g., <code className="bg-destructive/20 px-1 py-0.5 rounded">node server.js</code>).</li>
-                <li><strong>CHECK HELPER SERVICE CONSOLE:</strong> Look at the terminal output of your helper service. It should clearly indicate that it's running and listening on port 3001. This is the most important step for debugging its behavior.</li>
-                <li><strong>VERIFY HELPER SERVICE URL & RESPONSE:</strong> Confirm your helper service is configured to listen for uploads at `http://localhost:3001/upload` and sends back JSON responses like `{"status":"ok", "path":"..."}` or `{"success":true, "filePath":"..."}` on success, and `{"status":"error", "message":"..."}` or `{"success":false, "message":"..."}` on failure.</li>
-                <li><strong>FIREWALL:</strong> Ensure your computer's firewall is not blocking incoming connections to port 3001 for the helper service application.</li>
-                <li><strong>RETRY SYNC:</strong> After verifying the above, try the "Sync to Device" button again.</li>
-                <li><strong>CHECK MANGA TALK (NEXT.JS) SERVER CONSOLE:</strong> Also check the console where you run MangaTalk (`npm run dev`) for detailed error messages from the Server Action if the sync fails. It might log more specific details about "unexpected responses" or network errors.</li>
+                <li><strong>CHECK HELPER SERVICE CONSOLE:</strong> Look at the terminal output of your helper service. It should clearly indicate that it&apos;s running and listening on port 3001. This is the most important step for debugging its behavior.</li>
+                <li><strong>VERIFY HELPER SERVICE URL & RESPONSE:</strong> Confirm your helper service is configured to listen for uploads at `http://localhost:3001/upload` and sends back JSON responses like `{"status":"ok", "filePath":"..."}` or `{"success":true, "filePath":"..."}` on success, and `{"status":"error", "message":"..."}` or `{"success":false, "message":"..."}` on failure.</li>
+                <li><strong>FIREWALL:</strong> Ensure your computer&apos;s firewall is not blocking incoming connections to port 3001 for the helper service application.</li>
+                <li><strong>RETRY SYNC:</strong> After verifying the above, try the &quot;Sync to Device&quot; button again.</li>
+                <li><strong>CHECK MANGA TALK (NEXT.JS) SERVER CONSOLE:</strong> Also check the console where you run MangaTalk (`npm run dev`) for detailed error messages from the Server Action if the sync fails. It might log more specific details about &quot;unexpected responses&quot; or network errors.</li>
             </ol>
             <p className="mt-3">
-                Remember: Your documents are primarily stored in this browser's IndexedDB for offline access by MangaTalk. "Sync to Device" is an additional backup. If it fails, your documents remain safe in the browser storage.
+                Remember: Your documents are primarily stored in this browser&apos;s IndexedDB for offline access by MangaTalk. &quot;Sync to Device&quot; is an additional backup/export. If it fails, your documents remain safe in the browser storage.
             </p>
         </CardContent>
       </Card>
@@ -292,15 +310,15 @@ export default function LibraryPage() {
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-muted-foreground">
             <p>
-                If your local helper service is unavailable or you prefer direct control for saving files displayed in MangaTalk's Read2 page:
+                If your local helper service is unavailable or you prefer direct control for saving files displayed in MangaTalk&apos;s Read2 page:
             </p>
              <ul className="list-disc pl-5 space-y-1">
-                <li><strong>Save Image/PDF from Read2:</strong> When viewing an image or a PDF page in the Read2 viewer, you can often right-click the displayed image/page and select "Save Image As..." or a similar option provided by your browser.</li>
-                <li><strong>Print to PDF (for text):</strong> If you have text content displayed, most browsers allow you to "Print" the page and choose "Save as PDF".</li>
+                <li><strong>Save Image/PDF from Read2:</strong> When viewing an image or a PDF page in the Read2 viewer, you can often right-click the displayed image/page and select &quot;Save Image As...&quot; or a similar option provided by your browser. This saves the *currently viewed image* (which could be a single page of a PDF).</li>
+                <li><strong>Print to PDF (for text):</strong> If you have text content displayed, most browsers allow you to &quot;Print&quot; the page and choose &quot;Save as PDF&quot;.</li>
                 <li><strong>Screenshots:</strong> For visual content, taking screenshots is always an option.</li>
             </ul>
             <p className="font-medium mt-2">
-                These manual methods are workarounds and do not use the "Sync to Device" feature, which relies on an **operational local helper service.**
+                These manual methods are workarounds and do not use the &quot;Sync to Device&quot; feature, which relies on an **operational local helper service.** They also typically save the *rendered view* rather than the original uploaded file.
             </p>
         </CardContent>
       </Card>
