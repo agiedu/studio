@@ -11,7 +11,9 @@ interface UploadResponse {
   message?: string;
 }
 
-export async function uploadFileToLocalServer(data: FormData): Promise<{ success: boolean; message: string; filePath?: string }> {
+export async function uploadFileToLocalServer(
+  data: FormData
+): Promise<{ success: boolean; message: string; filePath?: string }> {
   // Top-level try-catch to ensure we always return a structured response
   try {
     const file = data.get('file') as File | null;
@@ -22,6 +24,8 @@ export async function uploadFileToLocalServer(data: FormData): Promise<{ success
     }
 
     // This FormData is for the fetch request to the local helper service
+    // The Server Action receives 'data' (which is FormData), and we extract the file.
+    // For the fetch call to the local service, we need to construct a new FormData.
     const formDataForFetch = new FormData();
     formDataForFetch.append("file", file); 
 
@@ -37,20 +41,25 @@ export async function uploadFileToLocalServer(data: FormData): Promise<{ success
     try {
       response = await fetch(LOCAL_SERVER_URL, {
         method: "POST",
-        body: formDataForFetch,
+        body: formDataForFetch, // Use the newly created FormData with the file
         signal: controller.signal,
       });
     } catch (fetchError: any) {
       clearTimeout(timeoutId);
       let userMessage = `Failed to connect to the local file saving service at ${LOCAL_SERVER_URL}.`;
       if (fetchError.name === 'AbortError') {
-        console.error('[localFileService] Request to local server timed out.');
         userMessage = `Request to the local file saving service timed out after ${FETCH_TIMEOUT_MS / 1000} seconds. Please ensure it is running and responsive.`;
-      } else if (fetchError.message && typeof fetchError.message === 'string' && fetchError.message.toLowerCase().includes('econnrefused')) {
-        userMessage = `Connection refused by the local file saving service at ${LOCAL_SERVER_URL}. Please ensure it's running.`;
+      } else if (fetchError.message && typeof fetchError.message === 'string') {
+        const errMsgLower = fetchError.message.toLowerCase();
+        if (errMsgLower.includes('econnrefused')) {
+          userMessage = `Connection was REFUSED by the local file saving service at ${LOCAL_SERVER_URL}. Please ensure it's running and not blocked by a firewall. Details: ${fetchError.message}`;
+        } else if (errMsgLower.includes('fetch failed')) {
+          userMessage = `The request to the local file saving service at ${LOCAL_SERVER_URL} FAILED entirely. This usually means the service is not running or is unreachable from the application's server environment. Please check your local service. Details: ${fetchError.message}`;
+        } else {
+          userMessage += ` Please ensure it is running and accessible. Details: ${fetchError.message.substring(0,100)}`;
+        }
       } else {
-        const errorMessageDetail = typeof fetchError?.message === 'string' ? fetchError.message : String(fetchError);
-        userMessage += ` Details: ${errorMessageDetail.substring(0, 150)}${errorMessageDetail.length > 150 ? '...' : ''}`;
+        userMessage += ` An unknown network error occurred. Please ensure the local service is running and accessible.`;
       }
       console.error('[localFileService] Fetch error:', fetchError);
       return { success: false, message: userMessage };
@@ -73,7 +82,7 @@ export async function uploadFileToLocalServer(data: FormData): Promise<{ success
         } catch (parseError) {
           console.warn("[localFileService] Local server error response was not JSON. Status:", response.status, parseError);
           if (responseText.trim().toLowerCase().startsWith("<html>") || responseText.trim().toLowerCase().startsWith("<!doctype html>")) {
-            errorMessage += `\nLocal server returned an HTML page (possibly an error page).`;
+            errorMessage += `\nLocal server returned an HTML page (possibly an error page), not the expected JSON.`;
           } else {
             errorMessage += `\nRaw response snippet: ${responseText.substring(0, 150)}${responseText.length > 150 ? '...' : ''}`;
           }
@@ -82,10 +91,9 @@ export async function uploadFileToLocalServer(data: FormData): Promise<{ success
       console.error('[localFileService] Upload failed (response not ok):', errorMessage);
       return { success: false, message: errorMessage };
     }
-
-    // Check for empty responseText even if response.ok is true
+    
     if (!responseText && response.ok) {
-      const emptyResponseMessage = "Local server returned a successful status but an empty/invalid response body. Cannot confirm save.";
+      const emptyResponseMessage = "Local server returned a successful status but an empty/invalid response body. Cannot confirm save. Please check the local helper service's implementation.";
       console.warn('[localFileService]', emptyResponseMessage);
       return { success: false, message: emptyResponseMessage };
     }
@@ -107,17 +115,18 @@ export async function uploadFileToLocalServer(data: FormData): Promise<{ success
       return { success: false, message: parseErrorMessage };
     }
 
-  } catch (error: any) {
+  } catch (error: any) { // This is a critical fallback for unexpected errors within the Server Action itself
     console.error("[localFileService] CRITICAL UNHANDLED ERROR in uploadFileToLocalServer:", error);
-    let connectMessage = "A critical error occurred while trying to communicate with the local file saving service.";
+    let connectMessage = "A critical error occurred within the MangaTalk application while trying to process your file for local saving.";
 
-    if (error instanceof TypeError && typeof error.message === 'string' && error.message.toLowerCase().includes('failed to fetch')) {
-         connectMessage = `Connection to the local file saving service failed (network error). Please ensure it's running at ${LOCAL_SERVER_URL} and that there are no CORS issues if your local server is configured to require them.`;
+    if (error instanceof TypeError && typeof error.message === 'string' && error.message.toLowerCase().includes('invalid response')) {
+         connectMessage = `The MangaTalk application received an invalid or malformed response from an internal step. This is an application-side issue.`;
     } else if (error.message && typeof error.message === 'string') {
         connectMessage += ` Details: ${error.message.substring(0,150)}${error.message.length > 150 ? '...' : ''}`;
     } else {
-        connectMessage += " An unknown internal error or network issue occurred.";
+        connectMessage += " An unknown internal error occurred.";
     }
     return { success: false, message: connectMessage };
   }
 }
+
