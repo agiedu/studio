@@ -1,33 +1,52 @@
 
-export interface MangaSubPage {
+export interface MangaSubPage { // Primarily for PDF pages rendered as images
   imageDataUrl: string;
   extractedText?: string;
 }
 
-export interface MangaFile {
-  id: string; // For in-app identification, typically a timestamp or UUID
-  title?: string; // Original file name
-  type: 'image' | 'pdf';
-  fileData: ArrayBuffer; // Store actual file content for IndexedDB
-  originalType: string; // e.g., 'image/png', 'application/pdf'
+// Base for all stored documents
+export interface StoredDocumentBase {
+  id: string;
+  title: string; // Original file name will be used as title
+  fileData: ArrayBuffer; // Store actual file content
+  originalType: string; // e.g., 'image/png', 'application/pdf', 'application/epub+zip', 'text/plain'
   createdAt: number;
 }
 
-export interface MangaImageFile extends MangaFile {
+export interface StoredImageDocument extends StoredDocumentBase {
   type: 'image';
-  imageDataUrl?: string; // Can be generated from fileData on demand, or stored if small
-  extractedText?: string;
+  extractedText?: string; // For OCR'd text
 }
 
-export interface MangaPdfFile extends MangaFile {
+export interface StoredPdfDocument extends StoredDocumentBase {
   type: 'pdf';
-  // pdfDataUrl is removed as fileData holds the ArrayBuffer
-  numPages: number;
-  processedPages: MangaSubPage[]; // These are for display, not primary storage of PDF pages themselves from original file
+  numPages?: number;
+  // For PDF, text extraction will be on-the-fly in the reader or pre-extracted per page if complex.
+  // We won't store all 'processedPages' with image data here to save space in IndexedDB.
+  // The reader will generate page images as needed.
 }
 
-// This will be the primary type stored in IndexedDB
-export type StoredMangaDocument = Omit<MangaImageFile, 'processedPages' | 'numPages'> | Omit<MangaPdfFile, 'processedPages'> & { numPages?: number };
+export interface StoredEpubDocument extends StoredDocumentBase {
+  type: 'epub';
+  // epub.js works directly with the ArrayBuffer (fileData)
+}
+
+export interface StoredMobiDocument extends StoredDocumentBase {
+  type: 'mobi';
+  // Placeholder; direct rendering is complex.
+}
+
+export interface StoredTxtDocument extends StoredDocumentBase {
+  type: 'txt';
+  // fileData (ArrayBuffer) will be decoded to text in the reader.
+}
+
+export type StoredMangaDocument =
+  | StoredImageDocument
+  | StoredPdfDocument
+  | StoredEpubDocument
+  | StoredMobiDocument
+  | StoredTxtDocument;
 
 
 export interface TTSSettings {
@@ -36,7 +55,7 @@ export interface TTSSettings {
   language: string;
   rate: number;
   pitch: number;
-  engine?: 'local' | 'cloud';
+  engine?: 'local' | 'cloud'; // engine can be derived from type, or explicit
 }
 
 export interface TTSVoice {
@@ -50,10 +69,15 @@ export interface TTSVoice {
 export interface FavoriteItem {
   id: string;
   text: string;
-  sourceDocumentId?: string; // This would be the ID from IndexedDB
+  sourceDocumentId?: string;
   sourceDocumentName?: string;
   createdAt: number;
 }
 
-// For active document state in MangaRoom, similar to StoredMangaDocument but might include transient display data
-export type ActiveMangaDocument = MangaImageFile | MangaPdfFile;
+// This type might be used by the ReaderPage to hold the currently active document
+// It could be identical to StoredMangaDocument or have additional transient reader state
+export type ActiveMangaDocument = StoredMangaDocument & {
+  // Example of transient state, could be managed within ReaderPage's component state
+  // currentPdfPageImage?: string; 
+  // currentEpubBookInstance?: any; // epub.js Book instance
+};

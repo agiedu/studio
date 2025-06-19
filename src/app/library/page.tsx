@@ -8,11 +8,12 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { UploadCloud, AlertTriangle, Info, ServerCrash, Trash2, BookOpen, FileText, Image as ImageIcon, RefreshCw, Loader2, Save } from 'lucide-react';
+import { UploadCloud, AlertTriangle, Info, ServerCrash, Trash2, BookOpen, FileText, Image as ImageIcon, RefreshCw, Loader2, Save, FileType2, Book } from 'lucide-react';
 import * as IndexedDBService from '@/lib/indexedDBService';
 import type { StoredMangaDocument } from '@/types';
+import { getDocument, GlobalWorkerOptions, version as pdfjsVersion } from 'pdfjs-dist';
 
-// Helper function (remains outside component)
+
 function arrayBufferToBlob(buffer: ArrayBuffer, type: string): Blob {
   return new Blob([buffer], { type });
 }
@@ -40,6 +41,9 @@ export default function LibraryPage() {
 
   useEffect(() => {
     fetchDocuments();
+     if (typeof window !== 'undefined' && !GlobalWorkerOptions.workerSrc) {
+        GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsVersion}/pdf.worker.mjs`;
+    }
   }, [fetchDocuments]);
 
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -48,55 +52,46 @@ export default function LibraryPage() {
 
     setIsUploading(true);
     const docId = `doc_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-    let storedDocForIndexDB: StoredMangaDocument | null = null;
+    let newDocument: StoredMangaDocument | null = null;
 
     try {
       const fileBuffer = await file.arrayBuffer();
-      let numPagesForPdf: number | undefined = undefined;
+      const commonDocProps = {
+        id: docId,
+        title: file.name,
+        fileData: fileBuffer,
+        originalType: file.type,
+        createdAt: Date.now(),
+      };
 
       if (file.type.startsWith('image/')) {
-        let extractedText = "OCR will be performed if you open this in Read2.";
-        storedDocForIndexDB = {
-          id: docId,
-          title: file.name,
-          type: 'image',
-          fileData: fileBuffer,
-          originalType: file.type,
-          createdAt: Date.now(),
-          extractedText: extractedText,
-        };
+        newDocument = { ...commonDocProps, type: 'image', extractedText: "OCR will be performed if you open this in the reader." };
       } else if (file.type === 'application/pdf') {
-        try {
-          const { getDocument, GlobalWorkerOptions, version } = await import('pdfjs-dist');
-          if (typeof window !== 'undefined' && !GlobalWorkerOptions.workerSrc) {
-            GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${version}/pdf.worker.mjs`;
+         try {
+            const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) });
+            const pdfInstance = await pdfLoadingTask.promise;
+            newDocument = { ...commonDocProps, type: 'pdf', numPages: pdfInstance.numPages };
+          } catch (pdfError: any) {
+            console.warn(`[LibraryPage] Could not get PDF page count for ${file.name}:`, pdfError);
+            toast({ variant: "default", title: "PDF Info", description: `Uploaded PDF "${file.name}". Page count determination issue: ${pdfError.message}.` });
+            newDocument = { ...commonDocProps, type: 'pdf', numPages: undefined };
           }
-          const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) });
-          const pdfInstance = await pdfLoadingTask.promise;
-          numPagesForPdf = pdfInstance.numPages;
-        } catch (pdfError: any) {
-          console.warn(`[LibraryPage] Could not get PDF page count during upload for ${file.name}:`, pdfError);
-          toast({ variant: "default", title: "PDF Info", description: `Uploaded PDF "${file.name}". Page count determination issue: ${pdfError.message}. Page count may be approximate.` });
-        }
-        storedDocForIndexDB = {
-          id: docId,
-          title: file.name,
-          type: 'pdf',
-          fileData: fileBuffer,
-          originalType: file.type,
-          numPages: numPagesForPdf,
-          createdAt: Date.now(),
-        };
+      } else if (file.type === 'application/epub+zip' || file.name.toLowerCase().endsWith('.epub')) {
+        newDocument = { ...commonDocProps, type: 'epub', originalType: 'application/epub+zip' };
+      } else if (file.type === 'application/x-mobipocket-ebook' || file.name.toLowerCase().endsWith('.mobi')) {
+        newDocument = { ...commonDocProps, type: 'mobi', originalType: 'application/x-mobipocket-ebook' };
+      } else if (file.type === 'text/plain' || file.name.toLowerCase().endsWith('.txt')) {
+        newDocument = { ...commonDocProps, type: 'txt', originalType: 'text/plain' };
       } else {
-        toast({ variant: "destructive", title: "Unsupported File Type", description: "Please upload an Image or PDF file." });
+        toast({ variant: "destructive", title: "Unsupported File Type", description: `Files of type "${file.type || 'unknown'}" (${file.name}) are not supported. Please upload Image, PDF, EPUB, MOBI, or TXT.` });
         setIsUploading(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
         return;
       }
 
-      if (storedDocForIndexDB) {
-        await IndexedDBService.saveDocument(storedDocForIndexDB);
-        toast({ title: "Document Saved in Browser", description: `"${storedDocForIndexDB.title}" has been saved to your browser's internal storage.` });
+      if (newDocument) {
+        await IndexedDBService.saveDocument(newDocument);
+        toast({ title: "Document Saved in Browser", description: `"${newDocument.title}" has been saved to your browser's internal storage.` });
         fetchDocuments(); 
       }
     } catch (error: any) {
@@ -146,7 +141,7 @@ export default function LibraryPage() {
           suggestedName: suggestedName,
           types: [
             {
-              description: 'Document',
+              description: 'Document', // Generic description
               accept: { [doc.originalType]: [`.${doc.title.split('.').pop() || 'bin'}`] },
             },
           ],
@@ -156,7 +151,6 @@ export default function LibraryPage() {
         await writable.close();
         toast({ title: "Saved to Device", description: `"${doc.title}" successfully saved.` });
       } else {
-        // Fallback for browsers that don't support File System Access API
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -168,7 +162,6 @@ export default function LibraryPage() {
         toast({ title: "Download Started", description: `"${doc.title}" is downloading.` });
       }
     } catch (error: any) {
-        // Catch errors from showSaveFilePicker (e.g., user cancellation) or blob operations
         if (error.name === 'AbortError') {
           toast({ variant: "default", title: "Save Cancelled", description: "File saving was cancelled by the user." });
         } else {
@@ -179,6 +172,17 @@ export default function LibraryPage() {
         setIsSavingToDevice(null);
     }
   }, [toast]);
+  
+  const getDocumentIcon = (docType: StoredMangaDocument['type']) => {
+    switch (docType) {
+      case 'image': return <ImageIcon className="h-8 w-8 text-primary flex-shrink-0" />;
+      case 'pdf': return <FileType2 className="h-8 w-8 text-primary flex-shrink-0" />; // Using FileType2 for PDF
+      case 'epub': return <BookOpen className="h-8 w-8 text-primary flex-shrink-0" />;
+      case 'mobi': return <Book className="h-8 w-8 text-primary flex-shrink-0" />; // Using Book for MOBI
+      case 'txt': return <FileText className="h-8 w-8 text-primary flex-shrink-0" />;
+      default: return <FileText className="h-8 w-8 text-primary flex-shrink-0" />;
+    }
+  };
 
   return (
     <div className="container mx-auto p-4 md:p-6 space-y-6">
@@ -186,18 +190,18 @@ export default function LibraryPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><UploadCloud className="text-primary" /> Add Document to Browser Storage</CardTitle>
           <CardDescription>
-            Upload PDF or Image files. They will be stored directly in **this browser&apos;s internal storage (IndexedDB)**, making them available for offline reading within MangaTalk on this device.
+            Upload EPUB, MOBI, PDF, TXT, or Image files. They will be stored directly in **this browser&apos;s internal storage (IndexedDB)**.
             Use the &quot;Save to Device&quot; button to save a copy to your computer&apos;s file system.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid w-full max-w-md items-center gap-1.5">
-            <Label htmlFor="doc-upload-library">Document File (.pdf, .png, .jpg, etc.)</Label>
+            <Label htmlFor="doc-upload-library">Document File (.epub, .mobi, .pdf, .txt, .png, .jpg, etc.)</Label>
             <Input
               ref={fileInputRef}
               id="doc-upload-library"
               type="file"
-              accept="application/pdf,image/*"
+              accept="application/epub+zip,application/x-mobipocket-ebook,application/pdf,text/plain,image/*"
               onChange={handleFileUpload}
               disabled={isUploading || isLoading}
             />
@@ -208,26 +212,26 @@ export default function LibraryPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><BookOpen className="text-primary" /> Documents Stored in This Browser (IndexedDB)</CardTitle>
+          <CardTitle className="flex items-center gap-2"><BookOpen className="text-primary" /> Documents Stored in This Browser</CardTitle>
           <CardDescription>
-            Below is a list of documents currently stored in this browser&apos;s internal storage.
-            Click &quot;Open in Read2&quot; to view. You can delete them or save a copy to your local device.
+            Below is a list of documents currently stored in this browser.
+            Click &quot;Open in Reader&quot; to view.
           </CardDescription>
           <Button variant="outline" size="sm" onClick={fetchDocuments} disabled={isLoading || isUploading} className="mt-2 w-fit">
             <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} /> Refresh List
           </Button>
         </CardHeader>
         <CardContent>
-          {isLoading && !storedDocuments.length && <p className="text-muted-foreground flex items-center"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading documents from browser storage...</p>}
+          {isLoading && !storedDocuments.length && <p className="text-muted-foreground flex items-center"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading documents...</p>}
           {!isLoading && storedDocuments.length === 0 && (
-            <p className="text-muted-foreground">No documents found in your browser storage. Upload one above to get started.</p>
+            <p className="text-muted-foreground">No documents found. Upload one above to get started.</p>
           )}
           {storedDocuments.length > 0 && (
             <ul className="space-y-3">
               {storedDocuments.map(doc => (
                 <li key={doc.id} className="p-3 border rounded-md flex flex-col sm:flex-row justify-between items-start gap-3 bg-card hover:shadow-md transition-shadow">
                   <div className="flex items-center gap-3 flex-grow min-w-0">
-                    {doc.type === 'pdf' ? <FileText className="h-8 w-8 text-primary flex-shrink-0" /> : <ImageIcon className="h-8 w-8 text-primary flex-shrink-0" />}
+                    {getDocumentIcon(doc.type)}
                     <div className="min-w-0">
                       <p className="text-base font-medium truncate" title={doc.title}>{doc.title || 'Untitled Document'}</p>
                       <p className="text-xs text-muted-foreground">
@@ -238,8 +242,8 @@ export default function LibraryPage() {
                   </div>
                   <div className="flex gap-2 mt-2 sm:mt-0 sm:items-center flex-shrink-0">
                     <Button size="sm" variant="outline" asChild>
-                      <Link href={`/?docId=${doc.id}`}>
-                        <BookOpen className="mr-1.5 h-4 w-4" /> Open in Read2
+                      <Link href={`/reader?docId=${doc.id}`}>
+                        <BookOpen className="mr-1.5 h-4 w-4" /> Open in Reader
                       </Link>
                     </Button>
                     <Button
@@ -263,7 +267,7 @@ export default function LibraryPage() {
         </CardContent>
         {storedDocuments.length > 0 && (
           <CardFooter>
-            <p className="text-xs text-muted-foreground">These documents are stored in your browser&apos;s IndexedDB. Clearing your browser&apos;s site data for MangaTalk will remove them.</p>
+            <p className="text-xs text-muted-foreground">These documents are stored in your browser&apos;s IndexedDB. Clearing site data for MangaTalk will remove them.</p>
           </CardFooter>
         )}
       </Card>
@@ -274,21 +278,13 @@ export default function LibraryPage() {
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-blue-600 dark:text-blue-400/90">
             <p className="font-semibold text-base">
-                The &quot;Save to Device&quot; button allows you to save a copy of your browser-stored document directly to your computer&apos;s file system.
+                The &quot;Save to Device&quot; button allows you to save a copy of your browser-stored document to your computer.
             </p>
-            <p className="font-medium">
-                Modern browsers (like Chrome, Edge, Opera) use the File System Access API to show a native &quot;Save As&quot; dialog, allowing you to choose the location and name.
-            </p>
-             <p>
-                Older browsers or those that don&apos;t support this API will use the traditional download method.
-            </p>
-            <p className="mt-3">
-                This feature operates entirely within your browser and does not require any external helper services. Your documents are primarily stored in this browser&apos;s IndexedDB for offline access by MangaTalk. &quot;Save to Device&quot; is for creating backups or user-managed copies.
+            <p>
+                Modern browsers use the File System Access API for a native &quot;Save As&quot; dialog. Older browsers will use a standard download.
             </p>
         </CardContent>
       </Card>
     </div>
   );
 }
-
-    

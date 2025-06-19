@@ -34,9 +34,11 @@ export function AppHeader() {
   };
 
   const getLinkClass = (path: string) => {
+    // For reader, also highlight if path starts with /reader (e.g. /reader?docId=...)
+    const isActive = path === '/reader' ? pathname.startsWith('/reader') : pathname === path;
     return cn(
       "flex items-center gap-1 md:gap-2",
-      pathname === path && "bg-accent text-accent-foreground rounded-md"
+      isActive && "bg-accent text-accent-foreground rounded-md"
     );
   };
 
@@ -44,7 +46,7 @@ export function AppHeader() {
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex h-16 items-center justify-between px-4 md:px-6">
         <div className="flex items-center gap-2 md:gap-4">
-          <Link href="/" className="flex items-center gap-2">
+          <Link href="/library" className="flex items-center gap-2"> {/* Home link now points to library */}
             <MangaTalkLogo className="h-8 w-8" />
             <h1 className="text-xl md:text-2xl font-bold font-headline text-primary">MangaTalk</h1>
           </Link>
@@ -57,11 +59,6 @@ export function AppHeader() {
             <Button variant="ghost" asChild size="sm" className={getLinkClass('/reader')}>
               <Link href="/reader">
                 <BookOpenText className="mr-1 h-4 w-4" /> Reader
-              </Link>
-            </Button>
-            <Button variant="ghost" asChild size="sm" className={getLinkClass('/')}>
-              <Link href="/">
-                <HomeIcon className="mr-1 h-4 w-4" /> Read2
               </Link>
             </Button>
              <Button variant="ghost" asChild size="sm" className={getLinkClass('/favorites')}>
