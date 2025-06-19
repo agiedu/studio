@@ -67,6 +67,7 @@ export interface StoredPdfDocument extends BaseStoredDocument {
 export interface StoredImageDocument extends BaseStoredDocument {
   type: 'image';
   imageDataUrl: string; // Store full image data URI
+  extractedText?: string; // To store OCR text for images from MangaRoom
 }
 
 export type StoredDocument = StoredTxtDocument | StoredPdfDocument | StoredImageDocument;
@@ -78,4 +79,8 @@ export interface FavoriteItem {
   sourceDocumentName?: string;
   createdAt: number;
 }
+
+// Type specifically for Read2 stored documents, which might evolve
+// For now, it's the same as StoredDocument, but images will have extractedText
+export type Read2StoredDocument = StoredImageDocument | StoredPdfDocument;
 

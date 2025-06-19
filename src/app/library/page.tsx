@@ -8,19 +8,21 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { UploadCloud, BookOpen, Trash2, FileText, FileType2, Image as ImageIcon, Info } from 'lucide-react';
+import { UploadCloud, BookOpen, Trash2, FileText, FileType2, Image as ImageIcon, Info, Home } from 'lucide-react';
 import * as LocalStorage from '@/lib/localStorageService';
-import type { StoredDocument, StoredTxtDocument, StoredPdfDocument, StoredImageDocument } from '@/types';
+import type { StoredDocument, StoredTxtDocument, StoredPdfDocument, StoredImageDocument, Read2StoredDocument } from '@/types';
 import { format } from 'date-fns';
 
 export default function LibraryPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const [documents, setDocuments] = useState<StoredDocument[]>([]);
+  const [generalDocuments, setGeneralDocuments] = useState<StoredDocument[]>([]);
+  const [read2Documents, setRead2Documents] = useState<Read2StoredDocument[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    setDocuments(LocalStorage.loadStoredDocuments());
+    setGeneralDocuments(LocalStorage.loadStoredDocuments());
+    setRead2Documents(LocalStorage.loadRead2StoredDocuments());
   }, []);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -35,6 +37,7 @@ export default function LibraryPage() {
       createdAt: Date.now(),
     };
     let shouldClearInput = true;
+    let saveSuccess = false;
 
     try {
       if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
@@ -44,11 +47,13 @@ export default function LibraryPage() {
           type: 'txt',
           textContent,
         };
-        LocalStorage.addStoredDocument(newDoc);
-        setDocuments(prev => [newDoc, ...prev].sort((a,b) => b.createdAt - a.createdAt));
-        toast({ title: "Success", description: `${file.name} uploaded to library.` });
+        saveSuccess = LocalStorage.addStoredDocument(newDoc);
+        if (saveSuccess) {
+          setGeneralDocuments(prev => [newDoc, ...prev].sort((a,b) => b.createdAt - a.createdAt));
+          toast({ title: "Success", description: `${file.name} uploaded to general library.` });
+        }
       } else if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
-        shouldClearInput = false; 
+        shouldClearInput = false;
         const reader = new FileReader();
         reader.onload = (e) => {
           const pdfDataUrl = e.target?.result as string;
@@ -59,14 +64,18 @@ export default function LibraryPage() {
               type: 'pdf',
               pdfBase64,
             };
-            LocalStorage.addStoredDocument(newDoc);
-            setDocuments(prev => [newDoc, ...prev].sort((a,b) => b.createdAt - a.createdAt));
-            toast({ title: "Success", description: `${file.name} uploaded to library.` });
+            const pdfSaveSuccess = LocalStorage.addStoredDocument(newDoc);
+            if (pdfSaveSuccess) {
+              setGeneralDocuments(prev => [newDoc, ...prev].sort((a,b) => b.createdAt - a.createdAt));
+              toast({ title: "Success", description: `${file.name} uploaded to general library.` });
+            } else {
+                 toast({ variant: "destructive", title: "Storage Error", description: `Failed to save ${file.name}. Local storage might be full.` });
+            }
           } else {
             toast({ variant: "destructive", title: "Error", description: "Could not read PDF file content." });
           }
           setIsLoading(false);
-          if (event.target) event.target.value = ''; 
+          if (event.target) event.target.value = '';
         };
         reader.onerror = () => {
           toast({ variant: "destructive", title: "Error", description: "Failed to read file." });
@@ -74,21 +83,27 @@ export default function LibraryPage() {
           if (event.target) event.target.value = '';
         };
         reader.readAsDataURL(file);
-        return; 
+        return;
       } else if (file.type.startsWith('image/')) {
-        shouldClearInput = false; 
+         shouldClearInput = false;
         const reader = new FileReader();
         reader.onload = (e) => {
           const imageDataUrl = e.target?.result as string;
           if (imageDataUrl) {
+            // Images uploaded via Library page go to the general library as StoredImageDocument without pre-extracted OCR text
             const newDoc: StoredImageDocument = {
               ...commonDetails,
               type: 'image',
               imageDataUrl,
+              // extractedText is not set here, MangaRoom handles OCR for images from general library
             };
-            LocalStorage.addStoredDocument(newDoc);
-            setDocuments(prev => [newDoc, ...prev].sort((a,b) => b.createdAt - a.createdAt));
-            toast({ title: "Success", description: `${file.name} (image) uploaded to library.` });
+            const imageSaveSuccess = LocalStorage.addStoredDocument(newDoc);
+             if (imageSaveSuccess) {
+                setGeneralDocuments(prev => [newDoc, ...prev].sort((a,b) => b.createdAt - a.createdAt));
+                toast({ title: "Success", description: `${file.name} (image) uploaded to general library.` });
+            } else {
+                toast({ variant: "destructive", title: "Storage Error", description: `Failed to save ${file.name}. Local storage might be full.` });
+            }
           } else {
             toast({ variant: "destructive", title: "Error", description: "Could not read image file content." });
           }
@@ -102,36 +117,55 @@ export default function LibraryPage() {
         };
         reader.readAsDataURL(file);
         return;
+      } else {
+        toast({ variant: "destructive", title: "Unsupported File", description: "Please upload a TXT, PDF, or Image file to the general library." });
       }
-      else {
-        toast({ variant: "destructive", title: "Unsupported File", description: "Please upload a TXT, PDF, or Image file." });
+
+      if (!saveSuccess && (file.type === 'text/plain' || file.name.endsWith('.txt'))) {
+        toast({ variant: "destructive", title: "Storage Error", description: `Failed to save ${file.name}. Local storage might be full.` });
       }
+
     } catch (error: any) {
       toast({ variant: "destructive", title: "Upload Error", description: error.message || "An unknown error occurred." });
     } finally {
-        if (shouldClearInput) { 
+        if (shouldClearInput) {
             setIsLoading(false);
-            if (event.target) event.target.value = ''; 
+            if (event.target) event.target.value = '';
         }
     }
   };
 
-  const handleDeleteDocument = (docId: string) => {
-    LocalStorage.deleteStoredDocument(docId);
-    setDocuments(prev => prev.filter(doc => doc.id !== docId));
-    toast({ title: "Document Deleted", description: "The document has been removed from your library." });
-  };
-
-  const handleReadDocument = (doc: StoredDocument) => {
-    if (doc.type === 'image') {
-      // Navigate to the root page (MangaRoom) for images
-      router.push(`/?loadFromLibraryId=${doc.id}`); 
-    } else { // TXT and PDF go to ReaderPage
-      router.push(`/reader?docId=${doc.id}`);
+  const handleDeleteDocument = (docId: string, source: 'general' | 'read2') => {
+    let success = false;
+    if (source === 'general') {
+      success = LocalStorage.deleteStoredDocument(docId);
+      if (success) setGeneralDocuments(prev => prev.filter(doc => doc.id !== docId));
+    } else {
+      success = LocalStorage.deleteRead2StoredDocument(docId);
+      if (success) setRead2Documents(prev => prev.filter(doc => doc.id !== docId));
+    }
+    if (success) {
+      toast({ title: "Document Deleted", description: "The document has been removed." });
+    } else {
+      toast({ variant: "destructive", title: "Delete Error", description: "Failed to delete the document." });
     }
   };
 
-  const getFileIcon = (type: StoredDocument['type']) => {
+  const handleReadDocument = (doc: StoredDocument | Read2StoredDocument, source: 'general' | 'read2') => {
+    if (source === 'read2') {
+      // All Read2 documents (images with OCR or PDFs) go to MangaRoom
+      router.push(`/?loadFromLibraryId=${doc.id}&source=read2`);
+    } else { // General library
+      if (doc.type === 'image') {
+        // Images from general library also go to MangaRoom for OCR
+        router.push(`/?loadFromLibraryId=${doc.id}&source=general`);
+      } else { // TXT and PDF from general library go to ReaderPage
+        router.push(`/reader?docId=${doc.id}`);
+      }
+    }
+  };
+
+  const getFileIcon = (type: StoredDocumentType | Read2StoredDocument['type']) => {
     switch(type) {
       case 'txt': return <FileText className="h-5 w-5 text-blue-500" />;
       case 'pdf': return <FileType2 className="h-5 w-5 text-red-500" />;
@@ -140,33 +174,19 @@ export default function LibraryPage() {
     }
   }
 
-  return (
-    <div className="container mx-auto p-4 md:p-6 space-y-6">
+  const renderDocumentList = (docs: (StoredDocument | Read2StoredDocument)[], source: 'general' | 'read2', title: string, description: string) => {
+    return (
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><UploadCloud className="text-primary" /> Upload to Library</CardTitle>
-          <CardDescription>Upload TXT, PDF, or Image files to store them locally for reading. This is the main place to add documents.</CardDescription>
+          <CardTitle>{title}</CardTitle>
+          <CardDescription>{description}</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid w-full max-w-md items-center gap-1.5">
-            <Label htmlFor="doc-upload-library">Document File (.txt, .pdf, .png, .jpg, etc.)</Label>
-            <Input id="doc-upload-library" type="file" accept=".txt,application/pdf,image/*" onChange={handleFileUpload} disabled={isLoading} />
-          </div>
-          {isLoading && <p className="mt-2 text-sm text-muted-foreground">Processing file...</p>}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>My Library</CardTitle>
-          <CardDescription>Your locally stored documents. Click "Read" to open.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {documents.length === 0 ? (
-             <p className="text-muted-foreground flex items-center gap-2"><Info className="h-5 w-5" /> Your library is empty. Upload some documents to get started!</p>
+          {docs.length === 0 ? (
+             <p className="text-muted-foreground flex items-center gap-2"><Info className="h-5 w-5" /> This library section is empty.</p>
           ) : (
             <ul className="space-y-3">
-              {documents.map(doc => (
+              {docs.map(doc => (
                 <li key={doc.id} className="p-3 border rounded-md flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 bg-card hover:shadow-md transition-shadow">
                   <div className="flex-grow">
                     <h3 className="font-semibold flex items-center gap-1.5">
@@ -178,10 +198,11 @@ export default function LibraryPage() {
                     </p>
                   </div>
                   <div className="flex gap-2 mt-2 sm:mt-0 flex-shrink-0">
-                    <Button size="sm" variant="outline" onClick={() => handleReadDocument(doc)} disabled={isLoading}>
-                      <BookOpen className="mr-1.5 h-4 w-4" /> Read
+                    <Button size="sm" variant="outline" onClick={() => handleReadDocument(doc, source)} disabled={isLoading}>
+                      {source === 'read2' || doc.type === 'image' ? <Home className="mr-1.5 h-4 w-4" /> : <BookOpen className="mr-1.5 h-4 w-4" />}
+                      Read {source === 'read2' || doc.type === 'image' ? 'in Read2' : 'in Reader'}
                     </Button>
-                    <Button size="sm" variant="destructive" onClick={() => handleDeleteDocument(doc.id)} disabled={isLoading}>
+                    <Button size="sm" variant="destructive" onClick={() => handleDeleteDocument(doc.id, source)} disabled={isLoading}>
                       <Trash2 className="mr-1.5 h-4 w-4" /> Delete
                     </Button>
                   </div>
@@ -190,12 +211,35 @@ export default function LibraryPage() {
             </ul>
           )}
         </CardContent>
-        {documents.length > 0 && (
+        {docs.length > 0 && (
           <CardFooter>
-            <p className="text-xs text-muted-foreground">Your documents are stored in your browser's local storage.</p>
+            <p className="text-xs text-muted-foreground">Documents are stored in your browser's local storage.</p>
           </CardFooter>
         )}
       </Card>
+    );
+  }
+
+
+  return (
+    <div className="container mx-auto p-4 md:p-6 space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><UploadCloud className="text-primary" /> Upload to General Library</CardTitle>
+          <CardDescription>Upload TXT, PDF, or Image files here. TXT/PDFs open in Reader, Images open in Read2 for OCR.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid w-full max-w-md items-center gap-1.5">
+            <Label htmlFor="doc-upload-library">Document File (.txt, .pdf, .png, .jpg, etc.)</Label>
+            <Input id="doc-upload-library" type="file" accept=".txt,application/pdf,image/*" onChange={handleFileUpload} disabled={isLoading} />
+          </div>
+          {isLoading && <p className="mt-2 text-sm text-muted-foreground">Processing file...</p>}
+        </CardContent>
+      </Card>
+
+      {renderDocumentList(generalDocuments, 'general', "My General Library", "Documents for text reader or Read2 (images).")}
+      {renderDocumentList(read2Documents, 'read2', "Manga Room Uploads", "Images (with OCR) and PDFs uploaded directly in Read2.")}
+
     </div>
   );
 }
