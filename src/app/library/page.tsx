@@ -10,8 +10,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { useToast } from '@/hooks/use-toast';
 import { UploadCloud, BookOpen, Trash2, FileText, FileType2, Image as ImageIcon, Info, Home } from 'lucide-react';
 import * as LocalStorage from '@/lib/localStorageService';
-import { uploadFileToLocalServer } from '@/lib/localFileService'; // Import new service
-import type { StoredDocument, Read2StoredDocument } from '@/types'; // StoredImageDocument, StoredPdfDocument no longer directly created here for new uploads
+import { uploadFileToLocalServer } from '@/lib/localFileService'; 
+import type { StoredDocument, Read2StoredDocument } from '@/types'; 
 import { format } from 'date-fns';
 
 export default function LibraryPage() {
@@ -22,8 +22,6 @@ export default function LibraryPage() {
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    // These still load from browser LocalStorage, showing previously saved items.
-    // New uploads via this page will go to the local helper service.
     setGeneralDocuments(LocalStorage.loadStoredDocuments());
     setRead2Documents(LocalStorage.loadRead2StoredDocuments());
   }, []);
@@ -33,25 +31,15 @@ export default function LibraryPage() {
     if (!file) return;
 
     setIsLoading(true);
-    let fileToSend: File = file; // Default to original file
-
+    
     try {
-      if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
-        const textContent = await file.text();
-        // For TXT, we create a new File object with the text content to send
-        // as the local server expects a File.
-        fileToSend = new File([textContent], file.name, { type: "text/plain" });
-      }
-      // For PDF and Image, fileToSend remains the original file.
-
-      // Send the file (original or created TXT file) to the local helper service
-      const localUploadResult = await uploadFileToLocalServer(fileToSend);
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const localUploadResult = await uploadFileToLocalServer(formData);
 
       if (localUploadResult.success) {
         toast({ title: "File Sent to Local Device", description: `${file.name} sent to local service. Path: ${localUploadResult.filePath}` });
-        // Note: We are NOT adding it to setGeneralDocuments or LocalStorage.addStoredDocument anymore.
-        // The Library UI will not reflect this new file unless a mechanism to list files
-        // from the local helper service is implemented.
       } else {
         toast({ variant: "destructive", title: "Local Save Failed", description: localUploadResult.message });
       }
@@ -65,7 +53,6 @@ export default function LibraryPage() {
   };
 
   const handleDeleteDocument = (docId: string, source: 'general' | 'read2') => {
-    // Deletion still targets browser LocalStorage for now
     let success = false;
     if (source === 'general') {
       success = LocalStorage.deleteStoredDocument(docId);
@@ -82,12 +69,10 @@ export default function LibraryPage() {
   };
 
   const handleReadDocument = (doc: StoredDocument | Read2StoredDocument, source: 'general' | 'read2') => {
-    // Reading logic still assumes documents are loaded from browser LocalStorage.
-    // This will need adjustment if we want to read files managed by the local helper service.
     if (source === 'read2') {
       router.push(`/?loadFromLibraryId=${doc.id}&source=read2`);
     } else { 
-      if (doc.type === 'image') {
+      if (doc.type === 'image' || doc.type === 'pdf') { // Also allow PDF from general to load in Read2
         router.push(`/?loadFromLibraryId=${doc.id}&source=general`);
       } else { 
         router.push(`/reader?docId=${doc.id}`);
@@ -129,8 +114,8 @@ export default function LibraryPage() {
                   </div>
                   <div className="flex gap-2 mt-2 sm:mt-0 flex-shrink-0">
                     <Button size="sm" variant="outline" onClick={() => handleReadDocument(doc, source)} disabled={isLoading}>
-                      {source === 'read2' || doc.type === 'image' ? <Home className="mr-1.5 h-4 w-4" /> : <BookOpen className="mr-1.5 h-4 w-4" />}
-                      Read {source === 'read2' || doc.type === 'image' ? 'in Read2' : 'in Reader'}
+                      {source === 'read2' || doc.type === 'image' || doc.type === 'pdf' ? <Home className="mr-1.5 h-4 w-4" /> : <BookOpen className="mr-1.5 h-4 w-4" />}
+                      Read {source === 'read2' || doc.type === 'image' || doc.type === 'pdf' ? 'in Read2' : 'in Reader'}
                     </Button>
                     <Button size="sm" variant="destructive" onClick={() => handleDeleteDocument(doc.id, source)} disabled={isLoading}>
                       <Trash2 className="mr-1.5 h-4 w-4" /> Delete (from Browser)

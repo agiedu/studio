@@ -11,11 +11,20 @@ interface UploadResponse {
   message?: string;
 }
 
-export async function uploadFileToLocalServer(file: File): Promise<{ success: boolean; message: string; filePath?: string }> {
+export async function uploadFileToLocalServer(data: FormData): Promise<{ success: boolean; message: string; filePath?: string }> {
   // Top-level try-catch to ensure we always return a structured response
   try {
-    const formData = new FormData();
-    formData.append("file", file);
+    const file = data.get('file') as File | null;
+
+    if (!file) {
+      console.error('[localFileService] No file found in FormData.');
+      return { success: false, message: "No file received by the server. Ensure the 'file' key is used in FormData." };
+    }
+
+    // This FormData is for the fetch request to the local helper service
+    const formDataForFetch = new FormData();
+    formDataForFetch.append("file", file); // The local helper service expects a field named "file"
+
     console.log('[localFileService] Attempting to upload file:', file.name, 'to', LOCAL_SERVER_URL);
 
     const controller = new AbortController();
@@ -28,16 +37,15 @@ export async function uploadFileToLocalServer(file: File): Promise<{ success: bo
     try {
       response = await fetch(LOCAL_SERVER_URL, {
         method: "POST",
-        body: formData,
+        body: formDataForFetch, // Use the new FormData for fetch
         signal: controller.signal,
       });
     } catch (fetchError: any) {
-      clearTimeout(timeoutId); // Clear timeout if fetch itself throws an error (e.g. network error before timeout)
+      clearTimeout(timeoutId);
       if (fetchError.name === 'AbortError') {
         console.error('[localFileService] Request to local server timed out.');
         return { success: false, message: `Request to the local file saving service timed out after ${FETCH_TIMEOUT_MS / 1000} seconds. Please ensure it is running and responsive.` };
       }
-      // Handle other fetch errors (e.g., ECONNREFUSED if server is down)
       console.error('[localFileService] Fetch error when trying to connect to local server:', fetchError.message);
       let userMessage = 'Failed to connect to the local file saving service.';
       if (fetchError.message && fetchError.message.toLowerCase().includes('econnrefused')) {
@@ -48,13 +56,12 @@ export async function uploadFileToLocalServer(file: File): Promise<{ success: bo
       return { success: false, message: userMessage };
     }
 
-    clearTimeout(timeoutId); // Clear timeout if fetch completes or errors before timeout
+    clearTimeout(timeoutId);
 
     console.log('[localFileService] Received response status:', response.status, response.statusText);
 
     const responseText = await response.text();
     console.log('[localFileService] Received response text (first 300 chars):', responseText.substring(0,300));
-
 
     if (!response.ok) {
       let errorMessage = `Local server request failed. Status: ${response.status} ${response.statusText || ''}`.trim();
