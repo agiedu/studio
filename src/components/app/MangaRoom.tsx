@@ -2,8 +2,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
-import type { MangaDocument, MangaImageFile, MangaPdfFile, MangaSubPage, TTSSettings, TTSVoice, FavoriteItem, StoredImageDocument, StoredPdfDocument, Read2StoredDocument } from '@/types';
+import { useSearchParams, useRouter } from 'next/navigation'; // useRouter might be used for navigation later
+import type { MangaDocument, MangaImageFile, MangaPdfFile, MangaSubPage, TTSSettings, TTSVoice, FavoriteItem } from '@/types';
 import { performOCR, getCloudSpeech } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -42,13 +42,13 @@ export function MangaRoom() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [activeDocument, setActiveDocument] = useState<MangaDocument | null>(null);
+  // activeDocument is now purely session-based, populated by direct upload
+  const [activeDocument, setActiveDocument] = useState<MangaDocument | null>(null); 
   const [currentPdfInternalPageIndex, setCurrentPdfInternalPageIndex] = useState(0);
   const [jumpToPageInput, setJumpToPageInput] = useState('');
 
   const [ttsSettings, setTtsSettings] = useState<TTSSettings>(LocalStorage.defaultTTSSettings);
-  const [isLoadingDocument, setIsLoadingDocument] = useState(false);
-  const [isLoadingInitialDoc, setIsLoadingInitialDoc] = useState(true);
+  const [isLoadingDocument, setIsLoadingDocument] = useState(false); // For processing an uploaded file
   const [isLoadingPdfPage, setIsLoadingPdfPage] = useState(false);
   const [isLoadingTTS, setIsLoadingTTS] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -59,11 +59,9 @@ export function MangaRoom() {
   const [currentSentenceIndex, setCurrentSentenceIndex] = useState<number>(-1);
 
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
-  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
-  const pdfDocCacheRef = useRef<Record<string, PDFDocumentProxy>>({});
+  const pdfDocCacheRef = useRef<Record<string, PDFDocumentProxy>>({}); // Cache for current session PDF processing
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const originalFileForLocalUploadRef = useRef<File | null>(null);
-
+  const currentFileLocalPathRef = useRef<string | null>(null); // Store path from local service
 
   const stopSpeech = useCallback((resetUIState = true) => {
     if (ttsSettings.type === 'local' && typeof window !== 'undefined' && window.speechSynthesis) {
@@ -100,164 +98,16 @@ export function MangaRoom() {
       GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsVersion}/pdf.worker.mjs`;
       setTtsSettings(LocalStorage.loadTTSSettings());
     }
-  }, []);
-
-
-  const loadInitialDocument = useCallback(async () => {
-    setIsLoadingInitialDoc(true);
-    setIsLoadingDocument(true); 
-    stopSpeechFnRef.current(true);
-    setSentenceSegments([]);
-    setCurrentSentenceIndex(-1);
-    setActiveDocument(null);
-    originalFileForLocalUploadRef.current = null;
-    
-    try {
-      let docIdToLoad: string | null = null;
-      const loadFromLibraryIdQuery = searchParams.get('loadFromLibraryId');
-      const sourceQuery = searchParams.get('source'); 
-
-      if (loadFromLibraryIdQuery) {
-        docIdToLoad = loadFromLibraryIdQuery;
-        const currentUrl = new URL(window.location.href);
-        currentUrl.searchParams.delete('loadFromLibraryId');
-        currentUrl.searchParams.delete('source');
-        router.replace(currentUrl.pathname + currentUrl.search, { scroll: false });
-      } else {
-        docIdToLoad = LocalStorage.loadLastActiveMangaRoomDocId();
-      }
-
-      let docToDisplay: MangaDocument | null = null;
-      let storedDoc: Read2StoredDocument | StoredImageDocument | StoredPdfDocument | undefined | null = null;
-
-      if (docIdToLoad) {
-        if (sourceQuery === 'read2' || (!sourceQuery && LocalStorage.getRead2StoredDocumentById(docIdToLoad))) {
-          storedDoc = LocalStorage.getRead2StoredDocumentById(docIdToLoad);
-        } else if (sourceQuery === 'general') {
-          const generalStoredDoc = LocalStorage.getStoredDocumentById(docIdToLoad);
-          if (generalStoredDoc && (generalStoredDoc.type === 'image' || generalStoredDoc.type === 'pdf')) {
-            storedDoc = generalStoredDoc as StoredImageDocument | StoredPdfDocument;
-          }
-        } else if (!sourceQuery) { 
-           const generalDoc = LocalStorage.getStoredDocumentById(docIdToLoad);
-           if (generalDoc && (generalDoc.type === 'image' || generalDoc.type === 'pdf')) {
-              storedDoc = generalDoc as StoredImageDocument | StoredPdfDocument;
-           } else { 
-              storedDoc = LocalStorage.getRead2StoredDocumentById(docIdToLoad);
-           }
-        }
-
-        if (storedDoc) {
-          if (LocalStorage.getRead2StoredDocumentById(storedDoc.id)) {
-              LocalStorage.saveLastActiveMangaRoomDocId(storedDoc.id);
-          }
-
-          if (storedDoc.type === 'image') {
-            const storedImageDoc = storedDoc as StoredImageDocument;
-            docToDisplay = {
-              id: storedImageDoc.id,
-              title: storedImageDoc.name,
-              type: 'image',
-              imageDataUrl: storedImageDoc.imageDataUrl,
-              extractedText: storedImageDoc.extractedText || "Performing OCR...",
-            };
-            setActiveDocument(docToDisplay);
-
-            if (!storedImageDoc.extractedText || storedImageDoc.extractedText === "Performing OCR...") {
-              try {
-                const ocrResult = await performOCR(storedImageDoc.imageDataUrl);
-                const ocrText = 'extractedText' in ocrResult ? ocrResult.extractedText : "OCR failed. Select text manually.";
-                
-                setActiveDocument(prevDoc => {
-                  if (prevDoc && prevDoc.id === storedImageDoc.id && prevDoc.type === 'image') {
-                    return { ...prevDoc, extractedText: ocrText };
-                  }
-                  return prevDoc;
-                });
-                
-                const updatedStoredImageDoc: StoredImageDocument = {...storedImageDoc, extractedText: ocrText };
-                if (LocalStorage.getRead2StoredDocumentById(storedImageDoc.id)) {
-                   LocalStorage.addRead2StoredDocument(updatedStoredImageDoc); 
-                } else if (LocalStorage.getStoredDocumentById(storedImageDoc.id)) {
-                   LocalStorage.addStoredDocument(updatedStoredImageDoc); 
-                }
-                
-                if ('error' in ocrResult && ocrResult.error) {
-                  toast({ variant: "destructive", title: "OCR Error on Load", description: ocrResult.error });
-                }
-              } catch (e: any) {
-                toast({ variant: "destructive", title: "Error processing image on load", description: e.message });
-                setActiveDocument(prev => prev && prev.id === storedImageDoc.id && prev.type === 'image' ? {...prev, extractedText: `Error during OCR: ${e.message}`} : prev);
-              }
-            }
-            setIsLoadingDocument(false);
-
-          } else if (storedDoc.type === 'pdf') {
-            const storedPdfDoc = storedDoc as StoredPdfDocument;
-            try {
-              if (!pdfDocCacheRef.current[storedPdfDoc.id]) {
-                   const pdfBytes = base64ToUint8Array(storedPdfDoc.pdfBase64);
-                   const loadingTask = getDocument({data: pdfBytes});
-                   pdfDocCacheRef.current[storedPdfDoc.id] = await loadingTask.promise;
-              }
-              const pdfInstance = pdfDocCacheRef.current[storedPdfDoc.id];
-
-              docToDisplay = {
-                id: storedPdfDoc.id,
-                title: storedPdfDoc.name,
-                type: 'pdf',
-                pdfDataUrl: `data:application/pdf;base64,${storedPdfDoc.pdfBase64}`, 
-                numPages: pdfInstance.numPages,
-                processedPages: new Array(pdfInstance.numPages).fill(null).map(() => ({ imageDataUrl: '', extractedText: undefined })),
-              };
-              setActiveDocument(docToDisplay);
-              const savedPageIndex = LocalStorage.loadCurrentPdfPageIndexForDoc(storedPdfDoc.id);
-              setCurrentPdfInternalPageIndex(savedPageIndex !== undefined ? savedPageIndex : 0);
-              setJumpToPageInput(savedPageIndex !== undefined ? (savedPageIndex+1).toString() : '1');
-            } catch (e: any) {
-               toast({ variant: "destructive", title: "Error loading PDF from storage", description: e.message });
-               setActiveDocument(null);
-               if (LocalStorage.getRead2StoredDocumentById(storedDoc.id)) { 
-                  LocalStorage.saveLastActiveMangaRoomDocId(null);
-               }
-            } finally {
-              setIsLoadingDocument(false);
-            }
-          }
-        } else {
-          if (docIdToLoad) { 
-            toast({ variant: "destructive", title: "Document Not Found", description: `Document (ID: ${docIdToLoad}) not found in any library.` });
-          }
-          setActiveDocument(null);
-          LocalStorage.saveLastActiveMangaRoomDocId(null); 
-          setIsLoadingDocument(false);
-        }
-      } else { 
-        setActiveDocument(null);
-        setIsLoadingDocument(false);
-      }
-    } catch (error: any) {
-        console.error("Critical error during initial document load:", error);
-        toast({ variant: "destructive", title: "Initialization Error", description: `Could not initialize the document view: ${error.message || "Unknown error"}. Please try refreshing.`});
-        setActiveDocument(null);
-        LocalStorage.saveLastActiveMangaRoomDocId(null);
-        setIsLoadingDocument(false);
-    } finally {
-        setIsLoadingInitialDoc(false); 
-    }
-  }, [searchParams, router, toast, stopSpeechFnRef]);
-
-
- useEffect(() => {
-    loadInitialDocument();
-  }, [loadInitialDocument]); 
+    // No initial document loading from LocalStorage
+  }, []); 
 
   useEffect(() => {
     LocalStorage.saveTTSSettings(ttsSettings);
   }, [ttsSettings]);
 
-  useEffect(() => {
-    if (activeDocument?.type === 'pdf' && activeDocument.id && activeDocument.id !== 'temp-processing-doc') { 
+  // PDF page index for current session (temporary)
+   useEffect(() => {
+    if (activeDocument?.type === 'pdf' && activeDocument.id && activeDocument.id.startsWith('session-pdf-')) { 
       LocalStorage.saveCurrentPdfPageIndexForDoc(activeDocument.id, currentPdfInternalPageIndex);
     }
   }, [currentPdfInternalPageIndex, activeDocument]);
@@ -300,7 +150,7 @@ export function MangaRoom() {
   }, [populateVoiceList]);
 
   const renderAndProcessPdfPage = useCallback(async (doc: MangaPdfFile, pageNumToRender: number) => {
-    if (!doc || doc.type !== 'pdf' || pageNumToRender < 0 || pageNumToRender >= doc.numPages || doc.id === 'temp-processing-doc') {
+    if (!doc || doc.type !== 'pdf' || pageNumToRender < 0 || pageNumToRender >= doc.numPages || !doc.id.startsWith('session-pdf-')) {
       setIsLoadingPdfPage(false);
       return;
     }
@@ -323,14 +173,13 @@ export function MangaRoom() {
     });
 
     try {
-      let pdfDocInstance = pdfDocCacheRef.current[doc.id];
+      let pdfDocInstance = pdfDocCacheRef.current[doc.id]; // Using session-based ID for cache
       if (!pdfDocInstance) {
-        const storedDocFromRead2 = LocalStorage.getRead2StoredDocumentById(doc.id);
-        const storedDocFromGeneral = LocalStorage.getStoredDocumentById(doc.id);
-        const storedDoc = storedDocFromRead2 || storedDocFromGeneral;
-        
-        if (!storedDoc || storedDoc.type !== 'pdf' || !('pdfBase64' in storedDoc && storedDoc.pdfBase64)) {
-            const errorMsg = `Corrupted or missing PDF data in browser storage for ${doc.title}. Cannot render page.`;
+        // This part needs PDF data. Since we don't store it in LS anymore,
+        // it must have come from the initial upload's file reader.
+        // We assume doc.pdfDataUrl (full data URI) is available for session processing.
+        if (!doc.pdfDataUrl) {
+            const errorMsg = `PDF data not available in current session for ${doc.title}. Cannot render page.`;
             toast({ variant: "destructive", title: "PDF Data Error", description: errorMsg });
             setActiveDocument(prevD => {
               if (prevD && prevD.id === doc.id && prevD.type === 'pdf') {
@@ -343,15 +192,14 @@ export function MangaRoom() {
             setIsLoadingPdfPage(false);
             return;
         }
-        const base64Data = storedDoc.pdfBase64;
-        const pdfBytes = base64ToUint8Array(base64Data);
+        const pdfBase64 = doc.pdfDataUrl.split(',')[1];
+        const pdfBytes = base64ToUint8Array(pdfBase64);
         const loadingTask = getDocument({data: pdfBytes});
         pdfDocInstance = await loadingTask.promise;
         pdfDocCacheRef.current[doc.id] = pdfDocInstance;
       }
 
       const page: PDFPageProxy = await pdfDocInstance.getPage(pageNumToRender + 1);
-
       const viewport = page.getViewport({ scale: 1.5 });
       const canvas = document.createElement('canvas');
       const context = canvas.getContext('2d');
@@ -369,14 +217,6 @@ export function MangaRoom() {
 
       if (directText.length > 1) { 
         textForPage = directText;
-        setActiveDocument(prevD => {
-          if (prevD && prevD.id === doc.id && prevD.type === 'pdf') {
-            const updatedPages = [...prevD.processedPages];
-            updatedPages[pageNumToRender] = { imageDataUrl, extractedText: textForPage };
-            return { ...prevD, processedPages: updatedPages };
-          }
-          return prevD;
-        });
       } else { 
         setActiveDocument(prevD => {
           if (prevD && prevD.id === doc.id && prevD.type === 'pdf') {
@@ -389,7 +229,6 @@ export function MangaRoom() {
           }
           return prevD;
         });
-
         if (imageDataUrl) {
           const ocrResult = await performOCR(imageDataUrl);
           textForPage = 'extractedText' in ocrResult ? ocrResult.extractedText : "OCR failed or no text found.";
@@ -399,16 +238,16 @@ export function MangaRoom() {
         } else {
           textForPage = "Could not render PDF page for OCR (no image data).";
         }
-
-        setActiveDocument(prevD => {
-          if (prevD && prevD.id === doc.id && prevD.type === 'pdf') {
-            const updatedPages = [...prevD.processedPages];
-            updatedPages[pageNumToRender] = { imageDataUrl, extractedText: textForPage };
-            return { ...prevD, processedPages: updatedPages };
-          }
-          return prevD;
-        });
       }
+      setActiveDocument(prevD => {
+        if (prevD && prevD.id === doc.id && prevD.type === 'pdf') {
+          const updatedPages = [...prevD.processedPages];
+          updatedPages[pageNumToRender] = { imageDataUrl, extractedText: textForPage };
+          return { ...prevD, processedPages: updatedPages };
+        }
+        return prevD;
+      });
+
     } catch (error: any) {
       console.error("Error processing PDF page:", error);
       const errorMsg = error.message || `Failed to process page ${pageNumToRender + 1}.`;
@@ -428,7 +267,7 @@ export function MangaRoom() {
   }, [toast, stopSpeechFnRef]);
 
   useEffect(() => {
-    if (activeDocument?.type === 'pdf' && activeDocument.id !== 'temp-processing-doc' && activeDocument.numPages > 0 && currentPdfInternalPageIndex >= 0 && currentPdfInternalPageIndex < activeDocument.numPages) {
+    if (activeDocument?.type === 'pdf' && activeDocument.id.startsWith('session-pdf-') && activeDocument.numPages > 0 && currentPdfInternalPageIndex >= 0 && currentPdfInternalPageIndex < activeDocument.numPages) {
       setJumpToPageInput((currentPdfInternalPageIndex + 1).toString());
       const currentPageData = activeDocument.processedPages[currentPdfInternalPageIndex];
       if (
@@ -481,7 +320,6 @@ export function MangaRoom() {
     }
   }
 
-
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -490,38 +328,31 @@ export function MangaRoom() {
     stopSpeechFnRef.current(true);
     setSentenceSegments([]);
     setCurrentSentenceIndex(-1);
-    originalFileForLocalUploadRef.current = file;
+    currentFileLocalPathRef.current = null; // Reset path for new upload
 
-    const tempDocId = `temp-processing-doc-${Date.now()}`;
-    const tempActiveDocBase = {
-        id: tempDocId,
-        title: file.name,
-    };
+    const sessionDocId = `session-${file.type.startsWith('image/') ? 'image' : 'pdf'}-${Date.now()}`;
+    
+    // Send to local helper service FIRST
+    const formData = new FormData();
+    formData.append('file', file);
+    let localSaveSuccess = false;
+    let localFilePath: string | undefined;
 
-    if (file.type.startsWith('image/')) {
-        setActiveDocument({
-            ...tempActiveDocBase,
-            type: 'image',
-            imageDataUrl: '', 
-            extractedText: "Processing uploaded image...",
-        });
-    } else if (file.type === 'application/pdf') {
-        setActiveDocument({
-            ...tempActiveDocBase,
-            type: 'pdf',
-            pdfDataUrl: '', 
-            numPages: 0,
-            processedPages: [{imageDataUrl:'', extractedText: 'Processing uploaded PDF...'}],
-        });
-    } else {
-        toast({ variant: "destructive", title: "Unsupported File Type", description: "Please upload an Image or PDF file." });
-        setIsLoadingDocument(false);
-        if (fileInputRef.current) fileInputRef.current.value = '';
-        originalFileForLocalUploadRef.current = null;
-        return;
+    try {
+        const localUploadResult = await uploadFileToLocalServer(formData);
+        if (localUploadResult.success) {
+            toast({ title: "File Sent to Local Device", description: `${file.name} sent to local service. Path: ${localUploadResult.filePath}` });
+            localSaveSuccess = true;
+            localFilePath = localUploadResult.filePath;
+            currentFileLocalPathRef.current = localFilePath || file.name; // Fallback to filename if path missing
+        } else {
+            toast({ variant: "destructive", title: "Local Save Failed", description: localUploadResult.message + " File will only be available for this session." });
+        }
+    } catch (uploadError: any) {
+        toast({ variant: "destructive", title: "Local Save Service Error", description: uploadError.message || "Could not send file to local service. File will only be available for this session." });
     }
 
-
+    // Process for current session display
     try {
       if (file.type.startsWith('image/')) {
         const imageDataUrl = await new Promise<string>((resolve, reject) => {
@@ -531,11 +362,13 @@ export function MangaRoom() {
           reader.readAsDataURL(file);
         });
 
-        setActiveDocument(prev => (prev?.id === tempDocId ? {
-            ...(prev as MangaImageFile),
+        setActiveDocument({
+            id: sessionDocId,
+            title: file.name,
+            type: 'image',
             imageDataUrl: imageDataUrl,
             extractedText: "Performing OCR...",
-        } : prev));
+        });
 
         let ocrText = "OCR pending...";
         try {
@@ -549,23 +382,11 @@ export function MangaRoom() {
            toast({ variant: "destructive", title: "OCR Processing Error", description: ocrText });
         }
         
-         setActiveDocument(prev => (prev?.id === tempDocId ? {
+         setActiveDocument(prev => (prev?.id === sessionDocId ? {
             ...(prev as MangaImageFile),
             extractedText: ocrText,
         }: prev));
         
-        const formData = new FormData();
-        formData.append('file', file);
-        const localUploadResult = await uploadFileToLocalServer(formData);
-
-        if (localUploadResult.success) {
-            toast({ title: "Image Sent to Local Device", description: `${file.name} sent to local service. Path: ${localUploadResult.filePath}` });
-             // Keep current activeDocument (temp one) for viewing this session. It won't be saved to LS.
-        } else {
-            toast({ variant: "destructive", title: "Local Save Failed", description: localUploadResult.message });
-            if(activeDocument?.id === tempDocId) setActiveDocument(null);
-        }
-
       } else if (file.type === 'application/pdf') {
         const pdfDataUrlFull = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
@@ -581,42 +402,39 @@ export function MangaRoom() {
         const pdfLoadingTask = getDocument({ data: pdfBytes });
         const pdfInstance = await pdfLoadingTask.promise;
         
-        setActiveDocument(prev => (prev?.id === tempDocId ? { 
-            ...(prev as MangaPdfFile),
+        const initialPageIndex = 0;
+        const initialPageNumForInput = '1';
+        const savedSessionPageIndex = LocalStorage.loadCurrentPdfPageIndexForDoc(sessionDocId);
+        // We don't really have a persistent PDF to load page state for,
+        // so new PDFs always start at page 0 for the session.
+
+        setActiveDocument({ 
+            id: sessionDocId,
+            title: file.name,
+            type: 'pdf',
             pdfDataUrl: pdfDataUrlFull, 
             numPages: pdfInstance.numPages,
             processedPages: new Array(pdfInstance.numPages).fill(null).map(() => ({ imageDataUrl: '', extractedText: undefined })),
-        } : prev));
-        setCurrentPdfInternalPageIndex(0);
-        setJumpToPageInput('1');
-        
-        const formData = new FormData();
-        formData.append('file', file);
-        const localUploadResult = await uploadFileToLocalServer(formData);
-
-        if (localUploadResult.success) {
-            toast({ title: "PDF Sent to Local Device", description: `${file.name} sent to local service. Path: ${localUploadResult.filePath}` });
-        } else {
-            toast({ variant: "destructive", title: "Local Save Failed", description: localUploadResult.message });
-            if(activeDocument?.id === tempDocId) setActiveDocument(null);
-        }
-
+        });
+        setCurrentPdfInternalPageIndex(initialPageIndex);
+        setJumpToPageInput(initialPageNumForInput);
+        pdfDocCacheRef.current = {}; // Clear cache for new PDF
+        pdfDocCacheRef.current[sessionDocId] = pdfInstance; // Cache the new one
       } else {
-        // This case should be caught earlier by the type check, but as a fallback:
         toast({ variant: "destructive", title: "Unsupported File", description: "Please upload an Image or PDF file for Manga Room." });
-        if(activeDocument?.id === tempDocId) setActiveDocument(null);
+        setActiveDocument(null);
+        currentFileLocalPathRef.current = null;
       }
-
     } catch (error: any) {
-      console.error("File Upload Processing Error:", error);
-      toast({ variant: "destructive", title: "Upload Processing Error", description: error.message || "Failed to process file." });
-      if(activeDocument?.id === tempDocId) setActiveDocument(null);
+      console.error("File Session Processing Error:", error);
+      toast({ variant: "destructive", title: "Session Processing Error", description: error.message || "Failed to process file for this session." });
+      setActiveDocument(null);
+      currentFileLocalPathRef.current = null;
     } finally {
       setIsLoadingDocument(false);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
-      // Keep originalFileForLocalUploadRef.current until explicitly cleared or new upload
     }
   };
 
@@ -819,7 +637,7 @@ export function MangaRoom() {
   const navigatePdfPage = (direction: 'next' | 'prev') => {
     stopSpeechFnRef.current(true);
     const doc = activeDocument;
-    if (!doc || doc.type !== 'pdf' || doc.id.startsWith('temp-processing-doc')) return;
+    if (!doc || doc.type !== 'pdf' || !doc.id.startsWith('session-pdf-')) return;
 
     let newPdfPage = currentPdfInternalPageIndex;
     if (direction === 'next') {
@@ -839,12 +657,12 @@ export function MangaRoom() {
   const handleJumpToPageOnBlur = () => {
     const doc = activeDocument;
     let resetValue = '';
-    if (doc && doc.type === 'pdf' && !doc.id.startsWith('temp-processing-doc') && doc.numPages > 0 && currentPdfInternalPageIndex >= 0 && currentPdfInternalPageIndex < doc.numPages) {
+    if (doc && doc.type === 'pdf' && doc.id.startsWith('session-pdf-') && doc.numPages > 0 && currentPdfInternalPageIndex >= 0 && currentPdfInternalPageIndex < doc.numPages) {
       resetValue = (currentPdfInternalPageIndex + 1).toString();
     }
 
     const pageNumFromInputText = parseInt(jumpToPageInput, 10);
-    if (doc && doc.type === 'pdf' && !doc.id.startsWith('temp-processing-doc') && doc.numPages > 0) {
+    if (doc && doc.type === 'pdf' && doc.id.startsWith('session-pdf-') && doc.numPages > 0) {
         if (isNaN(pageNumFromInputText) || pageNumFromInputText < 1 || pageNumFromInputText > doc.numPages) {
              setJumpToPageInput(currentPdfInternalPageIndex >=0 && currentPdfInternalPageIndex < doc.numPages ? (currentPdfInternalPageIndex + 1).toString() : '1');
         }
@@ -860,9 +678,9 @@ export function MangaRoom() {
     setJumpToPageInput('');
     setSentenceSegments([]);
     setCurrentSentenceIndex(-1);
-    originalFileForLocalUploadRef.current = null;
-    LocalStorage.saveLastActiveMangaRoomDocId(null); 
-    toast({title: "Document Cleared", description: "The current document has been cleared from view."});
+    currentFileLocalPathRef.current = null;
+    pdfDocCacheRef.current = {}; // Clear PDF instance cache
+    toast({title: "Session Document Cleared", description: "The current document has been cleared from this session."});
      if (fileInputRef.current) {
         fileInputRef.current.value = '';
     }
@@ -872,11 +690,12 @@ export function MangaRoom() {
   const handleFavoriteSelection = () => {
     const selection = window.getSelection()?.toString().trim();
     const currentDocForFavorite = activeDocument;
-    if (selection && currentDocForFavorite && !currentDocForFavorite.id.startsWith('temp-processing-doc')) {
+    if (selection && currentDocForFavorite) {
       const newFavorite: FavoriteItem = {
         id: Date.now().toString(),
         text: selection,
-        sourceDocumentId: currentDocForFavorite.id,
+        // Use the local path or filename as the identifier
+        sourceDocumentId: currentFileLocalPathRef.current || currentDocForFavorite.title || "unknown_source",
         sourceDocumentName: currentDocForFavorite.title || "Untitled Document",
         createdAt: Date.now(),
       };
@@ -884,8 +703,8 @@ export function MangaRoom() {
       toast({ title: "Favorited!", description: `"${selection.substring(0, 30)}..." added to favorites.` });
     } else if (!selection) {
       toast({ variant: "destructive", title: "No Selection", description: "Please select text to favorite." });
-    } else if (!currentDocForFavorite || currentDocForFavorite.id.startsWith('temp-processing-doc')) {
-      toast({ variant: "destructive", title: "Cannot Favorite", description: "Cannot favorite text from a temporary or unsaved document." });
+    } else if (!currentDocForFavorite) {
+      toast({ variant: "destructive", title: "Cannot Favorite", description: "No active document to associate with the favorite." });
     }
   };
 
@@ -902,7 +721,6 @@ export function MangaRoom() {
     const canPlay = (!!selectedTextContent || hasValidTextToRead) &&
                     !isLoadingPdfPage &&
                     !isLoadingDocument &&
-                    !isLoadingInitialDoc &&
                     activeDocument &&
                     !(activeDocument.type === 'image' && activeDocument.extractedText === "Performing OCR...") &&
                     !(activeDocument.type === 'image' && activeDocument.extractedText === "Processing uploaded image...") &&
@@ -930,22 +748,15 @@ export function MangaRoom() {
 
   const playButtonState = getPlayButtonState();
 
-  if (isLoadingInitialDoc) {
-    return (
-      <div className="flex flex-col flex-grow items-center justify-center p-4">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="mt-4 text-muted-foreground">Loading Manga Room...</p>
-      </div>
-    );
-  }
-
-
   return (
     <div className="flex flex-col w-full p-4 md:p-6 space-y-6">
        <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><UploadCloud className="text-primary" /> Upload to Local Device</CardTitle>
-          <CardDescription>Upload an image or PDF. It will be sent to your local helper service for storage on your device. Ensure the local service is running.</CardDescription>
+          <CardTitle className="flex items-center gap-2"><UploadCloud className="text-primary" /> Upload Document for This Session</CardTitle>
+          <CardDescription>
+            Upload an image or PDF to process and read in the current session. 
+            The file will also be sent to your local helper service for persistent storage on your device (if the service is running).
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid w-full max-w-md items-center gap-1.5">
@@ -956,23 +767,23 @@ export function MangaRoom() {
               accept="image/*,application/pdf"
               onChange={handleFileUpload}
               ref={fileInputRef}
-              disabled={isLoadingDocument || isLoadingInitialDoc}
+              disabled={isLoadingDocument}
             />
           </div>
-          {(isLoadingDocument && activeDocument?.id.startsWith('temp-processing-doc') && !isLoadingInitialDoc) && <p className="mt-2 text-sm text-muted-foreground">Processing uploaded file: {activeDocument?.title}</p>}
+          {isLoadingDocument && <p className="mt-2 text-sm text-muted-foreground">Processing uploaded file: {activeDocument?.title || "New file"}...</p>}
         </CardContent>
       </Card>
 
       <div className="flex-grow space-y-6">
-          {activeDocument && !isLoadingDocument && !isLoadingInitialDoc && (
+          {activeDocument && !isLoadingDocument && (
             <>
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="truncate text-xl" title={activeDocument.title || "Untitled Document"}>
-                    {activeDocument.title || "Untitled Document"} ({activeDocument.type.toUpperCase()})
+                    Session: {activeDocument.title || "Untitled Document"} ({activeDocument.type.toUpperCase()})
                 </CardTitle>
                 <Button variant="ghost" size="sm" onClick={handleClearActiveDocument} disabled={isLoadingPdfPage || isLoadingTTS || isSpeaking}>
-                    <Trash2 className="h-4 w-4 mr-1" /> Clear Active
+                    <Trash2 className="h-4 w-4 mr-1" /> Clear Session Doc
                 </Button>
               </CardHeader>
               <CardContent className="space-y-4 pt-0">
@@ -1006,17 +817,16 @@ export function MangaRoom() {
                        }
                       <p className="text-xs text-muted-foreground mt-2">If this takes too long, the page might be complex or an error occurred.</p>
                     </div>
-                  ): activeDocument.type === 'image' && !currentSubPage?.imageDataUrl && !isLoadingDocument && !isLoadingInitialDoc ? (
+                  ): activeDocument.type === 'image' && !currentSubPage?.imageDataUrl && !isLoadingDocument ? (
                     <div className="flex flex-col items-center justify-center h-full text-center p-4">
                         <ImageIcon className="w-16 h-16 text-destructive mb-4" />
                         <p>Image data is missing or failed to load for display.</p>
                     </div>
                   ) : (
-                     !isLoadingDocument && !isLoadingInitialDoc && !activeDocument &&
+                     !isLoadingDocument && !activeDocument &&
                     <div className="flex flex-col items-center justify-center h-full text-center p-4">
                       <ImageIcon className="w-16 h-16 text-primary mb-4" />
-                      <p>No content to display. Please select a document from the Library or upload one above.</p>
-                      <p className="text-xs text-muted-foreground mt-1">Note: Uploaded files are now sent to your local device via a helper service.</p>
+                      <p>No document loaded in this session. Please upload a document above to begin.</p>
                     </div>
                   )}
                 </div>
@@ -1061,9 +871,7 @@ export function MangaRoom() {
                         className="mt-3"
                         disabled={
                             !activeDocument ||
-                            activeDocument.id.startsWith('temp-processing-doc') ||
                             isLoadingDocument ||
-                            isLoadingInitialDoc ||
                             isLoadingPdfPage ||
                             (activeDocument.type ==='image' && (activeDocument.extractedText === "Performing OCR..." || activeDocument.extractedText === "Processing uploaded image..." || activeDocument.extractedText === "OCR pending...")) ||
                             (activeDocument.type==='pdf' && (!currentSubPage?.extractedText || currentSubPage.extractedText.startsWith("Loading") || currentSubPage.extractedText.startsWith("Extracting") || currentSubPage.extractedText.startsWith("Error") || currentSubPage.extractedText.startsWith("Processing")  ))
@@ -1076,31 +884,22 @@ export function MangaRoom() {
             </>
           )}
           
-          {activeDocument && activeDocument.id.startsWith('temp-processing-doc') && !isLoadingInitialDoc && (
-            <Card>
-              <CardContent className="pt-6 flex items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-primary mr-2" />
-                <p>Processing: {activeDocument.title}</p>
-              </CardContent>
-            </Card>
-          )}
+          {isLoadingDocument && activeDocument && <p className="text-sm text-muted-foreground text-center">Processing file for session...</p>}
 
-
-          {!activeDocument && !isLoadingDocument && !isLoadingInitialDoc &&(
+          {!activeDocument && !isLoadingDocument &&(
             <Card className="text-center">
               <CardHeader>
-                <CardTitle>No File Loaded for Display</CardTitle>
+                <CardTitle>No File Loaded for This Session</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-muted-foreground">Upload a document above to send it to your local device. You can also load documents previously saved to browser storage from the Library (if available).</p>
+                <p className="text-muted-foreground">Upload a document above to begin reading in this session. It will also be sent to your local helper service for persistent storage.</p>
                 <BookOpen className="mx-auto my-4 h-12 w-12 text-muted-foreground" />
               </CardContent>
             </Card>
           )}
-
       </div>
 
-      {activeDocument && !activeDocument.id.startsWith('temp-processing-doc') && !isLoadingDocument && !isLoadingInitialDoc && (
+      {activeDocument && !isLoadingDocument && (
         <div className="space-y-4">
             <Card>
             <CardHeader className="p-4">
@@ -1131,7 +930,7 @@ export function MangaRoom() {
                         setJumpToPageInput(newValue);
 
                         const doc = activeDocument;
-                        if (doc && doc.type === 'pdf' && !doc.id.startsWith('temp-processing-doc') && doc.numPages > 0) {
+                        if (doc && doc.type === 'pdf' && doc.id.startsWith('session-pdf-') && doc.numPages > 0) {
                           const pageNumOneBased = parseInt(newValue, 10);
                           if (!isNaN(pageNumOneBased) && pageNumOneBased >= 1 && pageNumOneBased <= doc.numPages) {
                             const pageNumZeroBased = pageNumOneBased - 1;

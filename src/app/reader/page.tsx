@@ -2,9 +2,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { getDocument, GlobalWorkerOptions, version as pdfjsVersion } from 'pdfjs-dist';
-import type { PDFDocumentProxy } from 'pdfjs-dist/types/src/display/api';
+import { useRouter } from 'next/navigation'; // Removed useSearchParams as docId is no longer used
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,40 +10,21 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
-import { Loader2, Play, Pause, Smartphone, Cloud as CloudIcon, AlertTriangle, Info, Star } from 'lucide-react';
+import { Loader2, Play, Pause, Smartphone, Cloud as CloudIcon, Info, Star } from 'lucide-react';
 import { getCloudSpeech } from '@/app/actions';
 import * as LocalStorage from '@/lib/localStorageService';
-import type { StoredDocument, TTSVoice, FavoriteItem, TTSSettings as GlobalTTSSettings } from '@/types';
+import type { TTSVoice, FavoriteItem, TTSSettings as GlobalTTSSettings } from '@/types'; // Removed StoredDocument
 import { cn } from '@/lib/utils';
 
-
-// Helper to convert base64 to Uint8Array
-function base64ToUint8Array(base64: string): Uint8Array {
-  try {
-    const binaryString = window.atob(base64);
-    const len = binaryString.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    return bytes;
-  } catch (e) {
-    console.error("Failed to decode Base64 string for PDF processing:", e);
-    throw new Error("Invalid Base64 data for PDF.");
-  }
-}
-
+// PDF.js related imports are removed as this page no longer loads PDFs directly from browser storage
 
 export default function ReaderPage() {
   const { toast } = useToast();
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const docId = searchParams.get('docId');
 
-  const [loadedDocument, setLoadedDocument] = useState<StoredDocument | null>(null);
-  const [fileName, setFileName] = useState<string | null>(null);
-  const [extractedText, setExtractedText] = useState<string>("");
-  const [isLoadingDocument, setIsLoadingDocument] = useState<boolean>(false);
+  // State related to document loading from browser storage is removed
+  const [fileName, setFileName] = useState<string | null>(null); // Could be used if file context is passed some other way
+  const [extractedText, setExtractedText] = useState<string>(""); // Can be populated by manual input or future integrations
   const [isLoadingTTS, setIsLoadingTTS] = useState<boolean>(false);
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
   const [isPaused, setIsPaused] = useState<boolean>(false);
@@ -61,64 +40,14 @@ export default function ReaderPage() {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsVersion}/pdf.worker.mjs`;
+      // GlobalWorkerOptions.workerSrc removed as PDF.js is not used here directly
       setTtsSettings(LocalStorage.loadTTSSettings());
     }
+    // Initial message if no text is present
+    setExtractedText("This page is for reading text aloud. You can paste text into the area below (if enabled) or use the Read2 page to upload and process documents for a reading session.");
   }, []);
 
-  useEffect(() => {
-    if (docId) {
-      setIsLoadingDocument(true);
-      setExtractedText("");
-      setSentenceSegments([]);
-      setCurrentSentenceIndex(-1);
-      setFileName(null);
-      setLoadedDocument(null);
-      stopSpeech(true);
-
-      const doc = LocalStorage.getStoredDocumentById(docId);
-      if (doc) {
-        setLoadedDocument(doc);
-        setFileName(doc.name);
-        if (doc.type === 'txt') {
-          setExtractedText(doc.textContent);
-          setIsLoadingDocument(false);
-        } else if (doc.type === 'pdf') {
-          processPdfContent(doc.pdfBase64);
-        }
-      } else {
-        toast({ variant: "destructive", title: "Document Not Found", description: "The requested document could not be found in your library." });
-        setExtractedText("Error: Document not found.");
-        setIsLoadingDocument(false);
-      }
-    } else {
-      setExtractedText("No document loaded. Please select a document from your library.");
-      setFileName(null);
-      setLoadedDocument(null);
-      setIsLoadingDocument(false);
-    }
-  }, [docId, toast]);
-
-
-  const processPdfContent = async (pdfBase64: string) => {
-    try {
-      const pdfData = base64ToUint8Array(pdfBase64);
-      const pdf = await getDocument({ data: pdfData }).promise;
-      let fullText = "";
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const textContent = await page.getTextContent();
-        fullText += textContent.items.map(item => ('str' in item ? item.str : '')).join(" ") + "\n\n";
-      }
-      setExtractedText(fullText.trim() || "No text could be extracted from this PDF.");
-    } catch (error: any) {
-      console.error("PDF Processing Error:", error);
-      toast({ variant: "destructive", title: "PDF Processing Error", description: error.message || "Failed to extract text from PDF." });
-      setExtractedText("Error processing PDF. It might be image-based, corrupted, or use a format pdf.js cannot read.");
-    } finally {
-      setIsLoadingDocument(false);
-    }
-  };
+  // Removed useEffect that loaded document based on docId
 
 
   const stopSpeech = useCallback((resetUIState = true) => {
@@ -142,7 +71,7 @@ export default function ReaderPage() {
         setIsPaused(false);
         setIsLoadingTTS(false);
         setCurrentSentenceIndex(-1);
-        setSentenceSegments([]);
+        setSentenceSegments([]); // Clear segments on stop for local TTS
     }
   }, [ttsSettings.type]);
 
@@ -215,8 +144,8 @@ export default function ReaderPage() {
   const playPauseSpeech = async () => {
     const effectiveTextToRead = window.getSelection()?.toString().trim() || extractedText;
 
-    if (!effectiveTextToRead || effectiveTextToRead.startsWith("Error:") || !loadedDocument || isLoadingDocument) {
-      toast({ variant: "destructive", title: "No Text", description: "No valid document text available to read or document is loading." });
+    if (!effectiveTextToRead || effectiveTextToRead.startsWith("Error:") || effectiveTextToRead.startsWith("This page is for reading text aloud")) {
+      toast({ variant: "destructive", title: "No Text", description: "No valid text available to read." });
       return;
     }
 
@@ -226,7 +155,7 @@ export default function ReaderPage() {
             if (window.speechSynthesis.paused) {
                 window.speechSynthesis.resume();
                 setIsPaused(false);
-                setTimeout(() => {
+                setTimeout(() => { // Check if speech actually resumed
                     if (utteranceRef.current && isSpeaking && !isPaused && !window.speechSynthesis.speaking && !window.speechSynthesis.pending) {
                         stopSpeech(true); 
                     }
@@ -248,7 +177,7 @@ export default function ReaderPage() {
         }
       }
     } else { 
-      stopSpeech(false);
+      stopSpeech(false); 
       setIsLoadingTTS(true);
       setIsSpeaking(true);
       setIsPaused(false);
@@ -301,6 +230,7 @@ export default function ReaderPage() {
           if ('audioUrl' in result && audioPlayerRef.current) {
             audioPlayerRef.current.src = result.audioUrl;
             await audioPlayerRef.current.play();
+            // setIsLoadingTTS(false); // Cloud TTS loading is handled by audio player's 'playing' event
           } else if ('error' in result) {
             toast({ variant: "destructive", title: "Cloud TTS Error", description: result.error });
             stopSpeech(true);
@@ -332,7 +262,7 @@ export default function ReaderPage() {
   
   const getButtonState = () => {
     const selectedText = typeof window !== 'undefined' ? window.getSelection()?.toString().trim() : '';
-    const canPlay = !!(selectedText || (extractedText && !extractedText.startsWith("Error:") && loadedDocument)) && !isLoadingDocument;
+    const canPlay = !!(selectedText || (extractedText && !extractedText.startsWith("Error:") && !extractedText.startsWith("This page is for reading text aloud")));
 
     if (isLoadingTTS) return { text: "Loading...", icon: <Loader2 className="mr-1 h-4 w-4 animate-spin" />, disabled: true, action: () => {} };
     if (isSpeaking) {
@@ -352,12 +282,12 @@ export default function ReaderPage() {
 
   const handleFavoriteSelection = () => {
     const selection = window.getSelection()?.toString().trim();
-    if (selection && loadedDocument) {
+    if (selection) {
       const newFavorite: FavoriteItem = {
         id: Date.now().toString(),
         text: selection,
-        sourceDocumentId: loadedDocument.id,
-        sourceDocumentName: loadedDocument.name,
+        sourceDocumentId: fileName || "reader_text", // Use filename if available, or generic ID
+        sourceDocumentName: fileName || "Reader Page Text",
         createdAt: Date.now(),
       };
       LocalStorage.addFavoriteItem(newFavorite);
@@ -372,93 +302,53 @@ export default function ReaderPage() {
     <div className="flex flex-col w-full p-4 md:p-6 space-y-6">
       {/* Document Content Area */}
       <div className="flex-grow space-y-6">
-        {!docId && !isLoadingDocument && (
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2"><Info className="text-primary" /> Document Reader</CardTitle>
+              <CardTitle className="flex items-center gap-2"><Info className="text-primary" /> Text Reader</CardTitle>
+              <CardDescription>
+                This page is for Text-to-Speech. Documents are now managed via your local device using the helper service.
+                Use the "Read2" page to upload documents for a reading session, or paste text below.
+              </CardDescription>
             </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">Please go to your <Button variant="link" className="p-0 h-auto" onClick={() => router.push('/library')}>Library</Button> to select a document to read.</p>
-            </CardContent>
           </Card>
-        )}
-
-        {isLoadingDocument && docId && (
-          <Card>
-            <CardContent className="pt-6 flex items-center justify-center">
-              <Loader2 className="h-8 w-8 animate-spin text-primary mr-2" />
-              <p>Loading document: {fileName || "Details"}...</p>
-            </CardContent>
-          </Card>
-        )}
-        
-        {docId && !isLoadingDocument && !loadedDocument && (
-           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2"><AlertTriangle className="text-destructive" /> Document Not Found</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-destructive-foreground">The document with ID "{docId}" could not be found in your library or failed to load.</p>
-              <Button variant="link" onClick={() => router.push('/library')} className="mt-2">Go to Library</Button>
-            </CardContent>
-          </Card>
-        )}
-
-        {loadedDocument && !isLoadingDocument && (
-          <>
-            <Card>
-              <CardHeader>
-                <CardTitle className="truncate" title={fileName || "Document"}>Document: {fileName || "Untitled"}</CardTitle>
-                <CardDescription>Type: {loadedDocument.type.toUpperCase()}</CardDescription>
-              </CardHeader>
-            </Card>
             <Card>
               <CardHeader>
                 <CardTitle>Text Content</CardTitle>
+                 <CardDescription>
+                   {fileName ? `Reading: ${fileName}` : "Paste text below or select text on the page to read."}
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                <div
+                <textarea
+                  value={extractedText}
+                  onChange={(e) => {
+                    stopSpeech(true); // Stop speech if text changes
+                    setExtractedText(e.target.value);
+                    setFileName(null); // Clear filename if text is manually changed
+                  }}
+                  placeholder="Paste text here to read aloud..."
                   className={cn(
-                    "min-h-[200px] max-h-[calc(100vh-30rem)] overflow-y-auto p-3 border rounded-md bg-muted/30 whitespace-pre-wrap text-sm select-text",
+                    "min-h-[200px] w-full max-h-[calc(100vh-30rem)] overflow-y-auto p-3 border rounded-md bg-muted/30 whitespace-pre-wrap text-sm select-text focus:ring-primary focus:border-primary",
                     extractedText.startsWith("Error:") && 'bg-destructive/10 text-destructive-foreground'
                   )}
-                >
-                  {(ttsSettings.type === 'local' && sentenceSegments.length > 0 && isSpeaking && !isPaused) ? (
-                      sentenceSegments.map((segment, index) => (
-                        <span
-                          key={index}
-                          className={cn(
-                            "transition-colors duration-150",
-                            index === currentSentenceIndex && "bg-accent/20 text-accent-foreground font-semibold"
-                          )}
-                        >
-                          {segment}
-                        </span>
-                      ))
-                    ) : (
-                      extractedText || "Text content will appear here..."
-                    )
-                  }
-                </div>
-                <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="mt-3">
+                />
+                <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="mt-3" disabled={!extractedText}>
                   <Star className="mr-2 h-4 w-4" /> Favorite Selected Text
                 </Button>
               </CardContent>
             </Card>
-          </>
-        )}
       </div>
 
       {/* TTS Controls Area */}
       <div className="space-y-4">
         <Card>
           <CardHeader className="p-4">
-            <CardTitle className="text-lg">Text-to-Speech</CardTitle>
+            <CardTitle className="text-lg">Text-to-Speech Controls</CardTitle>
           </CardHeader>
           <CardContent className="p-4 space-y-3">
             <div>
               <Label htmlFor="tts-engine" className="text-xs">TTS Engine</Label>
-              <Select value={ttsSettings.type} onValueChange={(v) => handleSettingChange('type', v as 'local' | 'cloud')} disabled={(isSpeaking && !isPaused) || !loadedDocument}>
+              <Select value={ttsSettings.type} onValueChange={(v) => handleSettingChange('type', v as 'local' | 'cloud')} disabled={(isSpeaking && !isPaused)}>
                 <SelectTrigger id="tts-engine" className="h-9 text-xs">
                   <SelectValue placeholder="Select engine" />
                 </SelectTrigger>
@@ -475,7 +365,7 @@ export default function ReaderPage() {
                 className="h-9 text-xs"
                 value={ttsSettings.language}
                 onChange={(e) => handleSettingChange('language', e.target.value)}
-                disabled={(isSpeaking && !isPaused) || (ttsSettings.type === 'local' && availableVoices.length === 0) || !loadedDocument}
+                disabled={(isSpeaking && !isPaused) || (ttsSettings.type === 'local' && availableVoices.length === 0)}
               />
             </div>
 
@@ -485,7 +375,7 @@ export default function ReaderPage() {
                 <Select
                   value={ttsSettings.voiceURI}
                   onValueChange={(v) => handleSettingChange('voiceURI', v)}
-                  disabled={(isSpeaking && !isPaused) || availableVoices.filter(voice => voice.lang.startsWith(ttsSettings.language.split('-')[0])).length === 0 || !loadedDocument}
+                  disabled={(isSpeaking && !isPaused) || availableVoices.filter(voice => voice.lang.startsWith(ttsSettings.language.split('-')[0])).length === 0}
                 >
                   <SelectTrigger id="tts-voice" className="h-9 text-xs">
                     <SelectValue placeholder={availableVoices.length > 0 ? "Select voice" : "No voices for language"} />
@@ -508,11 +398,11 @@ export default function ReaderPage() {
 
             <div className="space-y-1">
               <Label htmlFor="tts-rate" className="text-xs">Rate: {ttsSettings.rate.toFixed(1)}</Label>
-              <Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={(isSpeaking && !isPaused) || !loadedDocument}/>
+              <Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={(isSpeaking && !isPaused)}/>
             </div>
             <div className="space-y-1">
               <Label htmlFor="tts-pitch" className="text-xs">Pitch: {ttsSettings.pitch.toFixed(1)}</Label>
-              <Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={(isSpeaking && !isPaused) || !loadedDocument}/>
+              <Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={(isSpeaking && !isPaused)}/>
             </div>
 
             <Button 
