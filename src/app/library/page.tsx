@@ -17,10 +17,11 @@ export default function LibraryPage() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [isSyncing, setIsSyncing] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState<string | null>(null); // docId that is syncing
   const [storedDocuments, setStoredDocuments] = useState<StoredMangaDocument[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Fetch documents from IndexedDB
   const fetchDocuments = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -38,6 +39,7 @@ export default function LibraryPage() {
     fetchDocuments();
   }, [fetchDocuments]);
 
+  // Handle file upload
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -128,6 +130,7 @@ export default function LibraryPage() {
     }
   };
 
+  // Handle deleting a document from IndexedDB
   const handleDeleteDocument = async (docId: string, docTitle?: string) => {
     const titleForConfirm = docTitle || 'this document';
     if (!window.confirm(`Are you sure you want to delete "${titleForConfirm}" from your browser storage? This action cannot be undone.`)) {
@@ -148,6 +151,7 @@ export default function LibraryPage() {
     }
   };
 
+  // Handle syncing an existing document to the local device helper service
   const handleSyncToDevice = async (doc: StoredMangaDocument) => {
     if (!doc.fileData || !doc.title || !doc.originalType) {
         toast({variant: "destructive", title: "Sync Error", description: "Document data is incomplete for syncing."});
@@ -168,9 +172,9 @@ export default function LibraryPage() {
           toast({ title: "Synced to Local Device", description: `"${doc.title}" successfully sent. Path: ${localUploadResult.filePath}` });
       } else {
         let description = `Could not sync "${doc.title}" to local device. Ensure the helper service is running and check its console.`;
-        if (!localUploadResult || Object.keys(localUploadResult).length === 0) { // Check if result is empty object or undefined/null
+        if (!localUploadResult || Object.keys(localUploadResult).length === 0) { // Explicit check for empty object
              description = `Sync of "${doc.title}" failed: The application received an empty or unexpected response from the server. Check Next.js server console and local helper service logs.`;
-        } else if (localUploadResult && localUploadResult.message) {
+        } else if (localUploadResult && localUploadResult.message) { // Check if message exists
             description = `Sync of "${doc.title}" failed: ${String(localUploadResult.message).substring(0,200)}`;
         }
         toast({ variant: "destructive", title: "Local Sync Failed", description });
@@ -324,5 +328,3 @@ export default function LibraryPage() {
     </div>
   );
 }
-
-    
