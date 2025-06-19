@@ -38,7 +38,6 @@ export async function uploadFileToLocalServer(
       clearTimeout(timeoutId);
       let userMessage = `Failed to connect to the local file saving service at ${LOCAL_SERVER_URL}.`;
       
-      // Log the full error for server-side debugging
       console.error('[localFileService] Raw Fetch Error Object:', JSON.stringify(fetchError, Object.getOwnPropertyNames(fetchError)));
 
       if (fetchError.name === 'AbortError') {
@@ -46,7 +45,7 @@ export async function uploadFileToLocalServer(
       } else if (fetchError.cause && typeof fetchError.cause === 'object' && 'code' in fetchError.cause) {
         const errorCode = (fetchError.cause as { code: string }).code;
         if (errorCode === 'ECONNREFUSED') {
-          userMessage = `Connection was REFUSED by the local file saving service at ${LOCAL_SERVER_URL}. Please ensure it's **RUNNING** and not blocked by a firewall.`;
+          userMessage = `Connection was REFUSED by the local file saving service at ${LOCAL_SERVER_URL}. This means the MangaTalk application tried to connect, but your local computer actively rejected it. **This is almost certainly because your local helper service (e.g., 'server.js') is NOT RUNNING, or a firewall is blocking port ${new URL(LOCAL_SERVER_URL).port}. Please START your local helper service and check your firewall.**`;
         } else if (errorCode === 'ENOTFOUND' || errorCode === 'EAI_AGAIN') {
           userMessage = `Could not resolve the address for the local file saving service (${LOCAL_SERVER_URL}). Check your network or if the hostname is correct.`;
         } else {
