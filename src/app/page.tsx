@@ -7,8 +7,8 @@ export default function Home() {
 
   // Fallback content if redirect doesn't happen immediately (should not be visible)
   // return (
-  //   <div className="flex flex-col flex-grow items-center justify-center">
-  //     <p>Redirecting to your library...</p>
-  //   </div>
+  //   // <div className="flex flex-col flex-grow items-center justify-center">
+  //   //   <p>Redirecting to your library...</p>
+  //   // </div>
   // );
 }
