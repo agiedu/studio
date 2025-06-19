@@ -91,7 +91,7 @@ export const addStoredDocument = (document: StoredDocument): boolean => {
     if (existingDocIndex > -1) {
         documents[existingDocIndex] = document;
     } else {
-        documents.unshift(document); // Add new documents to the beginning
+        documents.unshift(document);
     }
     return saveStoredDocuments(documents);
 };
@@ -122,7 +122,7 @@ export const addRead2StoredDocument = (document: Read2StoredDocument): boolean =
     if (existingDocIndex > -1) {
         documents[existingDocIndex] = document;
     } else {
-        documents.unshift(document); // Add new documents to the beginning
+        documents.unshift(document);
     }
     return saveRead2StoredDocuments(documents);
 };
@@ -136,7 +136,6 @@ export const deleteRead2StoredDocument = (docId: string): boolean => {
 export const getRead2StoredDocumentById = (docId: string): Read2StoredDocument | undefined => {
     const documents = loadRead2StoredDocuments();
     const read2Doc = documents.find(doc => doc.id === docId);
-    // Ensure it conforms to Read2StoredDocument, which can be StoredImageDocument or StoredPdfDocument
     if (read2Doc && (read2Doc.type === 'image' || read2Doc.type === 'pdf')) {
         return read2Doc as StoredImageDocument | StoredPdfDocument;
     }
@@ -155,7 +154,7 @@ export const saveFavoriteItems = (items: FavoriteItem[]): boolean => {
 
 export const addFavoriteItem = (item: FavoriteItem): boolean => {
     const items = loadFavoriteItems();
-    items.unshift(item); // Add new favorites to the beginning
+    items.unshift(item);
     return saveFavoriteItems(items);
 };
 
