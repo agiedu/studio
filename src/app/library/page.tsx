@@ -11,13 +11,13 @@ import { useToast } from '@/hooks/use-toast';
 import { UploadCloud, AlertTriangle, Info, ServerCrash, Trash2, BookOpen, FileText, Image as ImageIcon, RefreshCw, Loader2, Save } from 'lucide-react';
 import * as IndexedDBService from '@/lib/indexedDBService';
 import type { StoredMangaDocument } from '@/types';
-import { uploadFileToLocalServer } from '@/lib/localFileService';
+import { uploadFileToLocalServer } from '@/lib/localFileService'; // Server Action
 
 export default function LibraryPage() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [isSyncing, setIsSyncing] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState<string | null>(null); // doc.id of the item being synced
   const [storedDocuments, setStoredDocuments] = useState<StoredMangaDocument[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -48,17 +48,17 @@ export default function LibraryPage() {
 
     try {
       const fileBuffer = await file.arrayBuffer();
-      let extractedTextForImage: string | undefined = undefined; // Placeholder for future OCR
       let numPagesForPdf: number | undefined = undefined;
 
       if (file.type.startsWith('image/')) {
+        // For images, OCR is handled by MangaRoom if needed upon opening. Here, we just store it.
         storedDocForIndexDB = {
           id: docId,
           title: file.name,
           type: 'image',
           fileData: fileBuffer,
           originalType: file.type,
-          extractedText: extractedTextForImage,
+          // extractedText can be populated later if OCR is run directly on library upload in future
           createdAt: Date.now(),
         };
       } else if (file.type === 'application/pdf') {
@@ -67,12 +67,13 @@ export default function LibraryPage() {
           if (typeof window !== 'undefined' && !GlobalWorkerOptions.workerSrc) {
             GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${version}/pdf.worker.mjs`;
           }
-          const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) });
+          const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) }); // Use a copy
           const pdfInstance = await pdfLoadingTask.promise;
           numPagesForPdf = pdfInstance.numPages;
         } catch (pdfError: any) {
           console.warn(`[LibraryPage] Could not get PDF page count during upload for ${file.name}:`, pdfError);
           toast({ variant: "default", title: "PDF Info", description: `Uploaded PDF "${file.name}". Page count determination issue: ${pdfError.message}` });
+          // numPagesForPdf remains undefined, which is fine for storage.
         }
         storedDocForIndexDB = {
           id: docId,
@@ -86,28 +87,30 @@ export default function LibraryPage() {
       } else {
         toast({ variant: "destructive", title: "Unsupported File Type", description: "Please upload an Image or PDF file." });
         setIsUploading(false);
-        if (fileInputRef.current) fileInputRef.current.value = "";
-        return;
+        if (fileInputRef.current) fileInputRef.current.value = ""; // Reset file input
+        return; // Exit if file type is not supported
       }
 
+      // This point is reached only if file type is supported and storedDocForIndexDB is set.
       await IndexedDBService.saveDocument(storedDocForIndexDB);
-      toast({ title: "Document Saved in Browser", description: `"${file.name}" has been saved to your browser's internal storage.` });
-      fetchDocuments();
+      toast({ title: "Document Saved in Browser", description: `"${storedDocForIndexDB.title}" has been saved to your browser's internal storage.` });
+      fetchDocuments(); // Refresh the list
 
-      console.log(`[LibraryPage] Attempting secondary sync for "${file.name}" after saving to IndexedDB.`);
+      // Secondary: Attempt to sync to local device via Server Action
+      console.log(`[LibraryPage] Attempting secondary sync for "${storedDocForIndexDB.title}" after saving to IndexedDB.`);
       const formDataForLocalService = new FormData();
       formDataForLocalService.append('file', new File([storedDocForIndexDB.fileData], storedDocForIndexDB.title || 'untitled_file', { type: storedDocForIndexDB.originalType }));
       
       const localUploadResult = await uploadFileToLocalServer(formDataForLocalService);
 
-      if (localUploadResult && localUploadResult.success && localUploadResult.filePath) {
-        toast({ title: "Synced to Local Device", description: `Secondary sync of "${file.name}" successful. Path: ${localUploadResult.filePath}` });
+      if (localUploadResult?.success && localUploadResult.filePath) {
+        toast({ title: "Synced to Local Device", description: `Secondary sync of "${storedDocForIndexDB.title}" successful. Path: ${localUploadResult.filePath}` });
       } else {
-        let description = `"${file.name}" saved in browser. Secondary sync to local device failed.`;
-        if (localUploadResult && typeof localUploadResult === 'object' && Object.keys(localUploadResult).length === 0) {
-            description = `"${file.name}" saved in browser. Secondary sync to local device failed: Server Action returned an empty response. Check Next.js server console and helper service logs.`;
-        } else if (localUploadResult && localUploadResult.message) {
-            description = `"${file.name}" saved in browser. Secondary sync to local device failed: ${localUploadResult.message.substring(0,150)}`;
+        let description = `"${storedDocForIndexDB.title}" saved in browser. Secondary sync to local device failed.`;
+        if (localUploadResult && localUploadResult.message) {
+            description = `"${storedDocForIndexDB.title}" saved in browser. Secondary sync to local device failed: ${localUploadResult.message.substring(0,200)}`;
+        } else if (!localUploadResult || Object.keys(localUploadResult).length === 0) {
+            description = `"${storedDocForIndexDB.title}" saved in browser. Secondary sync to local device failed: Server Action returned an empty or unexpected response. Check Next.js server console and local helper service logs.`;
         }
         toast({ variant: "default", title: "Local Sync Info (Secondary)", description: description });
         console.error("[LibraryPage] Secondary local sync failed. Server Action Response:", localUploadResult);
@@ -131,7 +134,8 @@ export default function LibraryPage() {
     try {
       await IndexedDBService.deleteDocumentById(docId);
       toast({ title: "Document Deleted", description: `"${titleForConfirm}" removed from browser storage.` });
-      fetchDocuments();
+      fetchDocuments(); // Refresh list
+      // If this was the last active doc in Read2, clear that reference
       const lastActiveId = await IndexedDBService.getLastActiveDocId();
       if (lastActiveId === docId) {
         await IndexedDBService.saveLastActiveDocId(null);
@@ -157,16 +161,14 @@ export default function LibraryPage() {
 
       const localUploadResult = await uploadFileToLocalServer(formData);
 
-      if (localUploadResult && localUploadResult.success && localUploadResult.filePath) {
+      if (localUploadResult?.success && localUploadResult.filePath) {
           toast({ title: "Synced to Local Device", description: `"${doc.title}" successfully sent. Path: ${localUploadResult.filePath}` });
       } else {
         let description = `Could not sync "${doc.title}" to local device. Ensure the helper service is running and check its console.`;
-        if (localUploadResult && typeof localUploadResult === 'object' && Object.keys(localUploadResult).length === 0) { 
-            description = `Sync of "${doc.title}" failed: The application received an empty response from the server. Check Next.js server console and helper service logs.`;
-        } else if (localUploadResult && localUploadResult.message) {
-            description = `Sync of "${doc.title}" failed: ${localUploadResult.message.substring(0,150)}`;
-        } else if (localUploadResult && typeof localUploadResult.success === 'boolean' && !localUploadResult.success && !localUploadResult.message) {
-             description = `Sync of "${doc.title}" failed: An unexpected empty or malformed response was received from the server. Check Next.js server console and local helper logs.`;
+        if (localUploadResult && localUploadResult.message) {
+            description = `Sync of "${doc.title}" failed: ${localUploadResult.message.substring(0,200)}`;
+        } else if (!localUploadResult || Object.keys(localUploadResult).length === 0) {
+             description = `Sync of "${doc.title}" failed: The application received an empty or unexpected response from the server. Check Next.js server console and local helper service logs.`;
         }
         toast({ variant: "destructive", title: "Local Sync Failed", description });
         console.error(`[LibraryPage] Local sync failed for "${doc.title}". Server Action Response:`, localUploadResult);
@@ -187,7 +189,7 @@ export default function LibraryPage() {
           <CardTitle className="flex items-center gap-2"><UploadCloud className="text-primary" /> Add Document to Browser Storage</CardTitle>
           <CardDescription>
             Upload PDF or Image files. They will be stored directly in **this browser&apos;s internal storage (IndexedDB)**, making them available for offline reading within MangaTalk on this device.
-            You can optionally use &quot;Sync to Device&quot; to also save a copy to your computer&apos;s file system via the MangaTalk local helper service.
+            The optional &quot;Sync to Device&quot; button (available after upload or in the list below) can save a copy to your computer&apos;s file system via the MangaTalk local helper service, if it is running.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -211,7 +213,7 @@ export default function LibraryPage() {
           <CardTitle className="flex items-center gap-2"><BookOpen className="text-primary" /> Documents Stored in This Browser (IndexedDB)</CardTitle>
           <CardDescription>
             Below is a list of documents currently stored in this browser&apos;s internal storage.
-            Click &quot;Open in Read2&quot; to view. You can delete them or attempt to sync a copy to your local device.
+            Click &quot;Open in Read2&quot; to view. You can delete them or attempt to sync a copy to your local device using the &quot;Sync to Device&quot; button.
           </CardDescription>
           <Button variant="outline" size="sm" onClick={fetchDocuments} disabled={isLoading || isUploading} className="mt-2 w-fit">
             <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} /> Refresh List
@@ -238,6 +240,7 @@ export default function LibraryPage() {
                   </div>
                   <div className="flex gap-2 mt-2 sm:mt-0 sm:items-center flex-shrink-0">
                     <Button size="sm" variant="outline" asChild>
+                      {/* Links to Read2 page which is root `/` */}
                       <Link href={`/?docId=${doc.id}`}>
                         <BookOpen className="mr-1.5 h-4 w-4" /> Open in Read2
                       </Link>
@@ -248,7 +251,7 @@ export default function LibraryPage() {
                         onClick={() => handleSyncToDevice(doc)}
                         disabled={isSyncing === doc.id || isUploading}
                         className="w-[150px]" 
-                        title="Saves a copy to your computer via the local helper service."
+                        title="Saves a copy to your computer via the local helper service. Requires the service to be running."
                     >
                         {isSyncing === doc.id ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />} Sync to Device
                     </Button>
@@ -316,5 +319,3 @@ export default function LibraryPage() {
     </div>
   );
 }
-
-    
