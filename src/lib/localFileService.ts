@@ -23,7 +23,7 @@ export async function uploadFileToLocalServer(data: FormData): Promise<{ success
 
     // This FormData is for the fetch request to the local helper service
     const formDataForFetch = new FormData();
-    formDataForFetch.append("file", file); // The local helper service expects a field named "file"
+    formDataForFetch.append("file", file); 
 
     console.log('[localFileService] Attempting to upload file:', file.name, 'to', LOCAL_SERVER_URL);
 
@@ -37,22 +37,22 @@ export async function uploadFileToLocalServer(data: FormData): Promise<{ success
     try {
       response = await fetch(LOCAL_SERVER_URL, {
         method: "POST",
-        body: formDataForFetch, // Use the new FormData for fetch
+        body: formDataForFetch,
         signal: controller.signal,
       });
     } catch (fetchError: any) {
       clearTimeout(timeoutId);
+      let userMessage = `Failed to connect to the local file saving service at ${LOCAL_SERVER_URL}.`;
       if (fetchError.name === 'AbortError') {
         console.error('[localFileService] Request to local server timed out.');
-        return { success: false, message: `Request to the local file saving service timed out after ${FETCH_TIMEOUT_MS / 1000} seconds. Please ensure it is running and responsive.` };
-      }
-      console.error('[localFileService] Fetch error when trying to connect to local server:', fetchError.message);
-      let userMessage = 'Failed to connect to the local file saving service.';
-      if (fetchError.message && fetchError.message.toLowerCase().includes('econnrefused')) {
+        userMessage = `Request to the local file saving service timed out after ${FETCH_TIMEOUT_MS / 1000} seconds. Please ensure it is running and responsive.`;
+      } else if (fetchError.message && typeof fetchError.message === 'string' && fetchError.message.toLowerCase().includes('econnrefused')) {
         userMessage = `Connection refused by the local file saving service at ${LOCAL_SERVER_URL}. Please ensure it's running.`;
-      } else if (fetchError.message) {
-        userMessage += ` Details: ${fetchError.message}`;
+      } else {
+        const errorMessageDetail = typeof fetchError?.message === 'string' ? fetchError.message : String(fetchError);
+        userMessage += ` Details: ${errorMessageDetail.substring(0, 150)}${errorMessageDetail.length > 150 ? '...' : ''}`;
       }
+      console.error('[localFileService] Fetch error:', fetchError);
       return { success: false, message: userMessage };
     }
 
@@ -83,8 +83,9 @@ export async function uploadFileToLocalServer(data: FormData): Promise<{ success
       return { success: false, message: errorMessage };
     }
 
-    if (!responseText) {
-      const emptyResponseMessage = "Local server returned a successful status but an empty response body.";
+    // Check for empty responseText even if response.ok is true
+    if (!responseText && response.ok) {
+      const emptyResponseMessage = "Local server returned a successful status but an empty/invalid response body. Cannot confirm save.";
       console.warn('[localFileService]', emptyResponseMessage);
       return { success: false, message: emptyResponseMessage };
     }
@@ -101,7 +102,7 @@ export async function uploadFileToLocalServer(data: FormData): Promise<{ success
         return { success: false, message: issueMessage };
       }
     } catch (error: any) {
-      const parseErrorMessage = `Local server returned a 2xx status, but the response was not valid JSON. Response snippet: ${responseText.substring(0, 150)}${responseText.length > 150 ? '...' : ''}`;
+      const parseErrorMessage = `Local server returned a 2xx status, but the response was not valid JSON. This may indicate an issue with the local helper service's response format. Response snippet: ${responseText.substring(0, 150)}${responseText.length > 150 ? '...' : ''}`;
       console.error("[localFileService] Error parsing successful JSON response from local server:", error, "Raw text snippet:", responseText.substring(0,150));
       return { success: false, message: parseErrorMessage };
     }
@@ -110,9 +111,9 @@ export async function uploadFileToLocalServer(data: FormData): Promise<{ success
     console.error("[localFileService] CRITICAL UNHANDLED ERROR in uploadFileToLocalServer:", error);
     let connectMessage = "A critical error occurred while trying to communicate with the local file saving service.";
 
-    if (error instanceof TypeError && error.message.toLowerCase().includes('failed to fetch')) {
+    if (error instanceof TypeError && typeof error.message === 'string' && error.message.toLowerCase().includes('failed to fetch')) {
          connectMessage = `Connection to the local file saving service failed (network error). Please ensure it's running at ${LOCAL_SERVER_URL} and that there are no CORS issues if your local server is configured to require them.`;
-    } else if (error.message) {
+    } else if (error.message && typeof error.message === 'string') {
         connectMessage += ` Details: ${error.message.substring(0,150)}${error.message.length > 150 ? '...' : ''}`;
     } else {
         connectMessage += " An unknown internal error or network issue occurred.";

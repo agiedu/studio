@@ -26,10 +26,10 @@ export default function LibraryPage() {
       
       const localUploadResult = await uploadFileToLocalServer(formData);
 
-      if (localUploadResult.success) {
+      if (localUploadResult.success && localUploadResult.filePath) {
         toast({ title: "File Sent to Local Device", description: `${file.name} sent successfully. Path: ${localUploadResult.filePath}` });
       } else {
-        toast({ variant: "destructive", title: "Local Save Failed", description: localUploadResult.message });
+        toast({ variant: "destructive", title: "Local Save Failed", description: `${localUploadResult.message || "Could not save to local device."}` });
       }
 
     } catch (error: any) {
@@ -44,10 +44,10 @@ export default function LibraryPage() {
     <div className="container mx-auto p-4 md:p-6 space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><UploadCloud className="text-primary" /> Upload Document to Local Device</CardTitle>
+          <CardTitle className="flex items-center gap-2"><UploadCloud className="text-primary" /> Upload Document to Your Local Device</CardTitle>
           <CardDescription>
-            Upload TXT, PDF, or Image files. They will be sent to your local helper service for storage on your device.
-            Ensure the local helper service is running on your computer. Documents are managed directly on your device, not in browser storage.
+            Use this page to send TXT, PDF, or Image files to your local helper service.
+            Ensure the helper service is running on your computer. Documents will be saved directly to the folder configured in your local service.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -63,13 +63,16 @@ export default function LibraryPage() {
         <CardHeader>
             <CardTitle>About Document Storage</CardTitle>
         </CardHeader>
-        <CardContent>
-            <p className="text-muted-foreground">
-                This application now uses a local helper service to store your documents directly on your device (e.g., your computer). 
-                You manage your files in the folder designated by the local helper service.
+        <CardContent className="space-y-2 text-muted-foreground">
+            <p>
+                This application sends uploaded documents to a **local helper service** that you run on your own device (e.g., your computer). 
+                The files are stored in a folder managed by that local helper service, not within this web application or your browser's storage.
             </p>
-            <p className="text-muted-foreground mt-2">
-                To view or read documents, please use the "Read2" page to upload them for your current session, or open them directly from your local file system using your preferred applications.
+            <p>
+                MangaTalk **does not display a list** of files stored by your local helper service. To manage or view these documents, please access them directly from the folder on your local file system where your helper service saves them.
+            </p>
+            <p>
+                For reading documents within this application, please use the "Read2" page to upload them for your current session.
             </p>
         </CardContent>
       </Card>
