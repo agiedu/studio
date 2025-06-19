@@ -1,30 +1,34 @@
 
-
 export interface MangaSubPage {
   imageDataUrl: string;
-  extractedText?: string; // Can be undefined if OCR fails or not yet run
+  extractedText?: string;
 }
 
 export interface MangaFile {
-  id: string;
-  title?: string;
+  id: string; // For in-app identification, typically a timestamp or UUID
+  title?: string; // Original file name
   type: 'image' | 'pdf';
+  fileData: ArrayBuffer; // Store actual file content for IndexedDB
+  originalType: string; // e.g., 'image/png', 'application/pdf'
+  createdAt: number;
 }
 
 export interface MangaImageFile extends MangaFile {
   type: 'image';
-  imageDataUrl: string;
+  imageDataUrl?: string; // Can be generated from fileData on demand, or stored if small
   extractedText?: string;
 }
 
 export interface MangaPdfFile extends MangaFile {
   type: 'pdf';
-  pdfDataUrl: string; // Full data URI for the PDF
+  // pdfDataUrl is removed as fileData holds the ArrayBuffer
   numPages: number;
-  processedPages: MangaSubPage[];
+  processedPages: MangaSubPage[]; // These are for display, not primary storage of PDF pages themselves from original file
 }
 
-export type MangaDocument = MangaImageFile | MangaPdfFile;
+// This will be the primary type stored in IndexedDB
+export type StoredMangaDocument = Omit<MangaImageFile, 'processedPages' | 'numPages'> | Omit<MangaPdfFile, 'processedPages'> & { numPages?: number };
+
 
 export interface TTSSettings {
   type: 'local' | 'cloud';
@@ -32,7 +36,6 @@ export interface TTSSettings {
   language: string;
   rate: number;
   pitch: number;
-  // For Favorites page, add engine property
   engine?: 'local' | 'cloud';
 }
 
@@ -44,43 +47,13 @@ export interface TTSVoice {
   default: boolean;
 }
 
-// Types for Library and Favorites
-export type StoredDocumentType = 'txt' | 'pdf' | 'image';
-
-export interface BaseStoredDocument {
-  id: string;
-  name: string;
-  type: StoredDocumentType;
-  createdAt: number;
-}
-
-export interface StoredTxtDocument extends BaseStoredDocument {
-  type: 'txt';
-  textContent: string;
-}
-
-export interface StoredPdfDocument extends BaseStoredDocument {
-  type: 'pdf';
-  pdfBase64: string; // Store PDF as base64 encoded string (the data part only)
-}
-
-export interface StoredImageDocument extends BaseStoredDocument {
-  type: 'image';
-  imageDataUrl: string; // Store full image data URI
-  extractedText?: string; // To store OCR text for images from MangaRoom
-}
-
-export type StoredDocument = StoredTxtDocument | StoredPdfDocument | StoredImageDocument;
-
 export interface FavoriteItem {
   id: string;
   text: string;
-  sourceDocumentId?: string;
+  sourceDocumentId?: string; // This would be the ID from IndexedDB
   sourceDocumentName?: string;
   createdAt: number;
 }
 
-// Type specifically for Read2 stored documents, which might evolve
-// For now, it's the same as StoredDocument, but images will have extractedText
-export type Read2StoredDocument = StoredImageDocument | StoredPdfDocument;
-
+// For active document state in MangaRoom, similar to StoredMangaDocument but might include transient display data
+export type ActiveMangaDocument = MangaImageFile | MangaPdfFile;
