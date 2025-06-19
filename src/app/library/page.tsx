@@ -13,6 +13,12 @@ import * as IndexedDBService from '@/lib/indexedDBService';
 import type { StoredMangaDocument } from '@/types';
 import { uploadFileToLocalServer } from '@/lib/localFileService'; // Server Action
 
+// Helper to convert ArrayBuffer to a temporary blob URL for display
+function arrayBufferToBlobURL(buffer: ArrayBuffer, type: string): string {
+  const blob = new Blob([buffer], { type });
+  return URL.createObjectURL(blob);
+}
+
 export default function LibraryPage() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
@@ -52,10 +58,6 @@ export default function LibraryPage() {
 
       if (file.type.startsWith('image/')) {
         let extractedText = "OCR will be performed if you open this in Read2.";
-        // If you want to perform OCR during upload here, you would:
-        // const dataUrl = await IndexedDBService.arrayBufferToBase64DataURL(fileBuffer, file.type);
-        // const ocrResult = await performOCR(dataUrl); // Assuming performOCR is an available server action
-        // extractedText = 'extractedText' in ocrResult ? ocrResult.extractedText : `OCR failed: ${ocrResult.error || 'Unknown error'}`;
         
         storedDocForIndexDB = {
           id: docId,
@@ -64,16 +66,15 @@ export default function LibraryPage() {
           fileData: fileBuffer,
           originalType: file.type,
           createdAt: Date.now(),
-          extractedText: extractedText, // Store placeholder or actual OCR result
+          extractedText: extractedText,
         };
       } else if (file.type === 'application/pdf') {
         try {
-          // Dynamically import pdfjs-dist only when needed client-side
           const { getDocument, GlobalWorkerOptions, version } = await import('pdfjs-dist');
           if (typeof window !== 'undefined' && !GlobalWorkerOptions.workerSrc) {
             GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${version}/pdf.worker.mjs`;
           }
-          const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) }); // Use a copy for pdf.js
+          const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) }); 
           const pdfInstance = await pdfLoadingTask.promise;
           numPagesForPdf = pdfInstance.numPages;
         } catch (pdfError: any) {
@@ -92,18 +93,17 @@ export default function LibraryPage() {
       } else {
         toast({ variant: "destructive", title: "Unsupported File Type", description: "Please upload an Image or PDF file." });
         setIsUploading(false);
-        if (fileInputRef.current) fileInputRef.current.value = ""; // Reset file input
+        if (fileInputRef.current) fileInputRef.current.value = "";
         return;
       }
 
       if (storedDocForIndexDB) {
         await IndexedDBService.saveDocument(storedDocForIndexDB);
         toast({ title: "Document Saved in Browser", description: `"${storedDocForIndexDB.title}" has been saved to your browser's internal storage.` });
-        fetchDocuments(); // Refresh the list
+        fetchDocuments(); 
 
-        // Secondary action: attempt to sync to local device via helper service
-        const formDataForLocalService = new FormData();
         if (storedDocForIndexDB.fileData) {
+            const formDataForLocalService = new FormData();
             formDataForLocalService.append('file', new File([storedDocForIndexDB.fileData], storedDocForIndexDB.title || 'untitled_file', { type: storedDocForIndexDB.originalType }));
             
             console.log("[LibraryPage] Attempting secondary sync to local device for:", storedDocForIndexDB.title);
@@ -113,14 +113,14 @@ export default function LibraryPage() {
                   toast({ title: "Synced to Local Device", description: `Secondary sync of "${storedDocForIndexDB.title}" successful. Path: ${localUploadResult.filePath}` });
                 } else {
                   let errorMsg = `Secondary sync of "${storedDocForIndexDB.title || 'document'}" to local device failed.`;
-                  if (localUploadResult && Object.keys(localUploadResult).length === 0 && localUploadResult.constructor === Object) {
-                    errorMsg += " The application received an empty or unexpected response from the server. Ensure helper service is running & sends JSON. Check Next.js server console and local helper service logs.";
-                  } else if (localUploadResult?.message) {
+                  if (localUploadResult && localUploadResult.message) {
                     errorMsg += ` ${localUploadResult.message}`;
+                  } else if (localUploadResult && Object.keys(localUploadResult).length === 0 && localUploadResult.constructor === Object) {
+                    errorMsg += " Received an empty or unexpected response from the server. Ensure helper service is running & sends JSON.";
                   } else {
-                    errorMsg += " No specific error message received from server. Ensure helper service is running & sends JSON. Check Next.js server console and local helper service logs.";
+                    errorMsg += " No specific error message from server. Ensure helper service is running & sends JSON.";
                   }
-                  toast({ variant: "default", title: "Local Sync Info (Secondary)", description: errorMsg });
+                  toast({ variant: "default", title: "Local Sync Info (Secondary)", description: errorMsg, duration: 7000 });
                   console.warn("[LibraryPage] Secondary local sync failed. Server Action Response:", localUploadResult);
                 }
             } catch (serverActionError: any) {
@@ -150,7 +150,7 @@ export default function LibraryPage() {
     try {
       await IndexedDBService.deleteDocumentById(docId);
       toast({ title: "Document Deleted", description: `"${titleForConfirm}" removed from browser storage.` });
-      fetchDocuments(); // Refresh the list
+      fetchDocuments(); 
       const lastActiveId = await IndexedDBService.getLastActiveDocId();
       if (lastActiveId === docId) {
         await IndexedDBService.saveLastActiveDocId(null);
@@ -180,14 +180,14 @@ export default function LibraryPage() {
           toast({ title: "Synced to Local Device", description: `"${doc.title}" successfully sent. Path: ${localUploadResult.filePath}` });
       } else {
         let errorMsg = `Could not sync "${doc.title}" to local device.`;
-        if (localUploadResult && Object.keys(localUploadResult).length === 0 && localUploadResult.constructor === Object) {
-          errorMsg += " The application received an empty or unexpected response from the server. Ensure helper service is running & sends JSON. Check Next.js server console and local helper service logs.";
-        } else if (localUploadResult?.message) {
-          errorMsg += ` ${localUploadResult.message}`;
+         if (localUploadResult && localUploadResult.message) {
+            errorMsg += ` ${localUploadResult.message}`;
+        } else if (localUploadResult && Object.keys(localUploadResult).length === 0 && localUploadResult.constructor === Object) {
+            errorMsg += " Received an empty or unexpected response from the server. Ensure helper service is running & sends JSON.";
         } else {
-          errorMsg += " No specific error message received from server. Ensure helper service is running & sends JSON. Check Next.js server console and local helper service logs.";
+            errorMsg += " No specific error message from server. Ensure helper service is running & sends JSON.";
         }
-        toast({ variant: "destructive", title: "Local Sync Failed", description: errorMsg });
+        toast({ variant: "destructive", title: "Local Sync Failed", description: errorMsg, duration: 7000 });
         console.error(`[LibraryPage] Local sync failed for "${doc.title}". Server Action Response:`, localUploadResult);
       }
     } catch (uploadError: any) {
