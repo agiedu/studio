@@ -91,7 +91,6 @@ export const addStoredDocument = (document: StoredDocument): boolean => {
     const documents = loadStoredDocuments();
     const existingDocIndex = documents.findIndex(d => d.id === document.id);
     if (existingDocIndex > -1) {
-        // console.warn(`Document with ID ${document.id} already exists in library. Updating existing.`);
         documents[existingDocIndex] = document;
     } else {
         documents.unshift(document); 
@@ -139,4 +138,3 @@ export const saveLastActiveMangaRoomDocId = (docId: string | null): boolean => {
 export const loadLastActiveMangaRoomDocId = (): string | null => {
   return safeLocalStorageGet<string | null>(LAST_ACTIVE_MANGAROOM_DOC_ID_KEY, null);
 };
-
