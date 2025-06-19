@@ -47,12 +47,14 @@ export async function saveDocument(doc: StoredMangaDocument): Promise<void> {
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(DOC_STORE_NAME, 'readwrite');
     const store = transaction.objectStore(DOC_STORE_NAME);
-    const request = store.put(doc);
+    store.put(doc); // Enqueue operation
 
-    request.onsuccess = () => resolve();
-    request.onerror = () => {
-      console.error('Error saving document to IndexedDB:', request.error);
-      reject(new Error(`Failed to save document: ${request.error?.message}`));
+    transaction.oncomplete = () => {
+      resolve();
+    };
+    transaction.onerror = () => {
+      console.error('Transaction error saving document to IndexedDB:', transaction.error);
+      reject(new Error(`Failed to save document (transaction error): ${transaction.error?.message}`));
     };
   });
 }
@@ -92,12 +94,14 @@ export async function deleteDocumentById(id: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(DOC_STORE_NAME, 'readwrite');
     const store = transaction.objectStore(DOC_STORE_NAME);
-    const request = store.delete(id);
+    store.delete(id); // Enqueue operation
 
-    request.onsuccess = () => resolve();
-    request.onerror = () => {
-      console.error('Error deleting document from IndexedDB:', request.error);
-      reject(new Error(`Failed to delete document: ${request.error?.message}`));
+    transaction.oncomplete = () => {
+      resolve();
+    };
+    transaction.onerror = () => {
+      console.error('Transaction error deleting document from IndexedDB:', transaction.error);
+      reject(new Error(`Failed to delete document (transaction error): ${transaction.error?.message}`));
     };
   });
 }
@@ -107,14 +111,19 @@ export async function saveLastActiveDocId(docId: string | null): Promise<void> {
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(LAST_ACTIVE_DOC_STORE_NAME, 'readwrite');
     const store = transaction.objectStore(LAST_ACTIVE_DOC_STORE_NAME);
-    const request = docId 
-      ? store.put({ key: LAST_ACTIVE_DOC_KEY, value: docId })
-      : store.delete(LAST_ACTIVE_DOC_KEY);
+    
+    if (docId) {
+      store.put({ key: LAST_ACTIVE_DOC_KEY, value: docId });
+    } else {
+      store.delete(LAST_ACTIVE_DOC_KEY);
+    }
 
-    request.onsuccess = () => resolve();
-    request.onerror = () => {
-      console.error('Error saving last active doc ID to IndexedDB:', request.error);
-      reject(new Error(`Failed to save last active doc ID: ${request.error?.message}`));
+    transaction.oncomplete = () => {
+      resolve();
+    };
+    transaction.onerror = () => {
+      console.error('Transaction error saving/deleting last active doc ID to IndexedDB:', transaction.error);
+      reject(new Error(`Transaction error for last active doc ID: ${transaction.error?.message}`));
     };
   });
 }
