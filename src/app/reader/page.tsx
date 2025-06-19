@@ -50,12 +50,10 @@ export default function ReaderPage() {
 
   const [txtContent, setTxtContent] = useState<string>("");
   
-  const imageSrcRef = useRef<string | null>(null); // Use ref for imageSrc to avoid stale closures if used in callbacks without it being a direct dependency
-  const [displayedImageSrc, setDisplayedImageSrc] = useState<string | null>(null); // For React to re-render the image
+  const [displayedImageSrc, setDisplayedImageSrc] = useState<string | null>(null);
   const currentImageObjectUrlRef = useRef<string | null>(null);
 
   const [isPerformingOcr, setIsPerformingOcr] = useState(false);
-
   const [currentTextForTTS, setCurrentTextForTTS] = useState<string>("");
 
   const [ttsSettings, setTtsSettings] = useState<TTSSettings>(LocalStorageService.defaultTTSSettings);
@@ -108,7 +106,6 @@ export default function ReaderPage() {
       setIsRenderingPdfPage(false);
       
       if (currentImageObjectUrlRef.current) { URL.revokeObjectURL(currentImageObjectUrlRef.current); currentImageObjectUrlRef.current = null; }
-      imageSrcRef.current = null;
       setDisplayedImageSrc(null);
 
       setTxtContent("");
@@ -119,7 +116,7 @@ export default function ReaderPage() {
 
       if (epubViewerRef.current) { epubViewerRef.current.innerHTML = ''; }
       if (epubRenditionRef.current) { epubRenditionRef.current.destroy(); epubRenditionRef.current = null; }
-      if (epubBookRef.current) { epubBookRef.current = null; }
+      epubBookRef.current = null;
 
       let docIdToLoad = searchParams.get('docId');
 
@@ -127,7 +124,7 @@ export default function ReaderPage() {
         const lastActiveId = await IndexedDBService.getLastActiveDocId();
         if (lastActiveId) {
           docIdToLoad = lastActiveId;
-          // Optionally, update URL: router.replace(`/reader?docId=${lastActiveId}`, { scroll: false });
+          // router.replace(`/reader?docId=${lastActiveId}`, { scroll: false }); // Optionally update URL without new history entry
         } else {
           setDocErrorMessage("No document selected. Please choose one from the Library.");
           setIsLoadingDoc(false);
@@ -135,7 +132,7 @@ export default function ReaderPage() {
         }
       }
       
-      if (!docIdToLoad) { // Should only happen if no URL param AND no last active after all checks
+      if (!docIdToLoad) {
          setDocErrorMessage("No document selected and no previously active document found. Please go to the Library.");
          setIsLoadingDoc(false);
          return;
@@ -145,7 +142,7 @@ export default function ReaderPage() {
         const doc = await IndexedDBService.getDocumentById(docIdToLoad);
         if (!doc) {
           setDocErrorMessage(`Document with ID "${docIdToLoad}" not found.`);
-          await IndexedDBService.saveLastActiveDocId(null); // Clear if doc not found
+          await IndexedDBService.saveLastActiveDocId(null);
           setIsLoadingDoc(false);
           return;
         }
@@ -168,7 +165,7 @@ export default function ReaderPage() {
         } else if (doc.type === 'epub') {
           if (!epubViewerRef.current) {
             setDocErrorMessage("EPUB viewer element not ready.");
-            setIsLoadingDoc(false); // Early exit if viewer not ready
+            setIsLoadingDoc(false);
             return;
           }
           try {
@@ -198,9 +195,12 @@ export default function ReaderPage() {
           } catch (e: any) {
             console.error("Error loading or rendering EPUB:", e);
             const errorMsg = e instanceof Error ? e.message : String(e);
-            const userFriendlyError = errorMsg.toLowerCase().includes("uncompressed data size mismatch") || errorMsg.toLowerCase().includes("reading 'package'")
-              ? `Failed to load EPUB: The file might be corrupted or not a valid EPUB. (Detail: ${errorMsg})`
-              : `Failed to load EPUB: ${errorMsg}`;
+            let userFriendlyError = `Failed to load EPUB: ${errorMsg}`;
+            if (errorMsg.toLowerCase().includes("uncompressed data size mismatch") || errorMsg.toLowerCase().includes("reading 'package'")) {
+              userFriendlyError = `Failed to load EPUB: The file might be corrupted or not a valid EPUB. (Detail: ${errorMsg})`;
+            } else if (errorMsg.toLowerCase().includes("cannot read properties of undefined (reading 'package')")){
+              userFriendlyError = `Failed to load EPUB: Error initializing EPUB reader. The file might be incompatible. (Detail: ${errorMsg})`;
+            }
             setDocErrorMessage(userFriendlyError);
             setCurrentTextForTTS(userFriendlyError);
           }
@@ -213,9 +213,12 @@ export default function ReaderPage() {
           const blob = new Blob([doc.fileData], { type: doc.originalType });
           const newUrl = URL.createObjectURL(blob);
           currentImageObjectUrlRef.current = newUrl;
-          imageSrcRef.current = newUrl;
           setDisplayedImageSrc(newUrl);
-          setCurrentTextForTTS(doc.extractedText || "Image loaded. Perform OCR to extract text for reading aloud.");
+          if (doc.extractedText) {
+            setCurrentTextForTTS(doc.extractedText);
+          } else {
+            setCurrentTextForTTS("Image loaded. Perform OCR to extract text for reading aloud.");
+          }
         } else if (doc.type === 'mobi') {
           setDocErrorMessage("MOBI file format is not directly supported for reading. Please convert it to EPUB or PDF.");
           setCurrentTextForTTS("MOBI files cannot be read directly. Please convert to a supported format like EPUB or PDF.");
@@ -234,10 +237,10 @@ export default function ReaderPage() {
     return () => { 
       stopSpeech(true);
       if (epubRenditionRef.current) { epubRenditionRef.current.destroy(); epubRenditionRef.current = null; }
-      if (epubBookRef.current) { epubBookRef.current = null; } // epubBookRef itself doesn't have a destroy method usually
+      epubBookRef.current = null;
       if (currentImageObjectUrlRef.current) { URL.revokeObjectURL(currentImageObjectUrlRef.current); currentImageObjectUrlRef.current = null; }
     };
-  }, [searchParams, router, stopSpeech]); // stopSpeech is stable due to useCallback
+  }, [searchParams, router, stopSpeech]);
   
   useEffect(() => {
     if (activeDoc?.type === 'pdf' && pdfDocProxy && currentPdfPageNum > 0 && currentPdfPageNum <= pdfTotalPages) {
@@ -290,13 +293,8 @@ export default function ReaderPage() {
         dataUrlToProcess = pdfPageImage;
     } else if (activeDoc?.type === 'image' && activeDoc.fileData) {
         try {
-          if (imageSrcRef.current && imageSrcRef.current.startsWith('blob:')) { 
-             dataUrlToProcess = await IndexedDBService.arrayBufferToBase64DataURL(activeDoc.fileData, activeDoc.originalType);
-          } else if (imageSrcRef.current) { 
-             dataUrlToProcess = imageSrcRef.current;
-          } else { 
-             dataUrlToProcess = await IndexedDBService.arrayBufferToBase64DataURL(activeDoc.fileData, activeDoc.originalType);
-          }
+            // For images, always convert ArrayBuffer to Base64 data URL for OCR
+            dataUrlToProcess = await IndexedDBService.arrayBufferToBase64DataURL(activeDoc.fileData, activeDoc.originalType);
         } catch (conversionError) {
           toast({variant: "destructive", title: "OCR Error", description: "Could not prepare image data for OCR."});
           console.error("Error converting image ArrayBuffer to Base64 for OCR:", conversionError);
@@ -361,56 +359,69 @@ export default function ReaderPage() {
   }, [populateVoiceList, stopSpeech]);
   
  useEffect(() => {
-    if (typeof window !== 'undefined' && window.speechSynthesis && ttsSettings.type === 'local') {
-      const voices = availableVoices.length > 0 ? availableVoices : window.speechSynthesis.getVoices().map(v => ({ name: v.name, lang: v.lang, voiceURI: v.voiceURI, localService: v.localService, default: v.default }));
-      if(voices.length === 0 && availableVoices.length === 0) return; 
+    let settingsToSave = { ...ttsSettings };
+    let changesMade = false;
 
-      let voiceToSet: TTSVoice | undefined = ttsSettings.voiceURI ? voices.find(v => v.voiceURI === ttsSettings.voiceURI) : undefined;
-      let langToSet = ttsSettings.language;
-      let settingsChanged = false;
+    if (typeof window !== 'undefined' && window.speechSynthesis && settingsToSave.type === 'local') {
+        const systemVoices = availableVoices.length > 0 ? availableVoices : window.speechSynthesis.getVoices().map(v => ({ name: v.name, lang: v.lang, voiceURI: v.voiceURI, localService: v.localService, default: v.default }));
+        
+        if (systemVoices.length > 0) { // Only proceed if voices are available
+            let voiceToSet: TTSVoice | undefined = settingsToSave.voiceURI ? systemVoices.find(v => v.voiceURI === settingsToSave.voiceURI) : undefined;
+            let langToSet = settingsToSave.language;
 
-      if (!voiceToSet || (voiceToSet && voiceToSet.lang && !voiceToSet.lang.startsWith(ttsSettings.language.split('-')[0]))) {
-        const defaultForLang = voices.find(v => v.lang === ttsSettings.language && v.default) ||
-                               voices.find(v => v.lang === ttsSettings.language) ||
-                               voices.find(v => v.lang?.startsWith(ttsSettings.language.split('-')[0]) && v.default) ||
-                               voices.find(v => v.lang?.startsWith(ttsSettings.language.split('-')[0]));
-        if (defaultForLang && defaultForLang.lang) {
-          voiceToSet = defaultForLang;
-          langToSet = defaultForLang.lang;
-        } else {
-          const absoluteFallback = voices.find(v => v.default && v.lang) || (voices.length > 0 ? voices[0] : undefined);
-          if (absoluteFallback && absoluteFallback.lang) {
-            voiceToSet = absoluteFallback;
-            langToSet = absoluteFallback.lang;
-          }
+            // Check if current voice is valid for the current language
+            const currentVoiceIsValidForLanguage = voiceToSet && voiceToSet.lang && voiceToSet.lang.startsWith(settingsToSave.language.split('-')[0]);
+
+            if (!voiceToSet || !currentVoiceIsValidForLanguage) {
+                const defaultForLang = systemVoices.find(v => v.lang === settingsToSave.language && v.default) ||
+                                     systemVoices.find(v => v.lang === settingsToSave.language) ||
+                                     systemVoices.find(v => v.lang?.startsWith(settingsToSave.language.split('-')[0]) && v.default) ||
+                                     systemVoices.find(v => v.lang?.startsWith(settingsToSave.language.split('-')[0]));
+                
+                if (defaultForLang && defaultForLang.lang) {
+                    voiceToSet = defaultForLang;
+                    langToSet = defaultForLang.lang; // Align language with selected voice
+                } else {
+                    // Fallback to any default voice if no language-specific match
+                    const absoluteFallback = systemVoices.find(v => v.default && v.lang) || (systemVoices.length > 0 ? systemVoices[0] : undefined);
+                    if (absoluteFallback && absoluteFallback.lang) {
+                        voiceToSet = absoluteFallback;
+                        langToSet = absoluteFallback.lang;
+                    } else { // No suitable voice at all
+                        voiceToSet = undefined;
+                        // langToSet remains as is, or could be cleared if desired
+                    }
+                }
+            }
+            
+            const newVoiceURI = voiceToSet ? voiceToSet.voiceURI : undefined;
+            if (newVoiceURI !== settingsToSave.voiceURI) {
+                settingsToSave.voiceURI = newVoiceURI;
+                changesMade = true;
+            }
+            if (langToSet && langToSet !== settingsToSave.language) {
+                settingsToSave.language = langToSet;
+                changesMade = true;
+            }
+        } else { // No local voices available in the browser
+             if(settingsToSave.voiceURI !== undefined) {
+                settingsToSave.voiceURI = undefined;
+                changesMade = true;
+             }
         }
-      }
-      
-      const newVoiceURI = voiceToSet ? voiceToSet.voiceURI : undefined;
-      if (newVoiceURI !== ttsSettings.voiceURI) {
-         setTtsSettings(prev => ({ ...prev, voiceURI: newVoiceURI }));
-         settingsChanged = true;
-      }
-      if (langToSet && langToSet !== ttsSettings.language) {
-         setTtsSettings(prev => ({ ...prev, language: langToSet }));
-         settingsChanged = true;
-      }
-
-      if(settingsChanged) LocalStorageService.saveTTSSettings({...ttsSettings, voiceURI: newVoiceURI, language: langToSet});
-      else LocalStorageService.saveTTSSettings(ttsSettings);
-
-
-    } else if (ttsSettings.type === 'cloud') {
-      if (ttsSettings.voiceURI) {
-         setTtsSettings(prev => ({ ...prev, voiceURI: undefined }));
-         LocalStorageService.saveTTSSettings({...ttsSettings, voiceURI: undefined});
-      } else {
-        LocalStorageService.saveTTSSettings(ttsSettings);
-      }
-    } else {
-         LocalStorageService.saveTTSSettings(ttsSettings);
+    } else if (settingsToSave.type === 'cloud') {
+        if (settingsToSave.voiceURI !== undefined) {
+            settingsToSave.voiceURI = undefined;
+            changesMade = true;
+        }
     }
-  }, [ttsSettings.type, ttsSettings.language, ttsSettings.voiceURI, availableVoices]); // Removed ttsSettings dependency
+
+    if (changesMade) {
+        setTtsSettings(settingsToSave); // Update React state
+    }
+    LocalStorageService.saveTTSSettings(settingsToSave); // Always save to LS, even if no "changesMade" by this effect, in case settings were changed by user directly
+
+}, [ttsSettings.type, ttsSettings.language, ttsSettings.voiceURI, availableVoices]); // Note: ttsSettings object itself removed as direct dependency to avoid loop
 
 
   useEffect(() => {
@@ -479,15 +490,23 @@ export default function ReaderPage() {
         const systemVoices = window.speechSynthesis.getVoices();
         let voiceToUse: SpeechSynthesisVoice | undefined = undefined;
 
-        if (ttsSettings.voiceURI) voiceToUse = systemVoices.find(v => v.voiceURI === ttsSettings.voiceURI);
-        
-        if (!voiceToUse && ttsSettings.language) { 
-            voiceToUse = systemVoices.find(v => v.lang === ttsSettings.language && v.default) ||
-                         systemVoices.find(v => v.lang === ttsSettings.language) ||
-                         systemVoices.find(v => v.lang?.startsWith(ttsSettings.language.split('-')[0]) && v.default) ||
-                         systemVoices.find(v => v.lang?.startsWith(ttsSettings.language.split('-')[0]));
+        if (systemVoices.length > 0) {
+            if (ttsSettings.voiceURI) {
+                voiceToUse = systemVoices.find(v => v.voiceURI === ttsSettings.voiceURI);
+            }
+            // Fallback if selected voiceURI is not found or not set
+            if (!voiceToUse && ttsSettings.language) { 
+                voiceToUse = systemVoices.find(v => v.lang === ttsSettings.language && v.default) ||
+                             systemVoices.find(v => v.lang === ttsSettings.language) ||
+                             systemVoices.find(v => v.lang?.startsWith(ttsSettings.language.split('-')[0]) && v.default) ||
+                             systemVoices.find(v => v.lang?.startsWith(ttsSettings.language.split('-')[0]));
+            }
+            // Absolute fallback
+            if (!voiceToUse) {
+                voiceToUse = systemVoices.find(v => v.default && v.lang) || systemVoices[0];
+            }
         }
-        if (!voiceToUse && systemVoices.length > 0) voiceToUse = systemVoices.find(v => v.default && v.lang) || systemVoices[0];
+
 
         if (voiceToUse) {
           utterance.voice = voiceToUse;
@@ -514,17 +533,21 @@ export default function ReaderPage() {
   };
 
   const handleSettingChange = <K extends keyof TTSSettings>(key: K, value: TTSSettings[K]) => {
-    stopSpeech(true);
-    setTtsSettings(prev => {
-      let newSettings = { ...prev, [key]: value };
-      if (key === 'type' && value === 'cloud') {
-          newSettings.voiceURI = undefined;
-      }
-      // Default voice selection logic is now in the useEffect for ttsSettings
-      // LocalStorageService.saveTTSSettings(newSettings); // This is now handled by dedicated useEffect
-      return newSettings;
+    stopSpeech(true); // Stop speech when settings change
+    
+    setTtsSettings(prevSettings => {
+        const newSettings = { ...prevSettings, [key]: value };
+        
+        // VoiceURI cleared if type becomes 'cloud'
+        if (key === 'type' && value === 'cloud') {
+            newSettings.voiceURI = undefined;
+        }
+        
+        // Language or type change triggers voice recalculation in useEffect, LS save also there.
+        return newSettings;
     });
   };
+
 
   const handleFavoriteSelection = () => {
     const selection = window.getSelection()?.toString().trim() || currentTextForTTS;
@@ -601,8 +624,8 @@ export default function ReaderPage() {
     </div>;
   }
   
-  const showOcrButtonForPdf = activeDoc?.type === 'pdf' && !pdfPageIsTextBased && pdfPageImage && !isRenderingPdfPage;
-  const showOcrButtonForImage = activeDoc?.type === 'image' && displayedImageSrc && (!activeDoc.extractedText || currentTextForTTS.startsWith("Image loaded. Perform OCR"));
+  const showOcrButtonForPdfPage = activeDoc?.type === 'pdf' && !pdfPageIsTextBased && pdfPageImage && !isRenderingPdfPage;
+  const showOcrButtonForImage = activeDoc?.type === 'image' && displayedImageSrc && (currentTextForTTS.startsWith("Image loaded. Perform OCR") || !activeDoc.extractedText);
 
 
   return (
@@ -626,7 +649,7 @@ export default function ReaderPage() {
             {isRenderingPdfPage && !pdfPageImage && <Loader2 className="h-10 w-10 animate-spin my-8" />}
             {pdfPageImage && <NextImage src={pdfPageImage} alt={`Page ${currentPdfPageNum}`} width={0} height={0} sizes="100vw" style={{ width: 'auto', height: 'auto', maxHeight: 'calc(100vh - 12rem)', maxWidth: '100%', objectFit: 'contain' }} className="shadow-lg border rounded-md" />}
             {!pdfPageImage && !isRenderingPdfPage && !docErrorMessage && (pdfDocProxy && pdfTotalPages > 0) && <div className="my-8 text-muted-foreground">{`Rendering page ${currentPdfPageNum}...`}</div>}
-             {showOcrButtonForPdf && (
+             {showOcrButtonForPdfPage && (
                 <Button onClick={handlePerformOcr} disabled={isPerformingOcr} className="mt-3">
                     {isPerformingOcr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />} Perform OCR on PDF Page
                 </Button>
