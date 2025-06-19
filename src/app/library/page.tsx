@@ -51,6 +51,12 @@ export default function LibraryPage() {
       let numPagesForPdf: number | undefined = undefined;
 
       if (file.type.startsWith('image/')) {
+        let extractedText = "OCR will be performed if you open this in Read2.";
+        // If you want to perform OCR during upload here, you would:
+        // const dataUrl = await IndexedDBService.arrayBufferToBase64DataURL(fileBuffer, file.type);
+        // const ocrResult = await performOCR(dataUrl); // Assuming performOCR is an available server action
+        // extractedText = 'extractedText' in ocrResult ? ocrResult.extractedText : `OCR failed: ${ocrResult.error || 'Unknown error'}`;
+        
         storedDocForIndexDB = {
           id: docId,
           title: file.name,
@@ -58,7 +64,7 @@ export default function LibraryPage() {
           fileData: fileBuffer,
           originalType: file.type,
           createdAt: Date.now(),
-          // extractedText will be populated in MangaRoom if needed or by a dedicated OCR step if primary storage is just the file
+          extractedText: extractedText, // Store placeholder or actual OCR result
         };
       } else if (file.type === 'application/pdf') {
         try {
@@ -97,7 +103,6 @@ export default function LibraryPage() {
 
         // Secondary action: attempt to sync to local device via helper service
         const formDataForLocalService = new FormData();
-        // Ensure fileData is present before creating File object
         if (storedDocForIndexDB.fileData) {
             formDataForLocalService.append('file', new File([storedDocForIndexDB.fileData], storedDocForIndexDB.title || 'untitled_file', { type: storedDocForIndexDB.originalType }));
             
