@@ -106,7 +106,7 @@ export default function LibraryPage() {
               toast({ title: "Synced to Local Device", description: `Secondary sync of "${storedDocForIndexDB.title}" successful. Path: ${localUploadResult.filePath}` });
             } else {
               let errorMsg = `Secondary sync of "${storedDocForIndexDB.title || 'document'}" to local device failed.`;
-              if (localUploadResult && Object.keys(localUploadResult).length === 0 && localUploadResult.constructor === Object) { // Explicit check for empty object
+              if (localUploadResult && Object.keys(localUploadResult).length === 0 && localUploadResult.constructor === Object) {
                 errorMsg += " The application received an empty or unexpected response from the server. Ensure helper service is running & sends JSON. Check Next.js server console and local helper service logs.";
               } else if (localUploadResult?.message) {
                 errorMsg += ` ${localUploadResult.message}`;
@@ -117,7 +117,6 @@ export default function LibraryPage() {
               console.warn("[LibraryPage] Secondary local sync failed. Server Action Response:", localUploadResult);
             }
         } catch (serverActionError: any) {
-             // This catch block handles errors from the Server Action call itself (e.g., network error calling the Server Action, not errors from the local helper service)
              console.error("[LibraryPage] Error calling uploadFileToLocalServer Server Action:", serverActionError);
              toast({ variant: "destructive", title: "Local Sync Error (Client)", description: `Failed to initiate sync for "${storedDocForIndexDB.title || 'document'}": ${serverActionError.message}. Check console for details.` });
         }
@@ -127,7 +126,7 @@ export default function LibraryPage() {
       console.error(`[LibraryPage] Error handling file upload for "${file.name}":`, error);
     } finally {
       setIsUploading(false);
-      if (fileInputRef.current) { // Reset file input
+      if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
     }
@@ -142,7 +141,6 @@ export default function LibraryPage() {
       await IndexedDBService.deleteDocumentById(docId);
       toast({ title: "Document Deleted", description: `"${titleForConfirm}" removed from browser storage.` });
       fetchDocuments(); // Refresh the list
-      // If the deleted doc was the last active one, clear it
       const lastActiveId = await IndexedDBService.getLastActiveDocId();
       if (lastActiveId === docId) {
         await IndexedDBService.saveLastActiveDocId(null);
@@ -172,7 +170,7 @@ export default function LibraryPage() {
           toast({ title: "Synced to Local Device", description: `"${doc.title}" successfully sent. Path: ${localUploadResult.filePath}` });
       } else {
         let errorMsg = `Could not sync "${doc.title}" to local device.`;
-        if (localUploadResult && Object.keys(localUploadResult).length === 0 && localUploadResult.constructor === Object) { // Explicit check for empty object
+        if (localUploadResult && Object.keys(localUploadResult).length === 0 && localUploadResult.constructor === Object) {
           errorMsg += " The application received an empty or unexpected response from the server. Ensure helper service is running & sends JSON. Check Next.js server console and local helper service logs.";
         } else if (localUploadResult?.message) {
           errorMsg += ` ${localUploadResult.message}`;
@@ -183,7 +181,6 @@ export default function LibraryPage() {
         console.error(`[LibraryPage] Local sync failed for "${doc.title}". Server Action Response:`, localUploadResult);
       }
     } catch (uploadError: any) {
-        // This catch block handles errors from the Server Action call itself
         const clientErrorMsg = uploadError.message || "An unknown error occurred while trying to sync the file.";
         toast({ variant: "destructive", title: "Local Sync Service Error", description: clientErrorMsg });
         console.error(`[LibraryPage] Error calling uploadFileToLocalServer action for sync of "${doc.title}":`, uploadError);
@@ -328,5 +325,3 @@ export default function LibraryPage() {
     </div>
   );
 }
-
-    
