@@ -20,7 +20,7 @@ import { Loader2, Play, Pause, Smartphone, Cloud as CloudIcon, Star, AlertTriang
 import { getCloudSpeech, performOCR } from '@/app/actions';
 import * as LocalStorageService from '@/lib/localStorageService';
 import * as IndexedDBService from '@/lib/indexedDBService';
-import type { TTSSettings, TTSVoice, StoredMangaDocument, ActiveMangaDocument } from '@/types';
+import type { TTSSettings, TTSVoice, StoredMangaDocument, ActiveMangaDocument, StoredPdfDocument } from '@/types';
 import { cn } from '@/lib/utils';
 
 const PDF_DEFAULT_SCALE = 1.5;
@@ -125,7 +125,7 @@ export default function ReaderPage() {
         const lastActiveId = await IndexedDBService.getLastActiveDocId();
         if (lastActiveId) {
           docIdToLoad = lastActiveId;
-          // router.replace(`/reader?docId=${lastActiveId}`, { scroll: false });
+          // router.replace(`/reader?docId=${lastActiveId}`, { scroll: false }); // This causes loop if last doc fails to load
         } else {
           setDocErrorMessage("No document selected. Please choose one from the Library.");
           setIsLoadingDoc(false);
@@ -242,14 +242,14 @@ export default function ReaderPage() {
       epubBookRef.current = null;
       if (currentImageObjectUrlRef.current) { URL.revokeObjectURL(currentImageObjectUrlRef.current); currentImageObjectUrlRef.current = null; }
     };
-  }, [searchParams, router, stopSpeech]); // Added stopSpeech to dependency array
+  }, [searchParams, stopSpeech]);
 
   useEffect(() => {
     if (activeDoc?.type === 'pdf' && pdfDocProxy && currentPdfPageNum > 0 && currentPdfPageNum <= pdfTotalPages) {
       stopSpeech(true);
       setIsRenderingPdfPage(true);
       setPdfPageImage(null);
-      setPdfPageIsTextBased(true);
+      setPdfPageIsTextBased(true); // Assume text-based initially
       setCurrentTextForTTS("Loading PDF page...");
       LocalStorageService.saveCurrentPdfPageIndexForDoc(activeDoc.id, currentPdfPageNum);
 
@@ -264,16 +264,22 @@ export default function ReaderPage() {
           await page.render({ canvasContext: context, viewport }).promise;
           setPdfPageImage(canvas.toDataURL('image/png'));
         }
-
-        const textContent = await page.getTextContent();
-        const pageText = textContent.items.map(item => ('str' in item ? item.str : '')).join(' ').replace(/\s+/g, ' ').trim();
-
-        if (pageText && pageText.length >= MIN_PDF_TEXT_LENGTH_FOR_DIRECT_READ) {
-          setCurrentTextForTTS(pageText);
-          setPdfPageIsTextBased(true);
+        
+        // Check for existing OCR text first
+        if (activeDoc.type === 'pdf' && (activeDoc as StoredPdfDocument).ocrTextPerPage && (activeDoc as StoredPdfDocument).ocrTextPerPage?.[currentPdfPageNum]) {
+            setCurrentTextForTTS((activeDoc as StoredPdfDocument).ocrTextPerPage![currentPdfPageNum]);
+            setPdfPageIsTextBased(false); // It was image-based but OCR'd
         } else {
-          setCurrentTextForTTS("This PDF page has no selectable text or is image-based. Use OCR to extract text for reading.");
-          setPdfPageIsTextBased(false);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items.map(item => ('str' in item ? item.str : '')).join(' ').replace(/\s+/g, ' ').trim();
+
+            if (pageText && pageText.length >= MIN_PDF_TEXT_LENGTH_FOR_DIRECT_READ) {
+                setCurrentTextForTTS(pageText);
+                setPdfPageIsTextBased(true);
+            } else {
+                setCurrentTextForTTS("This PDF page has no selectable text or is image-based. Use OCR to extract text for reading.");
+                setPdfPageIsTextBased(false);
+            }
         }
       }).catch(e => {
         console.error("Error rendering PDF page:", e);
@@ -284,7 +290,7 @@ export default function ReaderPage() {
         setIsRenderingPdfPage(false);
       });
     }
-  }, [pdfDocProxy, currentPdfPageNum, pdfTotalPages, pdfScale, activeDoc?.id, activeDoc?.type, stopSpeech]);
+  }, [pdfDocProxy, currentPdfPageNum, pdfTotalPages, pdfScale, activeDoc, stopSpeech]);
 
 
   const handlePerformOcr = useCallback(async () => {
@@ -295,7 +301,7 @@ export default function ReaderPage() {
 
     stopSpeech(true);
     let dataUrlToProcess: string | null = null;
-    const currentActiveDoc = activeDoc;
+    const currentActiveDoc = activeDoc; // Capture current activeDoc
 
     if (currentActiveDoc.type === 'pdf' && pdfPageImage && !pdfPageIsTextBased) {
         dataUrlToProcess = pdfPageImage;
@@ -308,7 +314,6 @@ export default function ReaderPage() {
                 return;
             }
             dataUrlToProcess = await IndexedDBService.arrayBufferToBase64DataURL(docToProcess.fileData, docToProcess.originalType);
-            console.log("Data URL for OCR (first 100 chars):", dataUrlToProcess?.substring(0, 100) + "...");
         } catch (conversionError: any) {
           toast({variant: "destructive", title: "OCR Error", description: `Could not prepare image data for OCR: ${conversionError.message}`});
           console.error("Error converting image ArrayBuffer to Base64 for OCR:", conversionError);
@@ -331,11 +336,21 @@ export default function ReaderPage() {
         if ('extractedText' in result) {
             const ocrText = result.extractedText || "OCR completed, but no text found.";
             setCurrentTextForTTS(ocrText);
-            if (currentActiveDoc.type === 'image') {
-                const updatedDoc = { ...currentActiveDoc, extractedText: ocrText } as ActiveMangaDocument;
-                await IndexedDBService.saveDocument(updatedDoc);
-                setActiveDoc(updatedDoc);
+
+            let updatedDoc = { ...currentActiveDoc } as ActiveMangaDocument; // Use the captured activeDoc
+
+            if (updatedDoc.type === 'image') {
+                updatedDoc.extractedText = ocrText;
+            } else if (updatedDoc.type === 'pdf') {
+                if (!updatedDoc.ocrTextPerPage) {
+                    updatedDoc.ocrTextPerPage = {};
+                }
+                updatedDoc.ocrTextPerPage[currentPdfPageNum] = ocrText;
             }
+            
+            await IndexedDBService.saveDocument(updatedDoc);
+            setActiveDoc(updatedDoc); // Update state with the modified document
+
         } else {
             setCurrentTextForTTS(`OCR Error: ${result.error}`);
             toast({ variant: "destructive", title: "OCR Error", description: result.error });
@@ -347,7 +362,7 @@ export default function ReaderPage() {
     } finally {
         setIsPerformingOcr(false);
     }
-  }, [activeDoc, pdfPageImage, pdfPageIsTextBased, stopSpeech, toast]);
+  }, [activeDoc, pdfPageImage, pdfPageIsTextBased, currentPdfPageNum, stopSpeech, toast]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -642,7 +657,7 @@ export default function ReaderPage() {
   }
 
   const showOcrButtonForPdfPage = activeDoc?.type === 'pdf' && !pdfPageIsTextBased && pdfPageImage && !isRenderingPdfPage && !isLoadingDoc;
-  const showOcrButtonForImage = activeDoc?.type === 'image' && displayedImageSrc && !isLoadingDoc;
+  const showOcrButtonForImage = activeDoc?.type === 'image' && displayedImageSrc && !isLoadingDoc && !isPerformingOcr && !activeDoc.extractedText;
 
 
   return (

@@ -21,6 +21,7 @@ export interface StoredImageDocument extends StoredDocumentBase {
 export interface StoredPdfDocument extends StoredDocumentBase {
   type: 'pdf';
   numPages?: number;
+  ocrTextPerPage?: { [pageNumber: number]: string }; // Added to store OCR text per page
   // For PDF, text extraction will be on-the-fly in the reader or pre-extracted per page if complex.
   // We won't store all 'processedPages' with image data here to save space in IndexedDB.
   // The reader will generate page images as needed.
@@ -78,6 +79,6 @@ export interface FavoriteItem {
 // It could be identical to StoredMangaDocument or have additional transient reader state
 export type ActiveMangaDocument = StoredMangaDocument & {
   // Example of transient state, could be managed within ReaderPage's component state
-  // currentPdfPageImage?: string; 
+  // currentPdfPageImage?: string;
   // currentEpubBookInstance?: any; // epub.js Book instance
 };
