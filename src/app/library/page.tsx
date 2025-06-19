@@ -115,10 +115,7 @@ export default function LibraryPage() {
                 if (localUploadResult?.success && localUploadResult.filePath) {
                   toast({ title: "Synced to Local Device (Secondary)", description: `Secondary sync of "${storedDocForIndexDB.title}" successful. Path: ${localUploadResult.filePath}` });
                 } else {
-                  let syncErrorMessage = `Secondary sync of "${storedDocForIndexDB.title || 'document'}" to local device failed. Ensure helper service is running.`;
-                  if(localUploadResult && localUploadResult.message) {
-                    syncErrorMessage = localUploadResult.message; // Use message from server action if available
-                  }
+                  const syncErrorMessage = localUploadResult?.message || `Secondary sync of "${storedDocForIndexDB.title || 'document'}" to local device failed. Ensure helper service is running.`;
                   toast({ variant: "default", title: "Local Sync Info (Secondary)", description: syncErrorMessage, duration: 7000 });
                   console.warn("[LibraryPage] Secondary local sync failed. Server Action Response:", localUploadResult);
                 }
@@ -179,10 +176,7 @@ export default function LibraryPage() {
       if (localUploadResult?.success && localUploadResult.filePath) {
           toast({ title: "Synced to Local Device", description: `"${doc.title}" successfully sent. Path: ${localUploadResult.filePath}` });
       } else {
-        let syncErrorMessage = `Could not sync "${doc.title}" to local device. Ensure helper service is running.`;
-        if(localUploadResult && localUploadResult.message) {
-            syncErrorMessage = localUploadResult.message; // Use specific message if available
-        }
+        const syncErrorMessage = localUploadResult?.message || `Could not sync "${doc.title}" to local device. Ensure helper service is running.`;
         toast({ variant: "destructive", title: "Local Sync Failed", description: syncErrorMessage, duration: 7000 });
         console.error(`[LibraryPage] Local sync failed for "${doc.title}". Server Action Response:`, localUploadResult);
       }
