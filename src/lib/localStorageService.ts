@@ -33,7 +33,7 @@ const safeLocalStorageSet = (key: string, value: any): boolean => {
     if (error instanceof DOMException && (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED' || (error.message && error.message.toLowerCase().includes('quota')))) {
       specificMessage = `Error setting localStorage key "${key}": QUOTA_EXCEEDED_ERROR. Browser's Local Storage is FULL. The document was NOT saved. USER ACTION REQUIRED: Go to the app's Library page and DELETE some existing documents to free up space. This is a browser limitation, not an application bug.`;
     }
-    console.error(specificMessage, error); // Log the specific error message
+    console.error(specificMessage, error);
     return false;
   }
 };
@@ -170,3 +170,4 @@ export const saveLastActiveMangaRoomDocId = (docId: string | null): boolean => {
 export const loadLastActiveMangaRoomDocId = (): string | null => {
   return safeLocalStorageGet<string | null>(LAST_ACTIVE_MANGAROOM_DOC_ID_KEY, null);
 };
+

@@ -51,6 +51,8 @@ export default function LibraryPage() {
         if (saveSuccess) {
           setGeneralDocuments(prev => [newDoc, ...prev].sort((a,b) => b.createdAt - a.createdAt));
           toast({ title: "Success", description: `${file.name} uploaded to general library.` });
+        } else {
+           toast({ variant: "destructive", title: "Storage Error", description: `Failed to save ${file.name}. Local storage might be full. Please delete some items from the library.` });
         }
       } else if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
         shouldClearInput = false;
@@ -69,18 +71,18 @@ export default function LibraryPage() {
               setGeneralDocuments(prev => [newDoc, ...prev].sort((a,b) => b.createdAt - a.createdAt));
               toast({ title: "Success", description: `${file.name} uploaded to general library.` });
             } else {
-                 toast({ variant: "destructive", title: "Storage Error", description: `Failed to save ${file.name}. Local storage might be full.` });
+                 toast({ variant: "destructive", title: "Storage Error", description: `Failed to save ${file.name}. Local storage might be full. Please delete some items from the library.` });
             }
           } else {
             toast({ variant: "destructive", title: "Error", description: "Could not read PDF file content." });
           }
           setIsLoading(false);
-          if (event.target) event.target.value = '';
+          if (event.target) (event.target as HTMLInputElement).value = '';
         };
         reader.onerror = () => {
           toast({ variant: "destructive", title: "Error", description: "Failed to read file." });
           setIsLoading(false);
-          if (event.target) event.target.value = '';
+          if (event.target) (event.target as HTMLInputElement).value = '';
         };
         reader.readAsDataURL(file);
         return;
@@ -102,18 +104,18 @@ export default function LibraryPage() {
                 setGeneralDocuments(prev => [newDoc, ...prev].sort((a,b) => b.createdAt - a.createdAt));
                 toast({ title: "Success", description: `${file.name} (image) uploaded to general library.` });
             } else {
-                toast({ variant: "destructive", title: "Storage Error", description: `Failed to save ${file.name}. Local storage might be full.` });
+                toast({ variant: "destructive", title: "Storage Error", description: `Failed to save ${file.name}. Local storage might be full. Please delete some items from the library.` });
             }
           } else {
             toast({ variant: "destructive", title: "Error", description: "Could not read image file content." });
           }
           setIsLoading(false);
-          if (event.target) event.target.value = '';
+          if (event.target) (event.target as HTMLInputElement).value = '';
         };
         reader.onerror = () => {
           toast({ variant: "destructive", title: "Error", description: "Failed to read image file." });
           setIsLoading(false);
-          if (event.target) event.target.value = '';
+          if (event.target) (event.target as HTMLInputElement).value = '';
         };
         reader.readAsDataURL(file);
         return;
@@ -121,8 +123,11 @@ export default function LibraryPage() {
         toast({ variant: "destructive", title: "Unsupported File", description: "Please upload a TXT, PDF, or Image file to the general library." });
       }
 
+      // This specific check was for TXT files, but the else blocks for PDF/Image now also include the detailed toast.
+      // It can be removed or kept for safety, though it might be redundant if `saveSuccess` covers all initial paths.
       if (!saveSuccess && (file.type === 'text/plain' || file.name.endsWith('.txt'))) {
-        toast({ variant: "destructive", title: "Storage Error", description: `Failed to save ${file.name}. Local storage might be full.` });
+        // This might be redundant if the initial saveSuccess block already handles it for TXT
+        // toast({ variant: "destructive", title: "Storage Error", description: `Failed to save ${file.name}. Local storage might be full.` });
       }
 
     } catch (error: any) {
@@ -130,7 +135,7 @@ export default function LibraryPage() {
     } finally {
         if (shouldClearInput) {
             setIsLoading(false);
-            if (event.target) event.target.value = '';
+            if (event.target) (event.target as HTMLInputElement).value = '';
         }
     }
   };
@@ -165,7 +170,7 @@ export default function LibraryPage() {
     }
   };
 
-  const getFileIcon = (type: StoredDocumentType | Read2StoredDocument['type']) => {
+  const getFileIcon = (type: StoredDocument['type'] | Read2StoredDocument['type']) => {
     switch(type) {
       case 'txt': return <FileText className="h-5 w-5 text-blue-500" />;
       case 'pdf': return <FileType2 className="h-5 w-5 text-red-500" />;
@@ -243,3 +248,4 @@ export default function LibraryPage() {
     </div>
   );
 }
+
