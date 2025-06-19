@@ -170,3 +170,4 @@ export const saveLastActiveMangaRoomDocId = (docId: string | null): boolean => {
 export const loadLastActiveMangaRoomDocId = (): string | null => {
   return safeLocalStorageGet<string | null>(LAST_ACTIVE_MANGAROOM_DOC_ID_KEY, null);
 };
+

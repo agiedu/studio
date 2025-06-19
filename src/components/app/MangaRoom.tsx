@@ -551,7 +551,7 @@ export function MangaRoom() {
                 duration: 10000 
             });
             console.warn(`MangaRoom: Failed to save ${file.name} to Manga Room library due to storage quota. Document not persisted.`);
-            if (activeDocument?.id === 'temp-loading') setActiveDocument(null);
+             if (activeDocument?.id === 'temp-loading') setActiveDocument(null);
         }
 
       } else if (file.type === 'application/pdf') {
@@ -1243,3 +1243,4 @@ export function MangaRoom() {
     </div>
   );
 }
+
