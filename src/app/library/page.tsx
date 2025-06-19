@@ -102,33 +102,27 @@ export default function LibraryPage() {
         toast({ title: "Document Saved in Browser", description: `"${storedDocForIndexDB.title}" has been saved to your browser's internal storage.` });
         fetchDocuments(); 
 
-        if (storedDocForIndexDB.fileData) {
+        if (storedDocForIndexDB.fileData && storedDocForIndexDB.title && storedDocForIndexDB.originalType) {
+            const fileForSync = new File([storedDocForIndexDB.fileData], storedDocForIndexDB.title, { type: storedDocForIndexDB.originalType });
             const formDataForLocalService = new FormData();
-            formDataForLocalService.append('file', new File([storedDocForIndexDB.fileData], storedDocForIndexDB.title || 'untitled_file', { type: storedDocForIndexDB.originalType }));
+            formDataForLocalService.append('file', fileForSync);
             
             console.log("[LibraryPage] Attempting secondary sync to local device for:", storedDocForIndexDB.title);
             try {
                 const localUploadResult = await uploadFileToLocalServer(formDataForLocalService);
                 if (localUploadResult?.success && localUploadResult.filePath) {
-                  toast({ title: "Synced to Local Device", description: `Secondary sync of "${storedDocForIndexDB.title}" successful. Path: ${localUploadResult.filePath}` });
+                  toast({ title: "Synced to Local Device (Secondary)", description: `Secondary sync of "${storedDocForIndexDB.title}" successful. Path: ${localUploadResult.filePath}` });
                 } else {
-                  let errorMsg = `Secondary sync of "${storedDocForIndexDB.title || 'document'}" to local device failed.`;
-                  if (localUploadResult && localUploadResult.message) { 
-                    errorMsg += ` ${localUploadResult.message}`;
-                  } else if (localUploadResult === null || typeof localUploadResult !== 'object' || Object.keys(localUploadResult).length === 0) {
-                    errorMsg += " The application received an empty or invalid response from the server. Check Next.js server console and helper service logs.";
-                  } else {
-                    errorMsg += " An unexpected issue occurred or the helper service response was unclear. Ensure helper service is running & sends JSON.";
-                  }
-                  toast({ variant: "default", title: "Local Sync Info (Secondary)", description: errorMsg, duration: 7000 });
+                  const syncErrorMessage = localUploadResult?.message || `Secondary sync of "${storedDocForIndexDB.title || 'document'}" to local device failed. Ensure helper service is running and check server/helper logs.`;
+                  toast({ variant: "default", title: "Local Sync Info (Secondary)", description: syncErrorMessage, duration: 7000 });
                   console.warn("[LibraryPage] Secondary local sync failed. Server Action Response:", localUploadResult);
                 }
             } catch (serverActionError: any) {
-                 console.error("[LibraryPage] Error calling uploadFileToLocalServer Server Action:", serverActionError);
-                 toast({ variant: "destructive", title: "Local Sync Error (Client)", description: `Failed to initiate sync for "${storedDocForIndexDB.title || 'document'}": ${serverActionError.message}. Check console for details.` });
+                 console.error("[LibraryPage] Error calling uploadFileToLocalServer Server Action for secondary sync:", serverActionError);
+                 toast({ variant: "destructive", title: "Local Sync Error (Client - Secondary)", description: `Failed to initiate secondary sync for "${storedDocForIndexDB.title || 'document'}": ${serverActionError.message}. Check console for details.` });
             }
         } else {
-            console.warn("[LibraryPage] Cannot perform secondary sync: fileData is missing from storedDocForIndexDB for", storedDocForIndexDB.title);
+            console.warn("[LibraryPage] Cannot perform secondary sync: fileData, title, or originalType is missing from storedDocForIndexDB for", storedDocForIndexDB?.title || 'unknown document');
         }
       }
     } catch (error: any) {
@@ -179,15 +173,8 @@ export default function LibraryPage() {
       if (localUploadResult?.success && localUploadResult.filePath) {
           toast({ title: "Synced to Local Device", description: `"${doc.title}" successfully sent. Path: ${localUploadResult.filePath}` });
       } else {
-        let errorMsg = `Could not sync "${doc.title}" to local device.`;
-         if (localUploadResult && localUploadResult.message) { 
-            errorMsg += ` ${localUploadResult.message}`;
-        } else if (localUploadResult === null || typeof localUploadResult !== 'object' || Object.keys(localUploadResult).length === 0) {
-            errorMsg += " The application received an empty or invalid response from the server. Check Next.js server console and helper service logs.";
-        } else {
-            errorMsg += " An unexpected issue occurred or the helper service response was unclear. Ensure helper service is running & sends JSON.";
-        }
-        toast({ variant: "destructive", title: "Local Sync Failed", description: errorMsg, duration: 7000 });
+        const syncErrorMessage = localUploadResult?.message || `Could not sync "${doc.title}" to local device. Ensure helper service is running and check server/helper logs.`;
+        toast({ variant: "destructive", title: "Local Sync Failed", description: syncErrorMessage, duration: 7000 });
         console.error(`[LibraryPage] Local sync failed for "${doc.title}". Server Action Response:`, localUploadResult);
       }
     } catch (uploadError: any) {
