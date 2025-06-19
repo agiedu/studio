@@ -24,8 +24,6 @@ export async function uploadFileToLocalServer(
     }
 
     // This FormData is for the fetch request to the local helper service
-    // The Server Action receives 'data' (which is FormData), and we extract the file.
-    // For the fetch call to the local service, we need to construct a new FormData.
     const formDataForFetch = new FormData();
     formDataForFetch.append("file", file); 
 
@@ -41,7 +39,7 @@ export async function uploadFileToLocalServer(
     try {
       response = await fetch(LOCAL_SERVER_URL, {
         method: "POST",
-        body: formDataForFetch, // Use the newly created FormData with the file
+        body: formDataForFetch,
         signal: controller.signal,
       });
     } catch (fetchError: any) {
@@ -54,7 +52,7 @@ export async function uploadFileToLocalServer(
         if (errMsgLower.includes('econnrefused')) {
           userMessage = `Connection was REFUSED by the local file saving service at ${LOCAL_SERVER_URL}. Please ensure it's running and not blocked by a firewall. Details: ${fetchError.message}`;
         } else if (errMsgLower.includes('fetch failed')) {
-          userMessage = `The request to the local file saving service at ${LOCAL_SERVER_URL} FAILED entirely. This usually means the service is not running or is unreachable from the application's server environment. Please check your local service. Details: ${fetchError.message}`;
+          userMessage = `The request to the local file saving service at ${LOCAL_SERVER_URL} FAILED entirely. This usually means the service is **NOT RUNNING** or is unreachable from the application's server environment. Please **START your local helper service** and try again. Details: ${fetchError.message}`;
         } else {
           userMessage += ` Please ensure it is running and accessible. Details: ${fetchError.message.substring(0,100)}`;
         }
@@ -82,8 +80,10 @@ export async function uploadFileToLocalServer(
         } catch (parseError) {
           console.warn("[localFileService] Local server error response was not JSON. Status:", response.status, parseError);
           if (responseText.trim().toLowerCase().startsWith("<html>") || responseText.trim().toLowerCase().startsWith("<!doctype html>")) {
-            errorMessage += `\nLocal server returned an HTML page (possibly an error page), not the expected JSON.`;
-          } else {
+            errorMessage += `\nLocal server returned an HTML page (possibly an error page), not the expected JSON. Ensure your local helper service is correctly configured.`;
+          } else if (responseText.trim() === "") {
+             errorMessage += `\nLocal server returned an empty response. Check your local helper service logs.`;
+          }else {
             errorMessage += `\nRaw response snippet: ${responseText.substring(0, 150)}${responseText.length > 150 ? '...' : ''}`;
           }
         }
@@ -93,7 +93,7 @@ export async function uploadFileToLocalServer(
     }
     
     if (!responseText && response.ok) {
-      const emptyResponseMessage = "Local server returned a successful status but an empty/invalid response body. Cannot confirm save. Please check the local helper service's implementation.";
+      const emptyResponseMessage = "Local server returned a successful status but an empty/invalid response body. Cannot confirm save. Please check the local helper service's implementation to ensure it sends a JSON response like {'status': 'ok', 'path': '...'}.";
       console.warn('[localFileService]', emptyResponseMessage);
       return { success: false, message: emptyResponseMessage };
     }
@@ -105,17 +105,17 @@ export async function uploadFileToLocalServer(
       if (result.status === "ok" && result.path) {
         return { success: true, message: `File saved locally at: ${result.path}`, filePath: result.path };
       } else {
-        const issueMessage = result.message || "Local server indicated an issue with saving the file (but returned 2xx status).";
+        const issueMessage = result.message || "Local server indicated an issue with saving the file (but returned 2xx status). Ensure your local helper service sends a JSON response with {'status': 'ok', 'path': '...'}.";
         console.warn('[localFileService] Issue in successful response:', issueMessage);
         return { success: false, message: issueMessage };
       }
     } catch (error: any) {
-      const parseErrorMessage = `Local server returned a 2xx status, but the response was not valid JSON. This may indicate an issue with the local helper service's response format. Response snippet: ${responseText.substring(0, 150)}${responseText.length > 150 ? '...' : ''}`;
+      const parseErrorMessage = `Local server returned a 2xx status, but the response was not valid JSON. This may indicate an issue with the local helper service's response format. Ensure it sends a JSON response. Response snippet: ${responseText.substring(0, 150)}${responseText.length > 150 ? '...' : ''}`;
       console.error("[localFileService] Error parsing successful JSON response from local server:", error, "Raw text snippet:", responseText.substring(0,150));
       return { success: false, message: parseErrorMessage };
     }
 
-  } catch (error: any) { // This is a critical fallback for unexpected errors within the Server Action itself
+  } catch (error: any) { 
     console.error("[localFileService] CRITICAL UNHANDLED ERROR in uploadFileToLocalServer:", error);
     let connectMessage = "A critical error occurred within the MangaTalk application while trying to process your file for local saving.";
 
@@ -129,4 +129,3 @@ export async function uploadFileToLocalServer(
     return { success: false, message: connectMessage };
   }
 }
-

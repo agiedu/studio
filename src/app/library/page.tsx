@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { UploadCloud } from 'lucide-react';
+import { UploadCloud, AlertTriangle } from 'lucide-react';
 import { uploadFileToLocalServer } from '@/lib/localFileService'; 
 
 export default function LibraryPage() {
@@ -25,24 +25,18 @@ export default function LibraryPage() {
       const formData = new FormData();
       formData.append('file', file);
       
-      // The uploadFileToLocalServer function is a Server Action
-      // It will attempt to send the file to http://localhost:3001/upload
       const localUploadResult = await uploadFileToLocalServer(formData);
 
       if (localUploadResult.success && localUploadResult.filePath) {
         toast({ title: "File Sent to Local Device", description: `${file.name} sent successfully. Path: ${localUploadResult.filePath}` });
       } else {
-        // The message from localUploadResult.message will explain why it failed (e.g., "Failed to connect...")
         toast({ variant: "destructive", title: "Local Save Failed", description: `${localUploadResult.message || "Could not save to local device."}` });
       }
 
     } catch (error: any) {
-      // This catch block is for unexpected errors during the Server Action call itself,
-      // though uploadFileToLocalServer is designed to return structured errors.
       toast({ variant: "destructive", title: "Upload Error", description: error.message || "An unknown error occurred while sending file to local service." });
     } finally {
         setIsLoading(false);
-        // Reset file input to allow uploading the same file again if needed
         setFileInputKey(Date.now());
     }
   };
@@ -54,15 +48,14 @@ export default function LibraryPage() {
           <CardTitle className="flex items-center gap-2"><UploadCloud className="text-primary" /> Upload Document to Your Local Device</CardTitle>
           <CardDescription>
             Use this page to send TXT, PDF, or Image files to your **local helper service**.
-            Ensure the helper service (e.g., a Node.js script) is running on your computer, listening at `http://localhost:3001/upload`. 
-            Documents will be saved directly to the folder configured in your local service.
+            This application **does not store or list these documents in the browser**. All uploaded files are sent directly to the helper service running on your computer.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid w-full max-w-md items-center gap-1.5">
             <Label htmlFor="doc-upload-library">Document File (.txt, .pdf, .png, .jpg, etc.)</Label>
             <Input 
-              key={fileInputKey} // Add key to allow resetting
+              key={fileInputKey} 
               id="doc-upload-library" 
               type="file" 
               accept=".txt,application/pdf,image/*" 
@@ -74,23 +67,28 @@ export default function LibraryPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="border-destructive">
         <CardHeader>
-            <CardTitle>Important Notes on Document Storage</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-destructive"><AlertTriangle className="h-5 w-5" /> Important: Local Helper Service Required</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3 text-sm text-muted-foreground">
-            <p>
-                This application sends uploaded documents to a **local helper service** that you must run on your own device (e.g., your computer). 
-                The files are stored in a folder managed by that local helper service, not within this web application or your browser&apos;s limited storage.
+        <CardContent className="space-y-3 text-sm">
+            <p className="font-semibold">
+                To save uploaded documents, you MUST have the **local helper service running on your computer.** 
+                This is a separate small server program (e.g., the Node.js `server.js` script) that MangaTalk sends files to.
             </p>
-            <p>
-                MangaTalk **does not display a list** of files stored by your local helper service. To manage or view these documents, please access them directly from the folder on your local file system where your helper service saves them.
+            <p className="text-muted-foreground">
+                If you see errors like &quot;Failed to connect,&quot; &quot;fetch failed,&quot; or &quot;Local Save Failed,&quot; it almost always means this local helper service is **NOT RUNNING** or is blocked (e.g., by a firewall).
             </p>
-             <p>
-                If you see errors like &quot;Failed to connect&quot; or &quot;fetch failed&quot;, it means this web application could not reach your local helper service at `http://localhost:3001/upload`. Please ensure your local service is running, accessible, and configured correctly.
+             <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
+                <li>Ensure your local helper service is started (e.g., run `node server.js` in its directory).</li>
+                <li>Verify it's listening on `http://localhost:3001/upload`.</li>
+                <li>Check your computer's firewall settings to ensure connections to port 3001 are allowed.</li>
+            </ul>
+            <p className="text-muted-foreground">
+                MangaTalk itself **does not display a list** of files stored by your local helper service. To manage or view these documents, please access them directly from the folder on your local file system where your helper service saves them.
             </p>
-            <p>
-                For reading documents within this application, please use the &quot;Read2&quot; page to upload them for your current session. These session files are also sent to your local helper service for persistent storage.
+            <p className="text-muted-foreground">
+                For reading documents within this application, please use the &quot;Read2&quot; page to upload them for your current session. These session files are also sent to your local helper service for persistent storage (if it's running).
             </p>
         </CardContent>
       </Card>
