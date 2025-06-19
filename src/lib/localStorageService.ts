@@ -32,8 +32,10 @@ const safeLocalStorageSet = (key: string, value: any): boolean => {
     let specificMessage = `Error setting localStorage key "${key}"`;
     if (error instanceof DOMException && (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED' || (error.message && error.message.toLowerCase().includes('quota')))) {
       specificMessage = `Error setting localStorage key "${key}": QUOTA_EXCEEDED_ERROR. Browser's Local Storage is FULL. The document was NOT saved. USER ACTION REQUIRED: Go to the app's Library page and DELETE some existing documents to free up space. This is a browser limitation, not an application bug.`;
+       console.error(specificMessage, error); // Log the specific quota error message
+    } else {
+      console.error(specificMessage, error); // Log general error
     }
-    console.error(specificMessage, error);
     return false;
   }
 };
@@ -60,15 +62,12 @@ export const defaultTTSSettings: TTSSettings = {
   rate: 1,
   pitch: 1,
   voiceURI: undefined,
-  engine: 'local',
+  engine: 'local', // Keep engine for favorites, ensure it's part of default
 };
 export const loadTTSSettings = (): TTSSettings => {
   const settings = safeLocalStorageGet<TTSSettings>(TTS_SETTINGS_KEY, defaultTTSSettings);
-  const completeSettings = { ...defaultTTSSettings, ...settings };
-  if (!completeSettings.engine) {
-    completeSettings.engine = defaultTTSSettings.engine;
-  }
-  return completeSettings;
+  // Ensure all default fields are present, especially 'engine'
+  return { ...defaultTTSSettings, ...settings };
 };
 export const saveTTSSettings = (settings: TTSSettings): boolean => safeLocalStorageSet(TTS_SETTINGS_KEY, settings);
 
@@ -89,9 +88,9 @@ export const addStoredDocument = (document: StoredDocument): boolean => {
     const documents = loadStoredDocuments();
     const existingDocIndex = documents.findIndex(d => d.id === document.id);
     if (existingDocIndex > -1) {
-        documents[existingDocIndex] = document;
+        documents[existingDocIndex] = document; // Update existing
     } else {
-        documents.unshift(document);
+        documents.unshift(document); // Add new to the beginning
     }
     return saveStoredDocuments(documents);
 };
@@ -107,7 +106,7 @@ export const getStoredDocumentById = (docId: string): StoredDocument | undefined
     return documents.find(doc => doc.id === docId);
 };
 
-// Read2 (MangaRoom) specific storage
+// Read2 (MangaRoom) specific storage for its own uploaded documents
 export const loadRead2StoredDocuments = (): Read2StoredDocument[] => {
     return safeLocalStorageGet<Read2StoredDocument[]>(READ2_STORED_DOCUMENTS_KEY, []);
 };
@@ -120,9 +119,9 @@ export const addRead2StoredDocument = (document: Read2StoredDocument): boolean =
     const documents = loadRead2StoredDocuments();
     const existingDocIndex = documents.findIndex(d => d.id === document.id);
     if (existingDocIndex > -1) {
-        documents[existingDocIndex] = document;
+        documents[existingDocIndex] = document; // Update existing
     } else {
-        documents.unshift(document);
+        documents.unshift(document); // Add new to the beginning
     }
     return saveRead2StoredDocuments(documents);
 };
@@ -136,6 +135,7 @@ export const deleteRead2StoredDocument = (docId: string): boolean => {
 export const getRead2StoredDocumentById = (docId: string): Read2StoredDocument | undefined => {
     const documents = loadRead2StoredDocuments();
     const read2Doc = documents.find(doc => doc.id === docId);
+    // Ensure it's one of the expected types for Read2
     if (read2Doc && (read2Doc.type === 'image' || read2Doc.type === 'pdf')) {
         return read2Doc as StoredImageDocument | StoredPdfDocument;
     }
@@ -154,7 +154,7 @@ export const saveFavoriteItems = (items: FavoriteItem[]): boolean => {
 
 export const addFavoriteItem = (item: FavoriteItem): boolean => {
     const items = loadFavoriteItems();
-    items.unshift(item);
+    items.unshift(item); // Add new to the beginning
     return saveFavoriteItems(items);
 };
 
@@ -164,7 +164,7 @@ export const deleteFavoriteItem = (itemId: string): boolean => {
     return saveFavoriteItems(items);
 };
 
-// For MangaRoom to remember its last active document from ITS OWN Read2 list
+// For MangaRoom to remember its last active document (from ITS OWN Read2 list)
 export const saveLastActiveMangaRoomDocId = (docId: string | null): boolean => {
   return safeLocalStorageSet(LAST_ACTIVE_MANGAROOM_DOC_ID_KEY, docId);
 };
