@@ -13,8 +13,7 @@ import * as IndexedDBService from '@/lib/indexedDBService';
 import type { StoredMangaDocument } from '@/types';
 import { uploadFileToLocalServer } from '@/lib/localFileService'; // Server Action
 
-// Helper to convert ArrayBuffer to a temporary blob URL for display
-// This function is simple and unlikely to be the source of a parsing error.
+// Helper function (remains outside component)
 function arrayBufferToBlobURL(buffer: ArrayBuffer, type: string): string {
   const blob = new Blob([buffer], { type });
   return URL.createObjectURL(blob);
@@ -58,7 +57,7 @@ export default function LibraryPage() {
       let numPagesForPdf: number | undefined = undefined;
 
       if (file.type.startsWith('image/')) {
-        let extractedText = "OCR will be performed if you open this in Read2.";
+        let extractedText = "OCR will be performed if you open this in Read2."; // Default placeholder
         storedDocForIndexDB = {
           id: docId,
           title: file.name,
@@ -70,11 +69,13 @@ export default function LibraryPage() {
         };
       } else if (file.type === 'application/pdf') {
         try {
+          // Dynamically import pdfjs-dist only when needed
           const { getDocument, GlobalWorkerOptions, version } = await import('pdfjs-dist');
           if (typeof window !== 'undefined' && !GlobalWorkerOptions.workerSrc) {
+            // Ensure worker is set, adjust path if your setup differs
             GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${version}/pdf.worker.mjs`;
           }
-          const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) });
+          const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) }); // Use a copy for getDocument
           const pdfInstance = await pdfLoadingTask.promise;
           numPagesForPdf = pdfInstance.numPages;
         } catch (pdfError: any) {
@@ -100,8 +101,9 @@ export default function LibraryPage() {
       if (storedDocForIndexDB) {
         await IndexedDBService.saveDocument(storedDocForIndexDB);
         toast({ title: "Document Saved in Browser", description: `"${storedDocForIndexDB.title}" has been saved to your browser's internal storage.` });
-        fetchDocuments();
+        fetchDocuments(); // Refresh the list
 
+        // Secondary: Attempt to sync to local device via helper service
         if (storedDocForIndexDB.fileData && storedDocForIndexDB.title && storedDocForIndexDB.originalType) {
             const fileForSync = new File([storedDocForIndexDB.fileData], storedDocForIndexDB.title, { type: storedDocForIndexDB.originalType });
             const formDataForLocalService = new FormData();
@@ -115,7 +117,7 @@ export default function LibraryPage() {
                 } else {
                   let syncErrorMessage = `Secondary sync of "${storedDocForIndexDB.title || 'document'}" to local device failed. Ensure helper service is running.`;
                   if(localUploadResult && localUploadResult.message) {
-                    syncErrorMessage = localUploadResult.message;
+                    syncErrorMessage = localUploadResult.message; // Use message from server action if available
                   }
                   toast({ variant: "default", title: "Local Sync Info (Secondary)", description: syncErrorMessage, duration: 7000 });
                   console.warn("[LibraryPage] Secondary local sync failed. Server Action Response:", localUploadResult);
@@ -134,7 +136,7 @@ export default function LibraryPage() {
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) {
-        fileInputRef.current.value = "";
+        fileInputRef.current.value = ""; // Clear the file input
       }
     }
   }, [fetchDocuments, toast]);
@@ -147,7 +149,8 @@ export default function LibraryPage() {
     try {
       await IndexedDBService.deleteDocumentById(docId);
       toast({ title: "Document Deleted", description: `"${titleForConfirm}" removed from browser storage.` });
-      fetchDocuments();
+      fetchDocuments(); // Refresh list
+      // Also clear last active doc if it was the one deleted
       const lastActiveId = await IndexedDBService.getLastActiveDocId();
       if (lastActiveId === docId) {
         await IndexedDBService.saveLastActiveDocId(null);
@@ -168,7 +171,7 @@ export default function LibraryPage() {
 
     try {
       const file = new File([doc.fileData], doc.title, { type: doc.originalType });
-      const formData = new FormData();
+      const formData = new FormData(); // Create new FormData for this specific operation
       formData.append('file', file);
 
       const localUploadResult = await uploadFileToLocalServer(formData);
@@ -178,12 +181,13 @@ export default function LibraryPage() {
       } else {
         let syncErrorMessage = `Could not sync "${doc.title}" to local device. Ensure helper service is running.`;
         if(localUploadResult && localUploadResult.message) {
-            syncErrorMessage = localUploadResult.message;
+            syncErrorMessage = localUploadResult.message; // Use specific message if available
         }
         toast({ variant: "destructive", title: "Local Sync Failed", description: syncErrorMessage, duration: 7000 });
         console.error(`[LibraryPage] Local sync failed for "${doc.title}". Server Action Response:`, localUploadResult);
       }
     } catch (uploadError: any) {
+        // This catch block handles errors from the 'await uploadFileToLocalServer(formData)' call itself
         const clientErrorMsg = uploadError.message || "An unknown error occurred while trying to sync the file.";
         toast({ variant: "destructive", title: "Local Sync Service Error", description: clientErrorMsg });
         console.error(`[LibraryPage] Error calling uploadFileToLocalServer action for sync of "${doc.title}":`, uploadError);
