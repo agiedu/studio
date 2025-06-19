@@ -58,9 +58,11 @@ export default function LibraryPage() {
           fileData: fileBuffer,
           originalType: file.type,
           createdAt: Date.now(),
+          // extractedText will be populated in MangaRoom if needed
         };
       } else if (file.type === 'application/pdf') {
         try {
+          // Dynamically import pdfjs-dist only when needed client-side
           const { getDocument, GlobalWorkerOptions, version } = await import('pdfjs-dist');
           if (typeof window !== 'undefined' && !GlobalWorkerOptions.workerSrc) {
             GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${version}/pdf.worker.mjs`;
@@ -70,7 +72,7 @@ export default function LibraryPage() {
           numPagesForPdf = pdfInstance.numPages;
         } catch (pdfError: any) {
           console.warn(`[LibraryPage] Could not get PDF page count during upload for ${file.name}:`, pdfError);
-          toast({ variant: "default", title: "PDF Info", description: `Uploaded PDF "${file.name}". Page count determination issue: ${pdfError.message}` });
+          toast({ variant: "default", title: "PDF Info", description: `Uploaded PDF "${file.name}". Page count determination issue: ${pdfError.message}. Page count may be approximate.` });
         }
         storedDocForIndexDB = {
           id: docId,
@@ -84,15 +86,16 @@ export default function LibraryPage() {
       } else {
         toast({ variant: "destructive", title: "Unsupported File Type", description: "Please upload an Image or PDF file." });
         setIsUploading(false);
-        if (fileInputRef.current) fileInputRef.current.value = "";
+        if (fileInputRef.current) fileInputRef.current.value = ""; // Reset file input
         return;
       }
 
       if (storedDocForIndexDB) {
         await IndexedDBService.saveDocument(storedDocForIndexDB);
         toast({ title: "Document Saved in Browser", description: `"${storedDocForIndexDB.title}" has been saved to your browser's internal storage.` });
-        fetchDocuments();
+        fetchDocuments(); // Refresh the list
 
+        // Secondary action: attempt to sync to local device via helper service
         const formDataForLocalService = new FormData();
         formDataForLocalService.append('file', new File([storedDocForIndexDB.fileData], storedDocForIndexDB.title || 'untitled_file', { type: storedDocForIndexDB.originalType }));
         
@@ -103,17 +106,18 @@ export default function LibraryPage() {
               toast({ title: "Synced to Local Device", description: `Secondary sync of "${storedDocForIndexDB.title}" successful. Path: ${localUploadResult.filePath}` });
             } else {
               let errorMsg = `Secondary sync of "${storedDocForIndexDB.title || 'document'}" to local device failed.`;
-              if (localUploadResult && Object.keys(localUploadResult).length === 0 && localUploadResult.constructor === Object) {
-                errorMsg += " The application received an empty or unexpected response from the server. Check Next.js server console and local helper service logs.";
+              if (localUploadResult && Object.keys(localUploadResult).length === 0 && localUploadResult.constructor === Object) { // Explicit check for empty object
+                errorMsg += " The application received an empty or unexpected response from the server. Ensure helper service is running & sends JSON. Check Next.js server console and local helper service logs.";
               } else if (localUploadResult?.message) {
                 errorMsg += ` ${localUploadResult.message}`;
               } else {
-                errorMsg += " No specific error message received. Check Next.js server console and local helper service logs.";
+                errorMsg += " No specific error message received from server. Ensure helper service is running & sends JSON. Check Next.js server console and local helper service logs.";
               }
               toast({ variant: "default", title: "Local Sync Info (Secondary)", description: errorMsg });
               console.warn("[LibraryPage] Secondary local sync failed. Server Action Response:", localUploadResult);
             }
         } catch (serverActionError: any) {
+             // This catch block handles errors from the Server Action call itself (e.g., network error calling the Server Action, not errors from the local helper service)
              console.error("[LibraryPage] Error calling uploadFileToLocalServer Server Action:", serverActionError);
              toast({ variant: "destructive", title: "Local Sync Error (Client)", description: `Failed to initiate sync for "${storedDocForIndexDB.title || 'document'}": ${serverActionError.message}. Check console for details.` });
         }
@@ -123,7 +127,7 @@ export default function LibraryPage() {
       console.error(`[LibraryPage] Error handling file upload for "${file.name}":`, error);
     } finally {
       setIsUploading(false);
-      if (fileInputRef.current) {
+      if (fileInputRef.current) { // Reset file input
         fileInputRef.current.value = "";
       }
     }
@@ -137,7 +141,8 @@ export default function LibraryPage() {
     try {
       await IndexedDBService.deleteDocumentById(docId);
       toast({ title: "Document Deleted", description: `"${titleForConfirm}" removed from browser storage.` });
-      fetchDocuments();
+      fetchDocuments(); // Refresh the list
+      // If the deleted doc was the last active one, clear it
       const lastActiveId = await IndexedDBService.getLastActiveDocId();
       if (lastActiveId === docId) {
         await IndexedDBService.saveLastActiveDocId(null);
@@ -167,17 +172,18 @@ export default function LibraryPage() {
           toast({ title: "Synced to Local Device", description: `"${doc.title}" successfully sent. Path: ${localUploadResult.filePath}` });
       } else {
         let errorMsg = `Could not sync "${doc.title}" to local device.`;
-        if (localUploadResult && Object.keys(localUploadResult).length === 0 && localUploadResult.constructor === Object) {
-          errorMsg += " The application received an empty or unexpected response from the server. Check Next.js server console and local helper service logs.";
+        if (localUploadResult && Object.keys(localUploadResult).length === 0 && localUploadResult.constructor === Object) { // Explicit check for empty object
+          errorMsg += " The application received an empty or unexpected response from the server. Ensure helper service is running & sends JSON. Check Next.js server console and local helper service logs.";
         } else if (localUploadResult?.message) {
           errorMsg += ` ${localUploadResult.message}`;
         } else {
-          errorMsg += " No specific error message received. Ensure the helper service is running and check its console. Also check Next.js server logs.";
+          errorMsg += " No specific error message received from server. Ensure helper service is running & sends JSON. Check Next.js server console and local helper service logs.";
         }
         toast({ variant: "destructive", title: "Local Sync Failed", description: errorMsg });
         console.error(`[LibraryPage] Local sync failed for "${doc.title}". Server Action Response:`, localUploadResult);
       }
     } catch (uploadError: any) {
+        // This catch block handles errors from the Server Action call itself
         const clientErrorMsg = uploadError.message || "An unknown error occurred while trying to sync the file.";
         toast({ variant: "destructive", title: "Local Sync Service Error", description: clientErrorMsg });
         console.error(`[LibraryPage] Error calling uploadFileToLocalServer action for sync of "${doc.title}":`, uploadError);
@@ -290,7 +296,7 @@ export default function LibraryPage() {
              <ol className="list-decimal pl-5 space-y-1.5">
                 <li><strong>CRITICAL: START YOUR LOCAL HELPER SERVICE.</strong> Open a terminal/command prompt, navigate to the directory containing your helper service script (e.g., `server.js`), and run it (e.g., <code className="bg-destructive/20 px-1 py-0.5 rounded">node server.js</code>).</li>
                 <li><strong>CHECK HELPER SERVICE CONSOLE:</strong> Look at the terminal output of your helper service. It should clearly indicate that it&apos;s running and listening on port 3001. This is the most important step for debugging its behavior.</li>
-                <li><strong>VERIFY HELPER SERVICE URL & RESPONSE:</strong> Confirm your helper service is configured to listen for uploads at `http://localhost:3001/upload` and sends back JSON responses like `{"status":"ok", "filePath":"..."}` or `{"success":true, "filePath":"..."}` on success, and `{"status":"error", "message":"..."}` or `{"success":false, "message":"..."}` on failure.</li>
+                <li><strong>VERIFY HELPER SERVICE URL & RESPONSE:</strong> Confirm your helper service is configured to listen for uploads at `http://localhost:3001/upload` and sends back JSON responses like `{"success":true, "filePath":"..."}` or `{"status":"ok", "filePath":"..."}` on success, and `{"success":false, "message":"..."}` or `{"status":"error", "message":"..."}` on failure.</li>
                 <li><strong>FIREWALL:</strong> Ensure your computer&apos;s firewall is not blocking incoming connections to port 3001 for the helper service application.</li>
                 <li><strong>RETRY SYNC:</strong> After verifying the above, try the &quot;Sync to Device&quot; button again.</li>
                 <li><strong>CHECK MANGA TALK (NEXT.JS) SERVER CONSOLE:</strong> Also check the console where you run MangaTalk (`npm run dev`) for detailed error messages from the Server Action if the sync fails. It might log more specific details about &quot;unexpected responses&quot; or network errors.</li>
@@ -323,3 +329,4 @@ export default function LibraryPage() {
   );
 }
 
+    
