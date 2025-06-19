@@ -11,11 +11,10 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
-import NextImage from 'next/image'; // Renamed to avoid conflict with local Image variable if any
-import { Cloud, Loader2, Play, Pause, Smartphone, BookOpen, ChevronLeft, ChevronRight, Star, Trash2, Image as ImageIcon, UploadCloud, ServerCrash, Save, RefreshCw } from 'lucide-react';
+import NextImage from 'next/image'; 
+import { Cloud, Loader2, Play, Pause, Smartphone, BookOpen, ChevronLeft, ChevronRight, Star, Trash2, Image as ImageIcon, UploadCloud, ServerCrash, RefreshCw, Info } from 'lucide-react';
 import * as LocalStorageService from '@/lib/localStorageService';
 import * as IndexedDBService from '@/lib/indexedDBService';
-import { uploadFileToLocalServer } from '@/lib/localFileService';
 import { cn } from '@/lib/utils';
 
 import { GlobalWorkerOptions, getDocument, version as pdfjsVersion } from 'pdfjs-dist';
@@ -37,7 +36,6 @@ function base64ToUint8Array(base64: string): Uint8Array {
   }
 }
 
-// Helper to convert ArrayBuffer to a temporary blob URL for display
 function arrayBufferToBlobURL(buffer: ArrayBuffer, type: string): string {
   const blob = new Blob([buffer], { type });
   return URL.createObjectURL(blob);
@@ -51,9 +49,8 @@ export function MangaRoom() {
   const [jumpToPageInput, setJumpToPageInput] = useState('');
 
   const [ttsSettings, setTtsSettings] = useState<TTSSettings>(LocalStorageService.defaultTTSSettings);
-  const [isLoadingDocument, setIsLoadingDocument] = useState(false); // For initial file processing
-  const [isLoadingPdfPage, setIsLoadingPdfPage] = useState(false); // For PDF page rendering
-  const [isSyncingToLocal, setIsSyncingToLocal] = useState(false); // For local helper service sync
+  const [isLoadingDocument, setIsLoadingDocument] = useState(false); 
+  const [isLoadingPdfPage, setIsLoadingPdfPage] = useState(false); 
 
   const [isLoadingTTS, setIsLoadingTTS] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -65,9 +62,9 @@ export function MangaRoom() {
 
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
-  const pdfDocCacheRef = useRef<Record<string, PDFDocumentProxy>>({}); // Cache PDFDocumentProxy by ArrayBuffer reference or a generated ID if ArrayBuffer changes
+  const pdfDocCacheRef = useRef<Record<string, PDFDocumentProxy>>({}); 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const activeDocDisplayUrlRef = useRef<string | null>(null); // For blob URLs
+  const activeDocDisplayUrlRef = useRef<string | null>(null); 
 
   const stopSpeech = useCallback((resetUIState = true) => {
     if (ttsSettings.type === 'local' && typeof window !== 'undefined' && window.speechSynthesis) {
@@ -132,7 +129,6 @@ export function MangaRoom() {
           fileData: storedDoc.fileData,
           originalType: storedDoc.originalType,
           numPages: pdfInstance.numPages,
-          // processedPages are for display and will be populated by renderAndProcessPdfPage
           processedPages: new Array(pdfInstance.numPages).fill(null).map(() => ({ imageDataUrl: '', extractedText: undefined })),
           createdAt: storedDoc.createdAt,
         });
@@ -155,23 +151,44 @@ export function MangaRoom() {
       GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsVersion}/pdf.worker.mjs`;
       setTtsSettings(LocalStorageService.loadTTSSettings());
 
-      IndexedDBService.getLastActiveDocId().then(docId => {
-        if (docId) {
-          IndexedDBService.getDocumentById(docId).then(storedDoc => {
+      const params = new URLSearchParams(window.location.search);
+      const docIdFromQuery = params.get('docId');
+
+      if (docIdFromQuery) {
+          IndexedDBService.getDocumentById(docIdFromQuery).then(storedDoc => {
             if (storedDoc) {
               loadDocumentFromStoredData(storedDoc);
+            } else {
+              toast({variant: "destructive", title: "Document Not Found", description: `Document with ID ${docIdFromQuery} not found in library.`});
+              // Try loading last active if query doc not found or no query
+              IndexedDBService.getLastActiveDocId().then(lastDocId => {
+                if (lastDocId && lastDocId !== docIdFromQuery) {
+                  IndexedDBService.getDocumentById(lastDocId).then(lastStoredDoc => {
+                    if (lastStoredDoc) loadDocumentFromStoredData(lastStoredDoc);
+                  });
+                }
+              });
             }
           });
-        }
-      });
+      } else {
+         IndexedDBService.getLastActiveDocId().then(docId => {
+            if (docId) {
+            IndexedDBService.getDocumentById(docId).then(storedDoc => {
+                if (storedDoc) {
+                loadDocumentFromStoredData(storedDoc);
+                }
+            });
+            }
+        });
+      }
     }
 
-    return () => { // Cleanup blob URL
+    return () => { 
       if (activeDocDisplayUrlRef.current) {
         URL.revokeObjectURL(activeDocDisplayUrlRef.current);
       }
     };
-  }, [loadDocumentFromStoredData]);
+  }, [loadDocumentFromStoredData, toast]);
 
   useEffect(() => {
     LocalStorageService.saveTTSSettings(ttsSettings);
@@ -235,7 +252,7 @@ export function MangaRoom() {
             const updatedProcessedPages = [...prevDoc.processedPages];
             const existingPageData = updatedProcessedPages[pageNumToRender];
             updatedProcessedPages[pageNumToRender] = {
-                imageDataUrl: existingPageData?.imageDataUrl || '', // Keep existing image if re-processing text
+                imageDataUrl: existingPageData?.imageDataUrl || '', 
                 extractedText: "Loading PDF page content..."
             };
             return { ...prevDoc, processedPages: updatedProcessedPages } as MangaPdfFile;
@@ -246,12 +263,11 @@ export function MangaRoom() {
     try {
       let pdfDocInstance = pdfDocCacheRef.current[doc.id];
       if (!pdfDocInstance) {
-        // Re-create from ArrayBuffer if not in cache (e.g., after page refresh and load from IDB)
         pdfDocInstance = await getDocument({ data: doc.fileData.slice(0) }).promise;
         pdfDocCacheRef.current[doc.id] = pdfDocInstance;
       }
 
-      const page: PDFPageProxy = await pdfDocInstance.getPage(pageNumToRender + 1); // PDF.js pages are 1-indexed
+      const page: PDFPageProxy = await pdfDocInstance.getPage(pageNumToRender + 1); 
       const viewport = page.getViewport({ scale: 1.5 });
       const canvas = document.createElement('canvas');
       const context = canvas.getContext('2d');
@@ -260,15 +276,14 @@ export function MangaRoom() {
       let imageDataUrl = '';
 
       if (activeDocDisplayUrlRef.current && doc.processedPages[pageNumToRender]?.imageDataUrl === activeDocDisplayUrlRef.current) {
-        // If the current display URL is for this page, no need to revoke, it's the same
+        //
       } else if (activeDocDisplayUrlRef.current) {
-        URL.revokeObjectURL(activeDocDisplayUrlRef.current); // Revoke previous page's blob URL
+        URL.revokeObjectURL(activeDocDisplayUrlRef.current); 
         activeDocDisplayUrlRef.current = null;
       }
 
       if (context) {
         await page.render({ canvasContext: context, viewport: viewport }).promise;
-        // Create a blob URL for the current page image for display
         const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
         if (blob) {
             imageDataUrl = URL.createObjectURL(blob);
@@ -277,7 +292,6 @@ export function MangaRoom() {
             throw new Error("Canvas toBlob returned null");
         }
       }
-
 
       let textForPage: string;
       const textContent = await page.getTextContent();
@@ -297,8 +311,8 @@ export function MangaRoom() {
           }
           return prevD;
         });
-        if (imageDataUrl) { // Needs actual image data, not just a URL if it's a canvas drawing
-            const canvasImageForOCR = canvas.toDataURL('image/png'); // Use direct data URL for OCR
+        if (imageDataUrl) { 
+            const canvasImageForOCR = canvas.toDataURL('image/png'); 
             const ocrResult = await performOCR(canvasImageForOCR);
             textForPage = 'extractedText' in ocrResult ? ocrResult.extractedText : "OCR failed or no text found.";
             if ('error' in ocrResult && ocrResult.error) {
@@ -344,8 +358,8 @@ export function MangaRoom() {
       if (
           (
             !currentPageData ||
-            !currentPageData.imageDataUrl || // Image must be present for the page to be considered "processed" for display
-            currentPageData.extractedText === undefined || // Text extraction attempt should have happened
+            !currentPageData.imageDataUrl || 
+            currentPageData.extractedText === undefined || 
             currentPageData.extractedText?.startsWith("Error:") ||
             currentPageData.extractedText?.startsWith("Loading PDF page content...") ||
             currentPageData.extractedText?.startsWith("Extracting text using OCR...")
@@ -391,43 +405,6 @@ export function MangaRoom() {
     }
   }
 
-  const attemptSyncToLocalDevice = async (docToSync: StoredMangaDocument) => {
-      if (!docToSync.fileData || !docToSync.title || !docToSync.originalType) {
-          toast({variant: "destructive", title: "Sync Error", description: "Document data is incomplete for syncing."});
-          return;
-      }
-      setIsSyncingToLocal(true);
-      toast({ title: "Syncing to Local Device", description: `Attempting to send "${docToSync.title}" to your local helper service...` });
-
-      try {
-        const file = new File([docToSync.fileData], docToSync.title, { type: docToSync.originalType });
-        const formDataForLocalService = new FormData();
-        formDataForLocalService.append('file', file);
-
-        const localUploadResult = await uploadFileToLocalServer(formDataForLocalService);
-
-        if (localUploadResult && localUploadResult.success && localUploadResult.filePath) {
-            toast({ title: "Synced to Local Device", description: `"${docToSync.title}" successfully sent. Path: ${localUploadResult.filePath}` });
-        } else {
-            let description = `Could not sync "${docToSync.title}" to local device. Ensure the helper service is running.`;
-            if (localUploadResult && typeof localUploadResult === 'object' && Object.keys(localUploadResult).length === 0) {
-              description = `Sync of "${docToSync.title}" failed: The application received an empty response from the server. Check Next.js server console and helper service logs.`;
-            } else if (localUploadResult && localUploadResult.message) {
-              description = `Sync of "${docToSync.title}" failed: ${localUploadResult.message}`;
-            }
-            toast({ variant: "destructive", title: "Local Sync Failed", description });
-            console.error(`[MangaRoom] Local sync failed for "${docToSync.title}". Server Action Response:`, localUploadResult);
-        }
-      } catch (uploadError: any) {
-          const clientErrorMsg = uploadError.message || "An unknown error occurred while trying to sync the file.";
-          toast({ variant: "destructive", title: "Local Sync Service Error", description: clientErrorMsg });
-          console.error(`[MangaRoom] Error calling uploadFileToLocalServer action for sync of "${docToSync.title}":`, uploadError);
-      } finally {
-          setIsSyncingToLocal(false);
-      }
-  };
-
-
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -436,14 +413,14 @@ export function MangaRoom() {
     stopSpeechFnRef.current(true);
     setSentenceSegments([]);
     setCurrentSentenceIndex(-1);
-    setActiveDocument(null); // Clear previous document
-     if (activeDocDisplayUrlRef.current) { // Revoke old blob URL
+    setActiveDocument(null); 
+     if (activeDocDisplayUrlRef.current) { 
         URL.revokeObjectURL(activeDocDisplayUrlRef.current);
         activeDocDisplayUrlRef.current = null;
     }
-    pdfDocCacheRef.current = {}; // Clear PDF cache
+    pdfDocCacheRef.current = {}; 
 
-    const docId = `doc_${Date.now()}`;
+    const docId = `doc_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
     let storedDocForIndexDB: StoredMangaDocument | null = null;
 
     try {
@@ -453,7 +430,6 @@ export function MangaRoom() {
         const displayUrl = arrayBufferToBlobURL(fileBuffer, file.type);
         activeDocDisplayUrlRef.current = displayUrl;
 
-        // Set initial active document for display while OCR runs
         const initialActiveImageDoc: MangaImageFile = {
             id: docId,
             title: file.name,
@@ -469,7 +445,6 @@ export function MangaRoom() {
         let ocrText = "OCR pending...";
         let ocrErrorOccurred = false;
         try {
-            // For OCR, we need a data URL, not a blob URL, if performOCR expects that.
             const dataUrlForOcr = await IndexedDBService.arrayBufferToBase64DataURL(fileBuffer, file.type);
             const ocrResult = await performOCR(dataUrlForOcr);
             ocrText = 'extractedText' in ocrResult ? ocrResult.extractedText : (ocrResult.error || "OCR processing failed.");
@@ -487,11 +462,10 @@ export function MangaRoom() {
             id: docId, title: file.name, type: 'image', fileData: fileBuffer, originalType: file.type,
             extractedText: ocrErrorOccurred ? `OCR Error: ${ocrText}` : ocrText, createdAt: Date.now()
         };
-        // Update active document with final OCR text
         setActiveDocument(prev => prev?.id === docId ? {...prev, extractedText: storedDocForIndexDB?.extractedText } as MangaImageFile : prev);
 
       } else if (file.type === 'application/pdf') {
-        const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) }); // Use a copy for getDocument
+        const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) }); 
         const pdfInstance = await pdfLoadingTask.promise;
         pdfDocCacheRef.current[docId] = pdfInstance;
 
@@ -499,7 +473,6 @@ export function MangaRoom() {
             id: docId, title: file.name, type: 'pdf', fileData: fileBuffer, originalType: file.type,
             numPages: pdfInstance.numPages, createdAt: Date.now()
         };
-        // The active document will be fully set up by loadDocumentFromStoredData after saving to IDB
       } else {
         toast({ variant: "destructive", title: "Unsupported File", description: "Please upload an Image or PDF file." });
         setIsLoadingDocument(false);
@@ -509,11 +482,8 @@ export function MangaRoom() {
       if (storedDocForIndexDB) {
         await IndexedDBService.saveDocument(storedDocForIndexDB);
         toast({ title: "Document Saved to Browser", description: `"${file.name}" is saved in your browser and available offline.` });
-        await loadDocumentFromStoredData(storedDocForIndexDB); // This sets activeDocument correctly
-        await IndexedDBService.saveLastActiveDocId(docId); // Save as last active
-
-        // Attempt to sync to local device (secondary action)
-        attemptSyncToLocalDevice(storedDocForIndexDB);
+        await loadDocumentFromStoredData(storedDocForIndexDB); 
+        await IndexedDBService.saveLastActiveDocId(docId); 
       }
 
     } catch (error: any) {
@@ -763,7 +733,7 @@ export function MangaRoom() {
   const handleClearActiveDocument = async () => {
     stopSpeechFnRef.current(true);
     if (activeDocument) {
-       await IndexedDBService.saveLastActiveDocId(null); // Clear last active
+       await IndexedDBService.saveLastActiveDocId(null); 
     }
     if (activeDocDisplayUrlRef.current) {
         URL.revokeObjectURL(activeDocDisplayUrlRef.current);
@@ -813,7 +783,7 @@ export function MangaRoom() {
 
     const canPlay = (!!selectedTextContent || hasValidTextToRead) &&
                     !isLoadingPdfPage &&
-                    !isLoadingDocument && // Check isLoadingDocument here
+                    !isLoadingDocument && 
                     activeDocument &&
                     !(activeDocument.type === 'image' && activeDocument.extractedText === "Performing OCR...") &&
                     !(activeDocument.type === 'image' && activeDocument.extractedText === "Processing uploaded image...") &&
@@ -852,8 +822,7 @@ export function MangaRoom() {
           <CardTitle className="flex items-center gap-2"><UploadCloud className="text-primary" /> Upload Document</CardTitle>
           <CardDescription>
             Upload an image or PDF. It will be saved in your browser for this session and offline use.
-            You can also sync it to your local device via the helper service.
-            <span className="font-semibold text-destructive block mt-1"> IMPORTANT: For permanent, cross-session local device storage, your local helper service (e.g., `server.js`) MUST be running. Otherwise, files are only stored in this browser.</span>
+            Go to the Library to manage all stored documents or save them to your device.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -865,7 +834,7 @@ export function MangaRoom() {
               accept="image/*,application/pdf"
               onChange={handleFileUpload}
               ref={fileInputRef}
-              disabled={isLoadingDocument || isSyncingToLocal}
+              disabled={isLoadingDocument}
             />
           </div>
           {isLoadingDocument && <p className="mt-2 text-sm text-muted-foreground">Processing and saving file to browser: {fileInputRef.current?.files?.[0]?.name || "New file"}...</p>}
@@ -884,12 +853,7 @@ export function MangaRoom() {
                     <CardDescription className="text-xs">Saved in browser. Created: {new Date(activeDocument.createdAt).toLocaleString()}</CardDescription>
                 </div>
                 <div className="flex gap-2 flex-shrink-0">
-                    {activeDocument.fileData && ( // Only show sync if we have the data
-                         <Button variant="outline" size="sm" onClick={() => attemptSyncToLocalDevice(activeDocument as StoredMangaDocument)} disabled={isSyncingToLocal || isLoadingDocument}>
-                            {isSyncingToLocal ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />} Sync to Device
-                        </Button>
-                    )}
-                    <Button variant="ghost" size="sm" onClick={handleClearActiveDocument} disabled={isLoadingPdfPage || isLoadingTTS || isSpeaking || isLoadingDocument || isSyncingToLocal}>
+                    <Button variant="ghost" size="sm" onClick={handleClearActiveDocument} disabled={isLoadingPdfPage || isLoadingTTS || isSpeaking || isLoadingDocument}>
                         <Trash2 className="h-4 w-4 mr-1" /> Clear
                     </Button>
                 </div>
@@ -912,10 +876,8 @@ export function MangaRoom() {
                       priority={true}
                       key={`${activeDocument.id}-${activeDocument.type==='pdf' ? currentPdfInternalPageIndex : 'image'}-${currentImageToDisplay.substring(currentImageToDisplay.length - 20)}`}
                       onLoadingComplete={(img) => {
-                        // If it's a blob URL for a PDF page that just loaded, we might not need to revoke it immediately
-                        // if it's the active page. Revocation is handled by renderAndProcessPdfPage or unmount.
                         if (activeDocument.type === 'image' && activeDocument.imageDataUrl?.startsWith('blob:')) {
-                           // For image type, if it's a blob, it was created from fileData and is fine.
+                           //
                         }
                       }}
                     />
@@ -1008,20 +970,13 @@ export function MangaRoom() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <p className="text-muted-foreground">Upload a document above to begin reading. Documents are saved in your browser.</p>
-                 <div className="border border-destructive bg-destructive/5 p-3 rounded-md text-destructive-foreground/90 text-xs mt-3">
-                    <div className="flex items-center gap-2 font-semibold text-base text-destructive-foreground">
-                        <ServerCrash className="h-5 w-5" /> Important Note on Local Device Syncing:
+                 <div className="border border-blue-500 bg-blue-500/5 p-3 rounded-md text-blue-600 dark:text-blue-400/90 text-xs mt-3">
+                    <div className="flex items-center gap-2 font-semibold text-base text-blue-700 dark:text-blue-300">
+                        <Info className="h-5 w-5" /> Browser Storage:
                     </div>
                     <p className="mt-1.5">
-                        Documents uploaded here are saved **in this browser** using IndexedDB for offline access.
-                        To also save them to your computer's file system (e.g., "Downloads" or "Documents" folder), you can use the "Sync to Device" button that appears after a document is loaded.
-                    </p>
-                    <p className="mt-1.5 font-semibold">
-                        The "Sync to Device" feature requires your **local helper service** (e.g., a Node.js `server.js` script) to be **RUNNING** on your computer and accessible at `http://localhost:3001/upload`.
-                    </p>
-                    <p className="mt-1.5">
-                       If the local helper service is not running or is inaccessible, the "Sync to Device" will fail, but your document will remain safely stored in this browser.
-                       Check the "Library" page for more troubleshooting tips if syncing fails.
+                        Documents uploaded here are saved **in this browser** using IndexedDB for offline access by MangaTalk.
+                        To manage all your stored documents or save copies to your computer, please visit the "Library" page.
                     </p>
                 </div>
               </CardContent>
@@ -1178,3 +1133,5 @@ export function MangaRoom() {
     </div>
   );
 }
+
+    

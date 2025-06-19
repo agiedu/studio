@@ -1,3 +1,4 @@
+
 "use server";
 
 import { extractTextFromManga, type ExtractTextFromMangaInput } from "@/ai/flows/extract-text-from-manga";
@@ -21,13 +22,13 @@ export async function performOCR(
 
 export async function getCloudSpeech(
   text: string,
-  language: string // language is not used by cloudTTS flow, but good to have for consistency
+  language: string 
 ): Promise<{ audioUrl: string } | { error: string }> {
   if (!text) {
     return { error: "No text provided for Cloud TTS." };
   }
   try {
-    const input: CloudTTSInput = { text };
+    const input: CloudTTSInput = { text }; // Language is not used by cloudTTS flow definition
     const result = await cloudTTS(input);
     return { audioUrl: result.audioUrl };
   } catch (e: any) {
@@ -35,3 +36,5 @@ export async function getCloudSpeech(
     return { error: e.message || "Failed to generate speech using Cloud TTS." };
   }
 }
+
+    
