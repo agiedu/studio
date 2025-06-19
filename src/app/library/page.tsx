@@ -113,12 +113,10 @@ export default function LibraryPage() {
                   toast({ title: "Synced to Local Device", description: `Secondary sync of "${storedDocForIndexDB.title}" successful. Path: ${localUploadResult.filePath}` });
                 } else {
                   let errorMsg = `Secondary sync of "${storedDocForIndexDB.title || 'document'}" to local device failed.`;
-                  if (localUploadResult && localUploadResult.message) {
+                  if (localUploadResult?.message) { // Check if localUploadResult itself is defined
                     errorMsg += ` ${localUploadResult.message}`;
-                  } else if (localUploadResult && Object.keys(localUploadResult).length === 0 && localUploadResult.constructor === Object) {
-                    errorMsg += " Received an empty or unexpected response from the server. Ensure helper service is running & sends JSON.";
                   } else {
-                    errorMsg += " No specific error message from server. Ensure helper service is running & sends JSON.";
+                    errorMsg += " An unexpected issue occurred or the helper service response was unclear. Ensure helper service is running & sends JSON.";
                   }
                   toast({ variant: "default", title: "Local Sync Info (Secondary)", description: errorMsg, duration: 7000 });
                   console.warn("[LibraryPage] Secondary local sync failed. Server Action Response:", localUploadResult);
@@ -180,12 +178,10 @@ export default function LibraryPage() {
           toast({ title: "Synced to Local Device", description: `"${doc.title}" successfully sent. Path: ${localUploadResult.filePath}` });
       } else {
         let errorMsg = `Could not sync "${doc.title}" to local device.`;
-         if (localUploadResult && localUploadResult.message) {
+         if (localUploadResult?.message) { // Check if localUploadResult itself is defined
             errorMsg += ` ${localUploadResult.message}`;
-        } else if (localUploadResult && Object.keys(localUploadResult).length === 0 && localUploadResult.constructor === Object) {
-            errorMsg += " Received an empty or unexpected response from the server. Ensure helper service is running & sends JSON.";
-        } else {
-            errorMsg += " No specific error message from server. Ensure helper service is running & sends JSON.";
+        }  else {
+            errorMsg += " An unexpected issue occurred or the helper service response was unclear. Ensure helper service is running & sends JSON.";
         }
         toast({ variant: "destructive", title: "Local Sync Failed", description: errorMsg, duration: 7000 });
         console.error(`[LibraryPage] Local sync failed for "${doc.title}". Server Action Response:`, localUploadResult);
@@ -334,4 +330,5 @@ export default function LibraryPage() {
       </Card>
     </div>
   );
-}
+
+    
