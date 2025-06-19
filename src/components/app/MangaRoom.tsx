@@ -42,13 +42,12 @@ export function MangaRoom() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // activeDocument is now purely session-based, populated by direct upload
-  const [activeDocument, setActiveDocument] = useState<MangaDocument | null>(null); 
+  const [activeDocument, setActiveDocument] = useState<MangaDocument | null>(null);
   const [currentPdfInternalPageIndex, setCurrentPdfInternalPageIndex] = useState(0);
   const [jumpToPageInput, setJumpToPageInput] = useState('');
 
   const [ttsSettings, setTtsSettings] = useState<TTSSettings>(LocalStorage.defaultTTSSettings);
-  const [isLoadingDocument, setIsLoadingDocument] = useState(false); // For processing an uploaded file
+  const [isLoadingDocument, setIsLoadingDocument] = useState(false);
   const [isLoadingPdfPage, setIsLoadingPdfPage] = useState(false);
   const [isLoadingTTS, setIsLoadingTTS] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -59,9 +58,10 @@ export function MangaRoom() {
   const [currentSentenceIndex, setCurrentSentenceIndex] = useState<number>(-1);
 
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
-  const pdfDocCacheRef = useRef<Record<string, PDFDocumentProxy>>({}); // Cache for current session PDF processing
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null); // Added missing declaration
+  const pdfDocCacheRef = useRef<Record<string, PDFDocumentProxy>>({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const currentFileLocalPathRef = useRef<string | null>(null); // Store path from local service
+  const currentFileLocalPathRef = useRef<string | null>(null);
 
   const stopSpeech = useCallback((resetUIState = true) => {
     if (ttsSettings.type === 'local' && typeof window !== 'undefined' && window.speechSynthesis) {
@@ -98,20 +98,11 @@ export function MangaRoom() {
       GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsVersion}/pdf.worker.mjs`;
       setTtsSettings(LocalStorage.loadTTSSettings());
     }
-    // No initial document loading from LocalStorage
-  }, []); 
+  }, []);
 
   useEffect(() => {
     LocalStorage.saveTTSSettings(ttsSettings);
   }, [ttsSettings]);
-
-  // PDF page index for current session (temporary)
-   useEffect(() => {
-    if (activeDocument?.type === 'pdf' && activeDocument.id && activeDocument.id.startsWith('session-pdf-')) { 
-      LocalStorage.saveCurrentPdfPageIndexForDoc(activeDocument.id, currentPdfInternalPageIndex);
-    }
-  }, [currentPdfInternalPageIndex, activeDocument]);
-
 
   const populateVoiceList = useCallback(() => {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
@@ -123,18 +114,18 @@ export function MangaRoom() {
         default: v.default,
       }));
       setAvailableVoices(voices);
-      const currentSettings = LocalStorage.loadTTSSettings();
+      const currentSettings = LocalStorage.loadTTSSettings(); // Load fresh settings
       if (!currentSettings.voiceURI && voices.length > 0) {
         const defaultVoice = voices.find(v => v.lang === currentSettings.language && v.default) || voices.find(v => v.lang === currentSettings.language) || voices.find(v => v.default) || voices[0];
         if (defaultVoice) {
           const newSettings = { ...currentSettings, voiceURI: defaultVoice.voiceURI, language: defaultVoice.lang };
-          setTtsSettings(newSettings);
+          setTtsSettings(newSettings); // This will also trigger saveTTSSettings effect
         }
       } else {
-         setTtsSettings(currentSettings);
+         setTtsSettings(currentSettings); // Ensure settings are synced if no default voice change
       }
     }
-  }, []);
+  }, []); // Removed ttsSettings from dependencies to avoid loops
 
   useEffect(() => {
     populateVoiceList();
@@ -150,7 +141,7 @@ export function MangaRoom() {
   }, [populateVoiceList]);
 
   const renderAndProcessPdfPage = useCallback(async (doc: MangaPdfFile, pageNumToRender: number) => {
-    if (!doc || doc.type !== 'pdf' || pageNumToRender < 0 || pageNumToRender >= doc.numPages || !doc.id.startsWith('session-pdf-')) {
+    if (!doc || doc.type !== 'pdf' || pageNumToRender < 0 || pageNumToRender >= doc.numPages ) {
       setIsLoadingPdfPage(false);
       return;
     }
@@ -173,11 +164,8 @@ export function MangaRoom() {
     });
 
     try {
-      let pdfDocInstance = pdfDocCacheRef.current[doc.id]; // Using session-based ID for cache
+      let pdfDocInstance = pdfDocCacheRef.current[doc.id];
       if (!pdfDocInstance) {
-        // This part needs PDF data. Since we don't store it in LS anymore,
-        // it must have come from the initial upload's file reader.
-        // We assume doc.pdfDataUrl (full data URI) is available for session processing.
         if (!doc.pdfDataUrl) {
             const errorMsg = `PDF data not available in current session for ${doc.title}. Cannot render page.`;
             toast({ variant: "destructive", title: "PDF Data Error", description: errorMsg });
@@ -215,9 +203,9 @@ export function MangaRoom() {
       const textContent = await page.getTextContent();
       const directText = textContent.items.map(item => ('str' in item ? item.str : '')).join(" ").trim();
 
-      if (directText.length > 1) { 
+      if (directText.length > 1) {
         textForPage = directText;
-      } else { 
+      } else {
         setActiveDocument(prevD => {
           if (prevD && prevD.id === doc.id && prevD.type === 'pdf') {
               const updatedPages = [...prevD.processedPages];
@@ -267,7 +255,7 @@ export function MangaRoom() {
   }, [toast, stopSpeechFnRef]);
 
   useEffect(() => {
-    if (activeDocument?.type === 'pdf' && activeDocument.id.startsWith('session-pdf-') && activeDocument.numPages > 0 && currentPdfInternalPageIndex >= 0 && currentPdfInternalPageIndex < activeDocument.numPages) {
+    if (activeDocument?.type === 'pdf' && activeDocument.numPages > 0 && currentPdfInternalPageIndex >= 0 && currentPdfInternalPageIndex < activeDocument.numPages) {
       setJumpToPageInput((currentPdfInternalPageIndex + 1).toString());
       const currentPageData = activeDocument.processedPages[currentPdfInternalPageIndex];
       if (
@@ -328,31 +316,36 @@ export function MangaRoom() {
     stopSpeechFnRef.current(true);
     setSentenceSegments([]);
     setCurrentSentenceIndex(-1);
-    currentFileLocalPathRef.current = null; // Reset path for new upload
+    setActiveDocument({
+        id: `temp-processing-doc-${Date.now()}`,
+        title: file.name,
+        type: file.type.startsWith('image/') ? 'image' : 'pdf',
+        // Placeholder for image/pdf specific data
+        ...(file.type.startsWith('image/') ? { imageDataUrl: '', extractedText: "Processing uploaded image..." } : { pdfDataUrl: '', numPages: 0, processedPages: [] })
+    } as MangaDocument);
+    currentFileLocalPathRef.current = null;
 
-    const sessionDocId = `session-${file.type.startsWith('image/') ? 'image' : 'pdf'}-${Date.now()}`;
-    
-    // Send to local helper service FIRST
     const formData = new FormData();
     formData.append('file', file);
-    let localSaveSuccess = false;
     let localFilePath: string | undefined;
 
     try {
         const localUploadResult = await uploadFileToLocalServer(formData);
-        if (localUploadResult.success) {
-            toast({ title: "File Sent to Local Device", description: `${file.name} sent to local service. Path: ${localUploadResult.filePath}` });
-            localSaveSuccess = true;
+        if (localUploadResult.success && localUploadResult.filePath) {
+            toast({ title: "File Sent to Local Device", description: `${file.name} sent. Path: ${localUploadResult.filePath}` });
             localFilePath = localUploadResult.filePath;
-            currentFileLocalPathRef.current = localFilePath || file.name; // Fallback to filename if path missing
+            currentFileLocalPathRef.current = localFilePath;
         } else {
             toast({ variant: "destructive", title: "Local Save Failed", description: localUploadResult.message + " File will only be available for this session." });
+            currentFileLocalPathRef.current = file.name; // Fallback for favorites
         }
     } catch (uploadError: any) {
         toast({ variant: "destructive", title: "Local Save Service Error", description: uploadError.message || "Could not send file to local service. File will only be available for this session." });
+        currentFileLocalPathRef.current = file.name; // Fallback
     }
 
-    // Process for current session display
+    const sessionDocId = `session-${file.type.startsWith('image/') ? 'image' : 'pdf'}-${Date.now()}`;
+
     try {
       if (file.type.startsWith('image/')) {
         const imageDataUrl = await new Promise<string>((resolve, reject) => {
@@ -403,23 +396,19 @@ export function MangaRoom() {
         const pdfInstance = await pdfLoadingTask.promise;
         
         const initialPageIndex = 0;
-        const initialPageNumForInput = '1';
-        const savedSessionPageIndex = LocalStorage.loadCurrentPdfPageIndexForDoc(sessionDocId);
-        // We don't really have a persistent PDF to load page state for,
-        // so new PDFs always start at page 0 for the session.
-
-        setActiveDocument({ 
+        
+        setActiveDocument({
             id: sessionDocId,
             title: file.name,
             type: 'pdf',
-            pdfDataUrl: pdfDataUrlFull, 
+            pdfDataUrl: pdfDataUrlFull,
             numPages: pdfInstance.numPages,
             processedPages: new Array(pdfInstance.numPages).fill(null).map(() => ({ imageDataUrl: '', extractedText: undefined })),
         });
         setCurrentPdfInternalPageIndex(initialPageIndex);
-        setJumpToPageInput(initialPageNumForInput);
-        pdfDocCacheRef.current = {}; // Clear cache for new PDF
-        pdfDocCacheRef.current[sessionDocId] = pdfInstance; // Cache the new one
+        setJumpToPageInput((initialPageIndex + 1).toString());
+        pdfDocCacheRef.current = {};
+        pdfDocCacheRef.current[sessionDocId] = pdfInstance;
       } else {
         toast({ variant: "destructive", title: "Unsupported File", description: "Please upload an Image or PDF file for Manga Room." });
         setActiveDocument(null);
@@ -443,7 +432,7 @@ export function MangaRoom() {
     const selectedText = typeof window !== 'undefined' ? window.getSelection()?.toString().trim() : '';
     const effectiveTextToRead = selectedText || textToRead;
 
-    if (!effectiveTextToRead || isLoadingPdfPage || !activeDocument || 
+    if (!effectiveTextToRead || isLoadingPdfPage || !activeDocument ||
         effectiveTextToRead.startsWith("Error:") ||
         effectiveTextToRead.startsWith("Processing") ||
         effectiveTextToRead.startsWith("Loading") ||
@@ -637,7 +626,7 @@ export function MangaRoom() {
   const navigatePdfPage = (direction: 'next' | 'prev') => {
     stopSpeechFnRef.current(true);
     const doc = activeDocument;
-    if (!doc || doc.type !== 'pdf' || !doc.id.startsWith('session-pdf-')) return;
+    if (!doc || doc.type !== 'pdf' ) return;
 
     let newPdfPage = currentPdfInternalPageIndex;
     if (direction === 'next') {
@@ -657,12 +646,12 @@ export function MangaRoom() {
   const handleJumpToPageOnBlur = () => {
     const doc = activeDocument;
     let resetValue = '';
-    if (doc && doc.type === 'pdf' && doc.id.startsWith('session-pdf-') && doc.numPages > 0 && currentPdfInternalPageIndex >= 0 && currentPdfInternalPageIndex < doc.numPages) {
+    if (doc && doc.type === 'pdf' && doc.numPages > 0 && currentPdfInternalPageIndex >= 0 && currentPdfInternalPageIndex < doc.numPages) {
       resetValue = (currentPdfInternalPageIndex + 1).toString();
     }
 
     const pageNumFromInputText = parseInt(jumpToPageInput, 10);
-    if (doc && doc.type === 'pdf' && doc.id.startsWith('session-pdf-') && doc.numPages > 0) {
+    if (doc && doc.type === 'pdf' && doc.numPages > 0) {
         if (isNaN(pageNumFromInputText) || pageNumFromInputText < 1 || pageNumFromInputText > doc.numPages) {
              setJumpToPageInput(currentPdfInternalPageIndex >=0 && currentPdfInternalPageIndex < doc.numPages ? (currentPdfInternalPageIndex + 1).toString() : '1');
         }
@@ -679,7 +668,7 @@ export function MangaRoom() {
     setSentenceSegments([]);
     setCurrentSentenceIndex(-1);
     currentFileLocalPathRef.current = null;
-    pdfDocCacheRef.current = {}; // Clear PDF instance cache
+    pdfDocCacheRef.current = {};
     toast({title: "Session Document Cleared", description: "The current document has been cleared from this session."});
      if (fileInputRef.current) {
         fileInputRef.current.value = '';
@@ -694,7 +683,6 @@ export function MangaRoom() {
       const newFavorite: FavoriteItem = {
         id: Date.now().toString(),
         text: selection,
-        // Use the local path or filename as the identifier
         sourceDocumentId: currentFileLocalPathRef.current || currentDocForFavorite.title || "unknown_source",
         sourceDocumentName: currentDocForFavorite.title || "Untitled Document",
         createdAt: Date.now(),
@@ -754,7 +742,7 @@ export function MangaRoom() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><UploadCloud className="text-primary" /> Upload Document for This Session</CardTitle>
           <CardDescription>
-            Upload an image or PDF to process and read in the current session. 
+            Upload an image or PDF to process and read in the current session.
             The file will also be sent to your local helper service for persistent storage on your device (if the service is running).
           </CardDescription>
         </CardHeader>
@@ -930,7 +918,7 @@ export function MangaRoom() {
                         setJumpToPageInput(newValue);
 
                         const doc = activeDocument;
-                        if (doc && doc.type === 'pdf' && doc.id.startsWith('session-pdf-') && doc.numPages > 0) {
+                        if (doc && doc.type === 'pdf' && doc.numPages > 0) {
                           const pageNumOneBased = parseInt(newValue, 10);
                           if (!isNaN(pageNumOneBased) && pageNumOneBased >= 1 && pageNumOneBased <= doc.numPages) {
                             const pageNumZeroBased = pageNumOneBased - 1;
@@ -1048,3 +1036,4 @@ export function MangaRoom() {
     </div>
   );
 }
+
