@@ -109,60 +109,50 @@ export default function ReaderPage() {
     console.log("[EPUB Cleanup] Attempting to cleanup EPUB instances.");
     const currentRendition = epubRenditionRef.current;
     const currentBook = epubBookRef.current;
-    const viewerNode = epubViewerRef.current;
 
-    if (isMountedRef.current) {
+    if (isMountedRef.current) { // Reset UI state related to EPUB display
         setIsEpubSectionDisplayed(false);
     }
 
     if (currentRendition) {
-        console.log("[EPUB Cleanup] Current rendition instance exists:", currentRendition);
-        const renditionManager = currentRendition.manager;
-        const renditionContainer = renditionManager?.container;
-
-        if (viewerNode && document.body.contains(viewerNode) && renditionManager && renditionContainer && renditionContainer.parentNode === viewerNode) {
-            console.log("[EPUB Cleanup] Rendition container is valid and direct child of viewer. Scheduling rendition.destroy() via rAF.");
-            requestAnimationFrame(() => {
-                if (!isMountedRef.current) {
-                    console.log("[EPUB Cleanup RAF] Component unmounted before rendition.destroy().");
-                    return;
-                }
-                // Re-check if the ref still points to the same instance we're trying to destroy
-                if (epubRenditionRef.current === currentRendition) {
-                    console.log("[EPUB Cleanup RAF] Calling rendition.destroy() for the captured instance:", currentRendition);
-                    try {
-                        currentRendition.destroy();
-                        console.log("[EPUB Cleanup RAF] rendition.destroy() called.");
-                    } catch (e: any) {
-                        console.warn("[EPUB Cleanup RAF] Error destroying EPUB rendition:", e.message || e);
-                    } finally {
-                        // Nullify the ref only if it's still pointing to the instance we just tried to destroy
-                        if (epubRenditionRef.current === currentRendition) {
-                            epubRenditionRef.current = null;
-                            console.log("[EPUB Cleanup RAF] epubRenditionRef.current nulled after destroy attempt.");
-                        }
-                    }
-                } else {
-                    console.log("[EPUB Cleanup RAF] Skipped rendition.destroy() - rendition ref changed or nulled before rAF execution. Current ref:", epubRenditionRef.current);
-                }
-            });
-        } else {
-            console.warn("[EPUB Cleanup] Rendition container no longer valid, viewer detached, manager/container missing, or container not direct child of viewer. Skipping rendition.destroy(). Current rendition ref:", epubRenditionRef.current, "Viewer Node:", viewerNode, "Viewer in DOM:", viewerNode && document.body.contains(viewerNode), "Rendition Container:", renditionContainer, "Container ParentNode === ViewerNode:", renditionContainer?.parentNode === viewerNode);
-            if (epubRenditionRef.current === currentRendition) {
-                epubRenditionRef.current = null; // Nullify ref if destroy is skipped
-                console.log("[EPUB Cleanup] epubRenditionRef.current nulled due to invalid conditions for destroy.");
+        console.log("[EPUB Cleanup] Current rendition instance exists. Scheduling destroy via rAF.");
+        requestAnimationFrame(() => {
+            if (!isMountedRef.current) {
+                console.log("[EPUB Cleanup RAF] Component unmounted before rendition.destroy().");
+                return;
             }
-        }
+            // Check if the ref still points to the instance we intended to destroy
+            if (epubRenditionRef.current === currentRendition) {
+                console.log("[EPUB Cleanup RAF] Calling rendition.destroy() for the captured instance:", currentRendition);
+                try {
+                    currentRendition.destroy();
+                    console.log("[EPUB Cleanup RAF] rendition.destroy() called successfully.");
+                } catch (e: any) {
+                    console.warn("[EPUB Cleanup RAF] Error destroying EPUB rendition:", e.message || e);
+                } finally {
+                    // Nullify the ref only if it's still pointing to the instance we just tried to destroy
+                    if (epubRenditionRef.current === currentRendition) {
+                        epubRenditionRef.current = null;
+                        console.log("[EPUB Cleanup RAF] epubRenditionRef.current nulled after destroy attempt.");
+                    }
+                }
+            } else {
+                 console.log("[EPUB Cleanup RAF] Skipped rendition.destroy() - rendition ref changed or nulled before rAF execution. Current ref:", epubRenditionRef.current);
+            }
+        });
     } else {
         console.log("[EPUB Cleanup] No currentRendition to destroy.");
-         if(epubRenditionRef.current !== null) epubRenditionRef.current = null; // Ensure it's null if somehow missed
+        if (epubRenditionRef.current !== null) { // If somehow ref is not null but currentRendition was, nullify it
+            epubRenditionRef.current = null;
+            console.log("[EPUB Cleanup] epubRenditionRef.current (which was non-null) explicitly nulled as currentRendition was null.");
+        }
     }
 
     if (currentBook) {
         console.log("[EPUB Cleanup] Current book instance exists. Attempting book.destroy():", currentBook);
         try {
             currentBook.destroy();
-            console.log("[EPUB Cleanup] book.destroy() called.");
+            console.log("[EPUB Cleanup] book.destroy() called successfully.");
         } catch (e: any) {
             console.warn("[EPUB Cleanup] Error destroying EPUB book:", e.message || e);
         } finally {
@@ -173,13 +163,13 @@ export default function ReaderPage() {
         }
     } else {
         console.log("[EPUB Cleanup] No currentBook to destroy.");
-         if(epubBookRef.current !== null) epubBookRef.current = null; // Ensure it's null
+        if (epubBookRef.current !== null) {
+            epubBookRef.current = null;
+            console.log("[EPUB Cleanup] epubBookRef.current (which was non-null) explicitly nulled as currentBook was null.");
+        }
     }
-
-    if (viewerNode && document.body.contains(viewerNode)) {
-        console.log("[EPUB Cleanup] Clearing epubViewerRef.current.innerHTML.");
-        viewerNode.innerHTML = ''; // Clear any lingering content
-    }
+    // No need to clear epubViewerRef.current.innerHTML here, as the keyed div strategy
+    // ensures React unmounts the old div entirely.
     console.log("[EPUB Cleanup] Finished. Rendition ref:", epubRenditionRef.current, "Book ref:", epubBookRef.current);
   }, []);
 
@@ -189,19 +179,28 @@ export default function ReaderPage() {
     console.log("[ReaderPage] Main metadata load effect: Initiating.");
     stopSpeech(true);
 
+    // PDF specific cleanup
     if (pdfDocProxy) { try { pdfDocProxy.destroy(); } catch(e) { console.warn("Error destroying PDF proxy on doc change", e);}}
     if (isMountedRef.current) {
       setPdfDocProxy(null); setCurrentPdfPageNum(1); setPdfTotalPages(0); setPdfPageImage(null); setPdfPageIsTextBased(true); setIsRenderingPdfPage(false);
     }
+    // Image specific cleanup
     if (currentImageObjectUrlRef.current) { URL.revokeObjectURL(currentImageObjectUrlRef.current); currentImageObjectUrlRef.current = null; }
     if (isMountedRef.current) {
         setDisplayedImageSrc(null);
+    }
+    // TXT specific cleanup
+    if (isMountedRef.current) {
         setTxtContent("");
+    }
+    // General UI reset
+    if (isMountedRef.current) {
         setCurrentTextForTTS("");
         setDocErrorMessage(null);
-        setIsLoadingDoc(true);
+        setIsLoadingDoc(true); // Set true here, individual handlers will set to false
         setIsPerformingOcr(false);
     }
+    // EPUB specific cleanup will be handled by its own useEffect's return due to the keyed component strategy
 
     const loadDocumentMetadata = async () => {
       let docIdToLoad = searchParams.get('docId');
@@ -213,20 +212,20 @@ export default function ReaderPage() {
           return;
         }
       }
-      if (!docIdToLoad) {
-         if(isMountedRef.current) { setDocErrorMessage("No document selected and no previously active document found."); setIsLoadingDoc(false); setActiveDoc(null); }
+       if (!docIdToLoad && isMountedRef.current) { // Double check after resolving lastActiveId
+         setDocErrorMessage("No document selected and no previously active document found."); setIsLoadingDoc(false); setActiveDoc(null);
          return;
       }
 
       try {
         console.log(`[ReaderPage] Loading document metadata for ID: ${docIdToLoad}`);
-        const doc = await IndexedDBService.getDocumentById(docIdToLoad);
+        const doc = await IndexedDBService.getDocumentById(docIdToLoad!); // docIdToLoad is guaranteed to be string here
         if (!doc) {
           if(isMountedRef.current) { setDocErrorMessage(`Document with ID "${docIdToLoad}" not found.`); await IndexedDBService.saveLastActiveDocId(null); setIsLoadingDoc(false); setActiveDoc(null); }
           return;
         }
-        if(isMountedRef.current) { setActiveDoc(doc as ActiveMangaDocument); }
-        await IndexedDBService.saveLastActiveDocId(docIdToLoad);
+        if(isMountedRef.current) { setActiveDoc(doc as ActiveMangaDocument); } // This will trigger other useEffects based on doc.type
+        await IndexedDBService.saveLastActiveDocId(docIdToLoad!);
       } catch (err: any) {
         if(isMountedRef.current) { setDocErrorMessage(`Error loading document metadata: ${err.message}`); setIsLoadingDoc(false); setActiveDoc(null); }
       }
@@ -238,6 +237,7 @@ export default function ReaderPage() {
       stopSpeech(true);
       if (currentImageObjectUrlRef.current) { URL.revokeObjectURL(currentImageObjectUrlRef.current); currentImageObjectUrlRef.current = null; }
       if (pdfDocProxy) { try { pdfDocProxy.destroy(); } catch(e) { console.warn("Error destroying PDF proxy on main unmount", e);}}
+      // EPUB cleanup is handled by its dedicated effect's return when activeDoc (and thus the key) changes.
     };
   }, [searchParams, stopSpeech]);
 
@@ -245,36 +245,46 @@ export default function ReaderPage() {
   // PDF Loading Effect
   useEffect(() => {
     if (activeDoc?.type === 'pdf' && activeDoc.fileData && isMountedRef.current) {
+      console.log("[PDF Effect] Loading PDF document:", activeDoc.id);
       setCurrentTextForTTS("Loading PDF..."); setDocErrorMessage(null);
-      if (pdfDocProxy) {
+      if (pdfDocProxy) { // Destroy previous instance if any
         try { pdfDocProxy.destroy(); } catch(e){console.warn("Error destroying previous pdfDocProxy", e);}
         setPdfDocProxy(null);
       }
 
       getDocument({ data: activeDoc.fileData.slice(0) }).promise.then(pdf => {
-        if(!isMountedRef.current) { try {pdf.destroy();} catch(e){} return; }
+        if(!isMountedRef.current || activeDoc?.type !== 'pdf') { // Check if still relevant
+             try {pdf.destroy();} catch(e){}
+             console.log("[PDF Effect] PDF load no longer relevant (unmounted or doc changed).");
+             return;
+        }
+        console.log("[PDF Effect] PDF loaded successfully:", activeDoc.id);
         setPdfDocProxy(pdf); setPdfTotalPages(pdf.numPages);
         const savedPageIndex = LocalStorageService.loadCurrentPdfPageIndexForDoc(activeDoc.id);
         const pageToLoad = (savedPageIndex && savedPageIndex > 0 && savedPageIndex <= pdf.numPages) ? savedPageIndex : 1;
         setCurrentPdfPageNum(pageToLoad);
+        // setIsLoadingDoc(false) will be handled by PDF Page Rendering Effect after first page renders
       }).catch(e => {
         if(!isMountedRef.current) return;
+        console.error("[PDF Effect] Failed to load PDF:", activeDoc.id, e);
         setDocErrorMessage(`Failed to load PDF: ${e.message}`); setCurrentTextForTTS(""); setIsLoadingDoc(false);
       });
-    } else if (isMountedRef.current && activeDoc && activeDoc.type !== 'pdf' && pdfDocProxy) {
-      try { pdfDocProxy.destroy(); } catch(e) { console.warn("Error destroying PDF proxy on doc type change", e); }
-      setPdfDocProxy(null); setPdfTotalPages(0); setPdfPageImage(null);
     }
   }, [activeDoc]);
 
   // PDF Page Rendering Effect
   useEffect(() => {
     if (activeDoc?.type === 'pdf' && pdfDocProxy && currentPdfPageNum > 0 && currentPdfPageNum <= pdfTotalPages && isMountedRef.current) {
+      console.log(`[PDF Page Effect] Rendering PDF page ${currentPdfPageNum} for doc:`, activeDoc.id);
       stopSpeech(true); setIsRenderingPdfPage(true); setPdfPageImage(null); setPdfPageIsTextBased(true); setCurrentTextForTTS(`Loading PDF page ${currentPdfPageNum}...`);
       LocalStorageService.saveCurrentPdfPageIndexForDoc(activeDoc.id, currentPdfPageNum);
 
       pdfDocProxy.getPage(currentPdfPageNum).then(async (page: PDFPageProxy) => {
-        if(!isMountedRef.current) return;
+        if(!isMountedRef.current || activeDoc?.type !== 'pdf' || !pdfDocProxy || pdfDocProxy.fingerprint !== page.pdfManager.docId) {
+            console.log(`[PDF Page Effect] PDF page render no longer relevant for page ${currentPdfPageNum}.`);
+            return;
+        }
+        console.log(`[PDF Page Effect] Got page ${currentPdfPageNum}. Rendering...`);
         const viewport = page.getViewport({ scale: pdfScale });
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d');
@@ -282,15 +292,13 @@ export default function ReaderPage() {
 
         if (context) {
           await page.render({ canvasContext: context, viewport }).promise;
-          if(isMountedRef.current) setPdfPageImage(canvas.toDataURL('image/png'));
+          if(isMountedRef.current && activeDoc?.type==='pdf' && pdfDocProxy?.fingerprint === page.pdfManager.docId) setPdfPageImage(canvas.toDataURL('image/png'));
         } else {
           if(isMountedRef.current) {
-            setDocErrorMessage("Could not get canvas context for PDF rendering.");
-            setCurrentTextForTTS("");
-          } else {
-            return;
-          }
+            setDocErrorMessage("Could not get canvas context for PDF rendering."); setCurrentTextForTTS("");
+          } else return;
         }
+
         const pdfDocFromState = activeDoc as StoredPdfDocument;
         if (pdfDocFromState.ocrTextPerPage?.[currentPdfPageNum]) {
             if(isMountedRef.current) { setCurrentTextForTTS(pdfDocFromState.ocrTextPerPage[currentPdfPageNum]); setPdfPageIsTextBased(false); }
@@ -303,9 +311,10 @@ export default function ReaderPage() {
                 if(isMountedRef.current) { setCurrentTextForTTS("This PDF page has no selectable text or is image-based. Use OCR to extract text for reading."); setPdfPageIsTextBased(false); }
             }
         }
-        if(isMountedRef.current) setIsLoadingDoc(false);
+        if(isMountedRef.current) setIsLoadingDoc(false); // Crucial: set after page content and text is ready
       }).catch(e => {
         if(!isMountedRef.current) return;
+        console.error(`[PDF Page Effect] Error rendering PDF page ${currentPdfPageNum}:`, e);
         setPdfPageImage(null); setCurrentTextForTTS(""); setDocErrorMessage(`Error rendering PDF page ${currentPdfPageNum}: ${e.message}`); setPdfPageIsTextBased(false); setIsLoadingDoc(false);
       }).finally(() => {
         if(isMountedRef.current) setIsRenderingPdfPage(false);
@@ -317,6 +326,7 @@ export default function ReaderPage() {
   // TXT File Loading Effect
   useEffect(() => {
     if (activeDoc?.type === 'txt' && activeDoc.fileData && isMountedRef.current) {
+        console.log("[TXT Effect] Loading TXT document:", activeDoc.id);
         setCurrentTextForTTS("Loading text file..."); setDocErrorMessage(null);
         try {
             const decoder = new TextDecoder();
@@ -327,14 +337,13 @@ export default function ReaderPage() {
         } finally {
             if(isMountedRef.current) setIsLoadingDoc(false);
         }
-    } else if (isMountedRef.current && (!activeDoc || activeDoc.type !== 'txt')) {
-      setTxtContent("");
     }
   }, [activeDoc]);
 
   // Image File Loading Effect
   useEffect(() => {
     if (activeDoc?.type === 'image' && activeDoc.fileData && isMountedRef.current) {
+        console.log("[Image Effect] Loading Image document:", activeDoc.id);
         setCurrentTextForTTS("Loading image..."); setDocErrorMessage(null);
         try {
             const blob = new Blob([activeDoc.fileData], { type: activeDoc.originalType });
@@ -354,22 +363,19 @@ export default function ReaderPage() {
         } finally {
             if(isMountedRef.current) setIsLoadingDoc(false);
         }
-    } else if (isMountedRef.current && (!activeDoc || activeDoc.type !== 'image')) {
-        if (currentImageObjectUrlRef.current) { URL.revokeObjectURL(currentImageObjectUrlRef.current); }
-        if(isMountedRef.current) setDisplayedImageSrc(null);
     }
   }, [activeDoc]);
 
-  // EPUB Loading and Lifecycle Effect
+  // EPUB Loading and Lifecycle Effect (Keyed Viewer Strategy)
   useEffect(() => {
     if (activeDoc?.type === 'epub') {
       if (!isMountedRef.current) {
-        console.warn("[EPUB Effect] Component not mounted, skipping EPUB initialization.");
+        console.warn("[EPUB Main Effect] Component not mounted, skipping EPUB initialization for doc:", activeDoc.id);
         return;
       }
-
-      console.log("[EPUB Effect] Active document is EPUB. Initializing...");
-      cleanupEpubInstances(); 
+      console.log("[EPUB Main Effect] Active document is EPUB. Preparing to initialize for doc:", activeDoc.id);
+      // `cleanupEpubInstances` will be called by this effect's return statement when `activeDoc` changes,
+      // or when the component unmounts. This ensures cleanup before the keyed div is potentially removed by React.
 
       if (!activeDoc.fileData) {
         if(isMountedRef.current) {
@@ -378,76 +384,85 @@ export default function ReaderPage() {
         }
         return;
       }
+
       const initializeNewEpub = async () => {
         console.log("[EPUB Init] Start of initializeNewEpub. Current activeDoc ID:", activeDoc?.id);
         if (!isMountedRef.current || !activeDoc || activeDoc.type !== 'epub' || !activeDoc.fileData) {
-             console.warn("[EPUB Init] Conditions for EPUB initialization no longer met. Doc ID:", activeDoc?.id);
-             cleanupEpubInstances();
+             console.warn("[EPUB Init] Conditions for EPUB initialization no longer met (e.g. unmounted, doc changed). Doc ID:", activeDoc?.id);
              return;
         }
-        if (!epubViewerRef.current || !document.body.contains(epubViewerRef.current)) {
+
+        // epubViewerRef.current should point to the new div due to the key={activeDoc.id}
+        if (!epubViewerRef.current) {
+             console.error("[EPUB Init] CRITICAL: epubViewerRef.current is null. The keyed div was not available. EPUB cannot be rendered for doc:", activeDoc.id);
              if(isMountedRef.current) {
-                setDocErrorMessage("EPUB viewer element became unavailable during init.");
-             }
-             console.warn("[EPUB Init] epubViewerRef became unavailable. Doc ID:", activeDoc?.id);
-             if (isMountedRef.current) {
+                setDocErrorMessage("EPUB viewer DOM element not found. Cannot initialize EPUB.");
                 setIsEpubLoading(false);
                 setIsLoadingDoc(false);
              }
              return;
         }
+        if (!document.body.contains(epubViewerRef.current)) {
+            console.warn("[EPUB Init] epubViewerRef.current is not in document body. Aborting. Doc ID:", activeDoc.id);
+            if(isMountedRef.current) {
+                setDocErrorMessage("EPUB viewer element detached from DOM during init.");
+                setIsEpubLoading(false); setIsLoadingDoc(false);
+            }
+            return;
+        }
 
         if (isMountedRef.current) {
           setIsEpubLoading(true);
-          // Removed: setIsEpubSectionDisplayed(false); // This will be handled by cleanup or when displayed event fails
+          setIsEpubSectionDisplayed(false); // Reset for the new EPUB
           setCurrentTextForTTS("Loading EPUB..."); setDocErrorMessage(null);
         }
 
+        // Defensive cleanup of refs before assigning new instances
+        if (epubBookRef.current) { try { epubBookRef.current.destroy(); } catch(e){} epubBookRef.current = null; }
+        if (epubRenditionRef.current) { try { epubRenditionRef.current.destroy(); } catch(e){} epubRenditionRef.current = null; }
+
+
         try {
-          console.log("[EPUB Init] Dynamically importing epubjs... Doc ID:", activeDoc.id);
+          console.log("[EPUB Init] Dynamically importing epubjs for doc:", activeDoc.id);
           const ePubModule = await import('epubjs');
           const EPub = ePubModule.default;
-          console.log("[EPUB Init] epubjs imported. Creating book instance. Doc ID:", activeDoc.id);
+          console.log("[EPUB Init] epubjs imported. Creating book instance for doc:", activeDoc.id);
 
           const book = EPub(activeDoc.fileData);
-          console.log("[EPUB Init] Waiting for book.ready... Doc ID:", activeDoc.id);
+          epubBookRef.current = book; // Assign ref immediately after creation
+          console.log("[EPUB Init] Waiting for book.ready for doc:", activeDoc.id);
           await book.ready;
-          if (!isMountedRef.current || !activeDoc || activeDoc.type !== 'epub' || epubBookRef.current === book ) {
-             console.log("[EPUB Init] Unmounted or doc changed during book.ready. Destroying new book. Doc ID:", activeDoc?.id);
+
+          if (!isMountedRef.current || !activeDoc || activeDoc.type !== 'epub' || epubBookRef.current !== book ) {
+             console.log("[EPUB Init] Unmounted, doc changed, or book ref overwritten during book.ready. Destroying this book. Doc ID:", activeDoc?.id);
              try { book.destroy(); } catch(e){}
+             if (epubBookRef.current === book) epubBookRef.current = null; // Clean up if it was this book
              return;
           }
-          console.log("[EPUB Init] Book ready. Doc ID:", activeDoc.id);
+          console.log("[EPUB Init] Book ready for doc:", activeDoc.id);
 
           if (!epubViewerRef.current || !document.body.contains(epubViewerRef.current)) {
               if (isMountedRef.current) { setDocErrorMessage("EPUB viewer became unavailable before rendering."); }
-              console.warn("[EPUB Init] epubViewerRef unavailable after book.ready, before rendering. Doc ID:", activeDoc.id);
-              if(isMountedRef.current) { setIsEpubLoading(false); } 
-              try { book.destroy(); } catch(e) {}
+              console.warn("[EPUB Init] epubViewerRef unavailable after book.ready, before rendering for doc:", activeDoc.id);
+              if(isMountedRef.current) { setIsEpubLoading(false); }
+              // No need to destroy book here, effect cleanup will handle it
               return;
           }
+          // Clear the viewer (which should be the new keyed div) before rendering.
+          epubViewerRef.current.innerHTML = '';
 
-          console.log("[EPUB Init] Rendering book to epubViewerRef.current. Doc ID:", activeDoc.id);
+          console.log("[EPUB Init] Rendering book to epubViewerRef.current for doc:", activeDoc.id);
           const rendition = book.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "auto" });
-
-          epubBookRef.current = book;
-          epubRenditionRef.current = rendition;
-          console.log("[EPUB Init] Rendition created and refs assigned. Doc ID:", activeDoc.id);
+          epubRenditionRef.current = rendition; // Assign ref immediately
+          console.log("[EPUB Init] Rendition created and refs assigned for doc:", activeDoc.id);
 
           rendition.on('displayed', async (sectionResult: any) => {
-            console.log("[EPUB Displayed Event] Section displayed. Event data:", sectionResult);
-            if (epubRenditionRef.current) {
-                console.log('[EPUB Displayed Event] Rendition Manager Object:', epubRenditionRef.current.manager);
-                console.log(`[EPUB Displayed Event] Manager Active (inside displayed event): ${epubRenditionRef.current.manager?.active}`);
-                 if (!epubRenditionRef.current.manager?.active) {
-                    console.warn("[EPUB Displayed Event] CRITICAL: Rendition manager is NOT ACTIVE even after 'displayed' event. Navigation will likely fail.");
-                }
-            }
-
+            console.log("[EPUB Displayed Event] Section displayed. Rendition ref:", epubRenditionRef.current, "Captured rendition for event:", rendition);
             if (!isMountedRef.current || epubRenditionRef.current !== rendition || !activeDoc || activeDoc.type !== 'epub') {
-              console.log("[EPUB Displayed Event] Conditions not met post-display. Mounted:", isMountedRef.current, "Rendition Stale:", epubRenditionRef.current !== rendition, "Active Doc Type:", activeDoc?.type ); return;
+              console.log("[EPUB Displayed Event] Conditions not met post-display (e.g. unmounted, stale rendition, or doc type changed). Aborting text extraction.");
+              return;
             }
-            console.log("[EPUB Displayed Event] Attempting text extraction...");
+            console.log("[EPUB Displayed Event] Attempting text extraction for doc:", activeDoc.id);
             try {
               const currentSection: Section | undefined = rendition.currentLocation()?.start?.displayed?.section || (sectionResult as Section) || (sectionResult?.section as Section);
               let extractedText = "";
@@ -455,121 +470,81 @@ export default function ReaderPage() {
 
               if (currentSection && currentSection.contents) {
                   const displayedContentsElement = currentSection.contents as HTMLElement;
-                  console.log("[EPUB Text Extract] Trying innerText from displayedContentsElement.");
                   if (displayedContentsElement && typeof displayedContentsElement.innerText === 'string') {
                       extractedText = displayedContentsElement.innerText.replace(/\s+/g, ' ').trim();
-                      console.log("[EPUB Text Extract] Method 1 (innerText): Length", extractedText.length, "Text:", extractedText.substring(0, 100));
                   }
-
                   if (extractedText.length < minTextLengthForSuccess && displayedContentsElement) {
-                      console.log("[EPUB Text Extract] innerText too short. Trying TreeWalker.");
                       let treeWalkerText = "";
                       const walker = document.createTreeWalker(displayedContentsElement, NodeFilter.SHOW_TEXT, null);
                       let node;
                       while(node = walker.nextNode()) { treeWalkerText += (node.nodeValue || "").trim() + " "; }
                       treeWalkerText = treeWalkerText.replace(/\s+/g, ' ').trim();
-                      console.log("[EPUB Text Extract] Method 2 (TreeWalker): Length", treeWalkerText.length, "Text:", treeWalkerText.substring(0, 100));
                       if (treeWalkerText.length > extractedText.length) extractedText = treeWalkerText;
                   }
               }
-
               if (extractedText.length < minTextLengthForSuccess && currentSection && currentSection.output && typeof currentSection.output === 'string') {
-                  console.log("[EPUB Text Extract] DOM methods insufficient. Trying section.output (raw HTML).");
                   const tempDiv = document.createElement('div');
                   tempDiv.innerHTML = currentSection.output;
                   const outputText = (tempDiv.innerText || tempDiv.textContent || "").replace(/\s+/g, ' ').trim();
-                  console.log("[EPUB Text Extract] Method 3 (section.output): Length", outputText.length, "Text:", outputText.substring(0, 100));
                   if (outputText.length > extractedText.length) extractedText = outputText;
               }
 
-              if (isMountedRef.current) {
+              if (isMountedRef.current) { // Re-check mounted state before setting state
                 if (extractedText && extractedText.length >= MIN_TTS_TEXT_LENGTH) {
-                  console.log("[EPUB Text Extract] Sufficient text extracted:", extractedText.substring(0, 100));
                   setCurrentTextForTTS(extractedText);
                 } else {
-                  console.log("[EPUB Text Extract] No significant text extracted after all methods.");
                   setCurrentTextForTTS("EPUB section loaded. Text may be graphical or empty.");
                 }
-                console.log(`[EPUB Displayed Event] About to set isEpubSectionDisplayed to true. Manager Active status: ${epubRenditionRef.current?.manager?.active}`);
-                setIsEpubSectionDisplayed(true); 
-                console.log(`[EPUB Displayed Event] isEpubSectionDisplayed set to true. Manager Active status: ${epubRenditionRef.current?.manager?.active}`);
-
+                setIsEpubSectionDisplayed(true);
+                console.log(`[EPUB Displayed Event] isEpubSectionDisplayed set to true. Manager Active status: ${epubRenditionRef.current?.manager?.active}. For doc: ${activeDoc.id}`);
               }
             } catch (textExtractError: any) {
               console.error("[EPUB Displayed Event] Error extracting text from EPUB section:", textExtractError);
               if (isMountedRef.current) {
                 setCurrentTextForTTS(""); setDocErrorMessage(`Error extracting EPUB text: ${textExtractError.message}`);
-                setIsEpubSectionDisplayed(true); 
+                setIsEpubSectionDisplayed(true); // Still set true so UI isn't stuck if text extraction fails
               }
             }
           });
+          rendition.on('removed', (section: Section) => { console.log('[EPUB Removed Event] Section removed:', section?.id || 'unknown', 'for doc:', activeDoc?.id); });
+          rendition.on('resized', (size: {width: number, height: number}) => { console.log('[EPUB Resized Event] New size:', size, 'for doc:', activeDoc?.id); });
+          rendition.on('orientationchange', (orientation: string) => { console.log('[EPUB Orientation Change Event] New orientation:', orientation, 'for doc:', activeDoc?.id); });
 
-          rendition.on('removed', (section: Section) => { console.log('[EPUB Removed Event] Section removed:', section?.id || 'unknown'); });
-          rendition.on('resized', (size: {width: number, height: number}) => { console.log('[EPUB Resized Event] New size:', size); });
-          rendition.on('orientationchange', (orientation: string) => { console.log('[EPUB Orientation Change Event] New orientation:', orientation); });
-
-
-          console.log("[EPUB Init] Calling rendition.display(). Doc ID:", activeDoc.id);
+          console.log("[EPUB Init] Calling rendition.display() for doc:", activeDoc.id);
           await rendition.display();
+
           if (!isMountedRef.current || epubRenditionRef.current !== rendition) {
-            console.log("[EPUB Init] Unmounted or rendition changed after rendition.display() call resolved. Doc ID:", activeDoc?.id);
+            console.log("[EPUB Init] Unmounted or rendition ref changed after rendition.display() call resolved. Doc ID:", activeDoc?.id);
             return;
           }
-          console.log(`[EPUB Init] rendition.display() completed. Manager Active (after display promise): ${rendition.manager?.active}. Doc ID: ${activeDoc.id}`);
-           if (!rendition.manager?.active) {
-            console.warn(`[EPUB Init] WARNING: Rendition manager is NOT active immediately after rendition.display() promise resolved. Manager:`, rendition.manager);
-          }
+          console.log(`[EPUB Init] rendition.display() completed. Manager Active (after display promise): ${rendition.manager?.active}. For doc: ${activeDoc.id}`);
         } catch (e: any) {
-          console.error("[EPUB Init] Error during EPUB initialization:", e);
+          console.error("[EPUB Init] Error during EPUB initialization for doc:", activeDoc.id, e);
           if (isMountedRef.current) {
             setDocErrorMessage(`Failed to load EPUB: ${e.message || String(e)}`);
             setCurrentTextForTTS("");
           }
         } finally {
           if (isMountedRef.current) {
-              setIsEpubLoading(false); 
-              setIsLoadingDoc(false); 
-              console.log("[EPUB Init] Finally block: setIsEpubLoading and setIsLoadingDoc set to false. Doc ID:", activeDoc?.id);
+              setIsEpubLoading(false);
+              setIsLoadingDoc(false); // Ensure isLoadingDoc is false after EPUB attempt
+              console.log("[EPUB Init] Finally block: setIsEpubLoading and setIsLoadingDoc set to false. For doc:", activeDoc?.id);
           }
         }
       };
-      const checkViewerAndInit = () => {
-        if (epubViewerRef.current && document.body.contains(epubViewerRef.current)) {
-          console.log("[EPUB Effect] Viewer ref is valid. Calling initializeNewEpub.");
-          initializeNewEpub();
-        } else {
-          console.warn("[EPUB Effect] epubViewerRef.current is null or detached. Scheduling re-check.");
-          const timeoutId = setTimeout(() => {
-            if (!isMountedRef.current || activeDoc?.type !== 'epub') {
-              console.log("[EPUB Effect Timeout] Conditions no longer met for delayed init.");
-              return;
-            }
-            if (epubViewerRef.current && document.body.contains(epubViewerRef.current)) {
-              console.log("[EPUB Effect Timeout] Viewer ref now valid. Calling initializeNewEpub.");
-              initializeNewEpub();
-            } else if (!isEpubLoading && !isEpubSectionDisplayed) {
-                 console.error("[EPUB Effect Timeout] Viewer did not become available.");
-                 if(isMountedRef.current) {
-                    setDocErrorMessage("EPUB viewer did not become available.");
-                    setIsLoadingDoc(false); 
-                    setIsEpubLoading(false);
-                 }
-            }
-          }, 500);
-          return () => clearTimeout(timeoutId);
-        }
-      };
-      checkViewerAndInit();
-
-    } else {
-      console.log("[EPUB Effect] Active document is NOT EPUB or null. Cleaning up any existing EPUB instances.");
-      cleanupEpubInstances();
+      initializeNewEpub();
     }
+
     return () => {
-      console.log("[EPUB Effect Cleanup] Running cleanup for EPUB effect (activeDoc changed or component unmounted).");
-      cleanupEpubInstances();
+      // This cleanup runs when activeDoc changes (triggering unmount of old keyed div and this effect)
+      // OR when the component itself unmounts.
+      if (activeDoc?.type === 'epub') {
+        console.log("[EPUB Main Effect Cleanup] Cleaning up EPUB instances for previous doc:", activeDoc.id);
+        cleanupEpubInstances();
+      }
     };
-  }, [activeDoc, cleanupEpubInstances]);
+  }, [activeDoc, cleanupEpubInstances]); // cleanupEpubInstances is stable
+
 
   const handlePerformOcr = useCallback(async () => {
     if (!activeDoc) { toast({ variant: "destructive", title: "OCR Error", description: "No active document." }); return; }
@@ -915,7 +890,6 @@ export default function ReaderPage() {
 
   const navigateEpub = async (direction: 'prev' | 'next') => {
     if(!isMountedRef.current) return;
-    console.log(`[EPUB Nav] Attempting to navigate ${direction}.`);
     
     const navConditionDetails = {
         hasRendition: !!epubRenditionRef.current,
@@ -926,14 +900,6 @@ export default function ReaderPage() {
     };
     console.warn("[EPUB Nav] Navigation pre-conditions check. Values:", navConditionDetails);
     
-    console.log(`[EPUB Nav] Initial check: isLoadingDoc: ${isLoadingDoc}, isEpubLoading: ${isEpubLoading}, isEpubSectionDisplayed (state): ${isEpubSectionDisplayed}`);
-    if (epubRenditionRef.current) {
-        console.log('[EPUB Nav] Rendition Manager Object:', epubRenditionRef.current.manager);
-        console.log(`[EPUB Nav] Manager Active: ${epubRenditionRef.current.manager?.active}`);
-    }
-    console.log(`[EPUB Nav] Viewer Ref valid: ${!!epubViewerRef.current}, Viewer in DOM: ${epubViewerRef.current && document.body.contains(epubViewerRef.current)}`);
-
-
     if (!navConditionDetails.hasRendition || !navConditionDetails.managerActive || !navConditionDetails.isSectionDisplayedState || !navConditionDetails.hasViewerRef || !navConditionDetails.isViewerInDom) {
         console.warn("[EPUB Nav] One or more pre-conditions FAILED, leading to 'not ready' toast.");
         toast({ variant: "default", title: "EPUB State", description: "EPUB reader is not ready for navigation. Please wait."});
@@ -992,7 +958,7 @@ export default function ReaderPage() {
   return (
     <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)]"> {/* Full height minus header */}
       {/* Content Area */}
-      <div className="flex-grow overflow-y-auto bg-muted/20 p-2 md:p-4 relative"> {/* Ensure content area can scroll if needed */}
+      <div className="flex-grow overflow-y-auto bg-muted/20 p-2 md:p-4 relative">
          {docErrorMessage && activeDoc && (activeDoc.type === 'epub' || activeDoc.type === 'pdf') && (
             <div className="absolute inset-x-0 top-4 mx-auto w-fit max-w-md bg-destructive/10 border border-destructive text-destructive p-3 rounded-md shadow-lg z-10 flex items-start gap-2">
                 <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
@@ -1017,7 +983,11 @@ export default function ReaderPage() {
         )}
 
         {activeDoc?.type === 'epub' && (
-            <div ref={epubViewerRef} className={cn("w-full h-full epub-viewer-container bg-background rounded-md shadow-inner", (isLoadingDoc || isEpubLoading) && !isEpubSectionDisplayed && "flex items-center justify-center", !isEpubLoading && !isEpubSectionDisplayed && docErrorMessage && activeDoc.type === 'epub' && "p-4 text-center" )}>
+            <div
+                key={activeDoc?.id || 'no-epub'} // Keyed div for EPUB viewer
+                ref={epubViewerRef}
+                className={cn("w-full h-full epub-viewer-container bg-background rounded-md shadow-inner", (isLoadingDoc || isEpubLoading) && !isEpubSectionDisplayed && "flex items-center justify-center", !isEpubLoading && !isEpubSectionDisplayed && docErrorMessage && activeDoc.type === 'epub' && "p-4 text-center" )}
+            >
                 {(isLoadingDoc || isEpubLoading) && !isEpubSectionDisplayed && !docErrorMessage && <Loader2 className="h-10 w-10 animate-spin text-primary" />}
                 {!isEpubLoading && !isEpubSectionDisplayed && docErrorMessage && activeDoc.type === 'epub' &&
                   <div className="text-destructive"> <AlertTriangle className="h-8 w-8 mx-auto mb-2"/> <p className="font-semibold">EPUB Load Error</p> <p className="text-sm">{docErrorMessage}</p> </div>
@@ -1084,12 +1054,12 @@ export default function ReaderPage() {
           <Card>
             <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">EPUB Navigation</CardTitle></CardHeader>
             <CardContent className="flex items-center justify-between pt-0">
-              <Button onClick={() => navigateEpub('prev')} size="sm" variant="outline" 
-                disabled={isLoadingDoc || isEpubLoading || !epubRenditionRef.current}>
+              <Button onClick={() => navigateEpub('prev')} size="sm" variant="outline"
+                disabled={isLoadingDoc || isEpubLoading || !epubRenditionRef.current }>
                 <ChevronLeft /> Previous
               </Button>
-              <Button onClick={() => navigateEpub('next')} size="sm" variant="outline" 
-                disabled={isLoadingDoc || isEpubLoading || !epubRenditionRef.current}>
+              <Button onClick={() => navigateEpub('next')} size="sm" variant="outline"
+                disabled={isLoadingDoc || isEpubLoading || !epubRenditionRef.current }>
                 Next <ChevronRight />
               </Button>
             </CardContent>
@@ -1132,4 +1102,5 @@ export default function ReaderPage() {
     </div>
   );
 }
-
+    
+    
