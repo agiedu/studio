@@ -75,7 +75,7 @@ export default function LibraryPage() {
         newDocument = { ...commonDocProps, type: 'image', extractedText: undefined };
       } else if (file.type === 'application/pdf') {
          try {
-            const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) }); // Use slice(0) to create a new ArrayBuffer instance if needed by pdf.js
+            const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) });
             const pdfInstance = await pdfLoadingTask.promise;
             console.log(`[LibraryPage] PDF "${file.name}" processed by pdf.js, numPages: ${pdfInstance.numPages}.`);
             newDocument = { ...commonDocProps, type: 'pdf', numPages: pdfInstance.numPages, ocrTextPerPage: {} };
@@ -137,11 +137,11 @@ export default function LibraryPage() {
     try {
       console.log(`[LibraryPage] Attempting to delete document via IndexedDBService.deleteDocumentById for docId: "${docId}"`);
       await IndexedDBService.deleteDocumentById(docId);
-      console.log(`[LibraryPage] IndexedDBService.deleteDocumentById promise RESOLVED for docId: "${docId}". Deletion presumed successful at DB level.`);
+      console.log(`[LibraryPage] IndexedDBService.deleteDocumentById promise RESOLVED for docId: "${docId}".`);
       
       setStoredDocuments(prevDocs => {
         const updatedDocs = prevDocs.filter(doc => doc.id !== docId);
-        console.log(`[LibraryPage] Client-side state updated (manual filter). Prev doc count: ${prevDocs.length}, New doc count: ${updatedDocs.length}. Removed docId: "${docId}"`);
+        console.log(`[LibraryPage] Manually filtered storedDocuments. Prev count: ${prevDocs.length}, New count: ${updatedDocs.length}. DocId for removal: "${docId}"`);
         return updatedDocs;
       });
       
@@ -280,8 +280,9 @@ export default function LibraryPage() {
                 const currentDocId = doc.id; 
                 const currentDocTitle = doc.title;
                 
-                const isDeleteButtonDisabled = isLoading || isUploading; 
-                console.log(`[LibraryPage] Rendering item: "${currentDocTitle}" (ID: ${currentDocId}). Delete button isDeleteButtonDisabled: ${isDeleteButtonDisabled} (isLoading: ${isLoading}, isUploading: ${isUploading})`);
+                // FORCED: Forcing button to be enabled for this test
+                const isButtonDisabled = false; 
+                console.log(`[LibraryPage] Rendering item: "${currentDocTitle}" (ID: ${currentDocId}). CALCULATED isButtonDisabled: ${isLoading || isUploading}. FORCED isButtonDisabled: ${isButtonDisabled}`);
                 
                 return (
                   <li key={currentDocId} className="p-3 border rounded-md flex flex-col sm:flex-row justify-between items-start gap-3 bg-card hover:shadow-md transition-shadow">
@@ -315,10 +316,13 @@ export default function LibraryPage() {
                         size="sm"
                         variant="ghost"
                         onClick={() => {
-                          console.log(`[LibraryPage] Delete button onClick fired for docId: ${currentDocId}, title: "${currentDocTitle}"`);
-                          handleDeleteDocument(currentDocId, currentDocTitle); 
+                          // SIMPLIFIED onClick FOR TESTING
+                          console.log(`[LibraryPage] DELETE BUTTON CLICKED (Simplified - Hardcoded Disabled Test) for docId: ${currentDocId}, title: "${currentDocTitle}"`);
+                          window.alert(`DEBUG: Clicked delete for "${currentDocTitle}" (ID: ${currentDocId}). This is a test alert. Actual deletion is bypassed.`);
+                          // Temporarily bypassing the actual delete call for this test:
+                          // handleDeleteDocument(currentDocId, currentDocTitle); 
                         }}
-                        disabled={isDeleteButtonDisabled}
+                        disabled={isButtonDisabled} // This will be 'false' due to hardcoding above
                         aria-label="Delete Document">
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
