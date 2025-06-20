@@ -46,7 +46,7 @@ export default function ReaderPage() {
 
   const epubBookRef = useRef<EpubBook | null>(null);
   const epubRenditionRef = useRef<Rendition | null>(null);
-  const epubViewerRef = useRef<HTMLDivElement>(null);
+  const epubViewerRef = useRef<HTMLDivElement | null>(null);
 
   const [txtContent, setTxtContent] = useState<string>("");
 
@@ -94,9 +94,10 @@ export default function ReaderPage() {
     }
   }, []);
 
+  // Effect to load document metadata
   useEffect(() => {
-    const loadDocument = async () => {
-      // Reset states before loading new document
+    const loadDocumentMetadata = async () => {
+      // Reset states before loading new document metadata
       setActiveDoc(null);
       setPdfDocProxy(null);
       setCurrentPdfPageNum(1);
@@ -115,9 +116,11 @@ export default function ReaderPage() {
       setIsLoadingDoc(true);
       stopSpeech(true);
 
-      if (epubViewerRef.current) { epubViewerRef.current.innerHTML = ''; }
+      // Cleanup EPUB if it was active
       if (epubRenditionRef.current) { epubRenditionRef.current.destroy(); epubRenditionRef.current = null; }
       epubBookRef.current = null;
+      if (epubViewerRef.current) { epubViewerRef.current.innerHTML = ''; }
+
 
       let docIdToLoad = searchParams.get('docId');
 
@@ -125,7 +128,6 @@ export default function ReaderPage() {
         const lastActiveId = await IndexedDBService.getLastActiveDocId();
         if (lastActiveId) {
           docIdToLoad = lastActiveId;
-          // router.replace(`/reader?docId=${lastActiveId}`, { scroll: false }); // This causes loop if last doc fails to load
         } else {
           setDocErrorMessage("No document selected. Please choose one from the Library.");
           setIsLoadingDoc(false);
@@ -148,108 +150,70 @@ export default function ReaderPage() {
           return;
         }
 
-        setActiveDoc(doc as ActiveMangaDocument);
+        setActiveDoc(doc as ActiveMangaDocument); // This will trigger the other useEffects for PDF/EPUB/Image/TXT
         await IndexedDBService.saveLastActiveDocId(docIdToLoad);
-
+        
+        // For non-EPUB types, we can set initial loading messages or start processing here
+        // EPUB processing is handled in a separate useEffect triggered by activeDoc change
         if (doc.type === 'pdf') {
-          try {
-            const pdf = await getDocument({ data: doc.fileData.slice(0) }).promise;
-            setPdfDocProxy(pdf);
-            setPdfTotalPages(pdf.numPages);
-            const savedPageIndex = LocalStorageService.loadCurrentPdfPageIndexForDoc(doc.id);
-            setCurrentPdfPageNum( (savedPageIndex && savedPageIndex > 0 && savedPageIndex <= pdf.numPages) ? savedPageIndex : 1);
-          } catch (e: any) {
-            console.error("Error loading PDF:", e);
-            setDocErrorMessage(`Failed to load PDF: ${e.message}`);
-            setCurrentTextForTTS(`Failed to load PDF: ${e.message}`);
-          }
-        } else if (doc.type === 'epub') {
-          if (!epubViewerRef.current) {
-            setDocErrorMessage("EPUB viewer element not ready.");
-            setIsLoadingDoc(false);
-            return;
-          }
-          try {
-            const ePubModule = await import('epubjs');
-            const ePub = ePubModule.default;
-            const bookInstance = ePub(doc.fileData);
-            epubBookRef.current = bookInstance;
-            await bookInstance.ready;
-
-            const renditionInstance = bookInstance.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
-            epubRenditionRef.current = renditionInstance;
-
-            renditionInstance.on('displayed', async (section: any) => {
-              try {
-                const contents = section.contents || (section.document ? section.document.body : null);
-                let text = "";
-                if (contents && typeof contents.innerText === 'string') text = contents.innerText.replace(/\s+/g, ' ').trim();
-                else if (contents && typeof contents.textContent === 'string') text = contents.textContent.replace(/\s+/g, ' ').trim();
-                else if (section.output && typeof section.output === 'string') {
-                    const tempDiv = document.createElement('div'); tempDiv.innerHTML = section.output;
-                    text = (tempDiv.innerText || tempDiv.textContent || "").replace(/\s+/g, ' ').trim();
-                }
-                setCurrentTextForTTS(text || "Could not extract text from this EPUB section.");
-              } catch (textExtractError: any) { console.error("Error extracting text from EPUB section:", textExtractError); setCurrentTextForTTS(`Error extracting text from EPUB: ${textExtractError.message}`); }
-            });
-            await renditionInstance.display();
-          } catch (e: any) {
-            console.error("Error loading or rendering EPUB:", e);
-            const errorMsg = e instanceof Error ? e.message : String(e);
-            let userFriendlyError = `Failed to load EPUB: ${errorMsg}`;
-            if (errorMsg.toLowerCase().includes("uncompressed data size mismatch") || errorMsg.toLowerCase().includes("reading 'package'")) {
-              userFriendlyError = `Failed to load EPUB: The file might be corrupted or not a valid EPUB. (Detail: ${errorMsg})`;
-            } else if (errorMsg.toLowerCase().includes("cannot read properties of undefined (reading 'package')")){
-              userFriendlyError = `Failed to load EPUB: Error initializing EPUB reader. The file might be incompatible. (Detail: ${errorMsg})`;
-            }
-            setDocErrorMessage(userFriendlyError);
-            setCurrentTextForTTS(userFriendlyError);
-          }
-        } else if (doc.type === 'txt') {
-          const decoder = new TextDecoder();
-          const text = decoder.decode(doc.fileData);
-          setTxtContent(text);
-          setCurrentTextForTTS(text);
+            setCurrentTextForTTS("Loading PDF...");
         } else if (doc.type === 'image') {
-          const blob = new Blob([doc.fileData], { type: doc.originalType });
-          const newUrl = URL.createObjectURL(blob);
-          if (currentImageObjectUrlRef.current) { URL.revokeObjectURL(currentImageObjectUrlRef.current); }
-          currentImageObjectUrlRef.current = newUrl;
-          setDisplayedImageSrc(newUrl);
-          if (doc.extractedText) {
-            setCurrentTextForTTS(doc.extractedText);
-          } else {
-            setCurrentTextForTTS("Image loaded. Perform OCR to extract text for reading aloud.");
-          }
+            setCurrentTextForTTS("Loading image...");
+        } else if (doc.type === 'txt') {
+            setCurrentTextForTTS("Loading text file...");
         } else if (doc.type === 'mobi') {
-          setDocErrorMessage("MOBI file format is not directly supported for reading. Please convert it to EPUB or PDF.");
-          setCurrentTextForTTS("MOBI files cannot be read directly. Please convert to a supported format like EPUB or PDF.");
+            setDocErrorMessage("MOBI file format is not directly supported for reading. Please convert it to EPUB or PDF.");
+            setCurrentTextForTTS("MOBI files cannot be read directly. Please convert to a supported format like EPUB or PDF.");
+            setIsLoadingDoc(false);
         }
-        setIsLoadingDoc(false);
+        // setIsLoadingDoc(false) will be handled by specific type loaders or EPUB effect
+
       } catch (err: any) {
-        console.error("Error loading document from IndexedDB or processing:", err);
+        console.error("Error loading document from IndexedDB:", err);
         setDocErrorMessage(`Error loading document: ${err.message}`);
         setCurrentTextForTTS(`Error loading document: ${err.message}`);
         setIsLoadingDoc(false);
       }
     };
 
-    loadDocument();
+    loadDocumentMetadata();
 
     return () => {
+      // General cleanup, EPUB specific cleanup is in its own effect
       stopSpeech(true);
-      if (epubRenditionRef.current) { epubRenditionRef.current.destroy(); epubRenditionRef.current = null; }
-      epubBookRef.current = null;
       if (currentImageObjectUrlRef.current) { URL.revokeObjectURL(currentImageObjectUrlRef.current); currentImageObjectUrlRef.current = null; }
     };
-  }, [searchParams, stopSpeech]);
+  }, [searchParams, router, stopSpeech]); // Removed router as direct dependency if not used for navigation here
 
+  // Effect for PDF Loading and Page Rendering
+  useEffect(() => {
+    if (activeDoc?.type === 'pdf' && activeDoc.fileData) {
+      setIsLoadingDoc(true); // Explicitly set loading for PDF processing
+      getDocument({ data: activeDoc.fileData.slice(0) }).promise.then(pdf => {
+        setPdfDocProxy(pdf);
+        setPdfTotalPages(pdf.numPages);
+        const savedPageIndex = LocalStorageService.loadCurrentPdfPageIndexForDoc(activeDoc.id);
+        setCurrentPdfPageNum( (savedPageIndex && savedPageIndex > 0 && savedPageIndex <= pdf.numPages) ? savedPageIndex : 1);
+        // Actual page rendering will be triggered by currentPdfPageNum change in another effect
+        // setIsLoadingDoc(false) // Moved to page rendering effect
+      }).catch(e => {
+        console.error("Error loading PDF document proxy:", e);
+        setDocErrorMessage(`Failed to load PDF: ${e.message}`);
+        setCurrentTextForTTS(`Failed to load PDF: ${e.message}`);
+        setIsLoadingDoc(false);
+      });
+    } else {
+        setPdfDocProxy(null); // Clear PDF state if not a PDF
+    }
+  }, [activeDoc]);
+
+  // Effect for PDF Page Rendering (triggered by currentPdfPageNum or pdfDocProxy change)
   useEffect(() => {
     if (activeDoc?.type === 'pdf' && pdfDocProxy && currentPdfPageNum > 0 && currentPdfPageNum <= pdfTotalPages) {
       stopSpeech(true);
       setIsRenderingPdfPage(true);
       setPdfPageImage(null);
-      setPdfPageIsTextBased(true); // Assume text-based initially
+      setPdfPageIsTextBased(true);
       setCurrentTextForTTS("Loading PDF page...");
       LocalStorageService.saveCurrentPdfPageIndexForDoc(activeDoc.id, currentPdfPageNum);
 
@@ -265,10 +229,9 @@ export default function ReaderPage() {
           setPdfPageImage(canvas.toDataURL('image/png'));
         }
         
-        // Check for existing OCR text first
         if (activeDoc.type === 'pdf' && (activeDoc as StoredPdfDocument).ocrTextPerPage && (activeDoc as StoredPdfDocument).ocrTextPerPage?.[currentPdfPageNum]) {
             setCurrentTextForTTS((activeDoc as StoredPdfDocument).ocrTextPerPage![currentPdfPageNum]);
-            setPdfPageIsTextBased(false); // It was image-based but OCR'd
+            setPdfPageIsTextBased(false); 
         } else {
             const textContent = await page.getTextContent();
             const pageText = textContent.items.map(item => ('str' in item ? item.str : '')).join(' ').replace(/\s+/g, ' ').trim();
@@ -281,16 +244,136 @@ export default function ReaderPage() {
                 setPdfPageIsTextBased(false);
             }
         }
+        setIsLoadingDoc(false); // PDF page loaded
       }).catch(e => {
         console.error("Error rendering PDF page:", e);
         setPdfPageImage(null);
         setCurrentTextForTTS(`Error rendering PDF page ${currentPdfPageNum}: ${e.message}`);
         setPdfPageIsTextBased(false);
+        setIsLoadingDoc(false); // Error, but loading attempt finished
       }).finally(() => {
         setIsRenderingPdfPage(false);
       });
     }
   }, [pdfDocProxy, currentPdfPageNum, pdfTotalPages, pdfScale, activeDoc, stopSpeech]);
+
+  // Effect for EPUB Loading and Rendering
+  useEffect(() => {
+    let renditionInstanceToDestroy: Rendition | null = null;
+
+    const initializeEpub = async () => {
+        if (activeDoc?.type === 'epub' && activeDoc.fileData && epubViewerRef.current) {
+            setIsLoadingDoc(true);
+            setCurrentTextForTTS("Loading EPUB...");
+            if (epubViewerRef.current) epubViewerRef.current.innerHTML = ''; // Clear previous
+            try {
+                const ePubModule = await import('epubjs');
+                const ePub = ePubModule.default;
+                const bookInstance = ePub(activeDoc.fileData);
+                epubBookRef.current = bookInstance;
+                await bookInstance.ready;
+
+                const renditionInstance = bookInstance.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
+                epubRenditionRef.current = renditionInstance;
+                renditionInstanceToDestroy = renditionInstance; // For cleanup
+
+                renditionInstance.on('displayed', async (section: any) => {
+                    try {
+                        const contents = section.contents || (section.document ? section.document.body : null);
+                        let text = "";
+                        if (contents && typeof contents.innerText === 'string') text = contents.innerText.replace(/\s+/g, ' ').trim();
+                        else if (contents && typeof contents.textContent === 'string') text = contents.textContent.replace(/\s+/g, ' ').trim();
+                        else if (section.output && typeof section.output === 'string') {
+                            const tempDiv = document.createElement('div'); tempDiv.innerHTML = section.output;
+                            text = (tempDiv.innerText || tempDiv.textContent || "").replace(/\s+/g, ' ').trim();
+                        }
+                        setCurrentTextForTTS(text || "Could not extract text from this EPUB section.");
+                    } catch (textExtractError: any) { console.error("Error extracting text from EPUB section:", textExtractError); setCurrentTextForTTS(`Error extracting text from EPUB: ${textExtractError.message}`); }
+                });
+                await renditionInstance.display();
+                setDocErrorMessage(null); // Clear previous error if successful
+            } catch (e: any) {
+                console.error("Error loading or rendering EPUB:", e);
+                const errorMsg = e instanceof Error ? e.message : String(e);
+                let userFriendlyError = `Failed to load EPUB: ${errorMsg}`;
+                if (errorMsg.toLowerCase().includes("uncompressed data size mismatch") || errorMsg.toLowerCase().includes("reading 'package'")) {
+                  userFriendlyError = `Failed to load EPUB: The file might be corrupted or not a valid EPUB. (Detail: ${errorMsg})`;
+                } else if (errorMsg.toLowerCase().includes("cannot read properties of undefined (reading 'package')")){
+                  userFriendlyError = `Failed to load EPUB: Error initializing EPUB reader. The file might be incompatible. (Detail: ${errorMsg})`;
+                }
+                setDocErrorMessage(userFriendlyError);
+                setCurrentTextForTTS(userFriendlyError);
+            } finally {
+                setIsLoadingDoc(false);
+            }
+        } else if (activeDoc?.type === 'epub' && !epubViewerRef.current) {
+            // This case should ideally not be hit if the div is always rendered when activeDoc.type is epub
+            setDocErrorMessage("EPUB viewer element is not available in the DOM yet. Retrying might be needed or check conditional rendering.");
+            setIsLoadingDoc(false);
+        }
+    };
+    
+    initializeEpub();
+
+    return () => {
+        if (renditionInstanceToDestroy) {
+            renditionInstanceToDestroy.destroy();
+        }
+        if (activeDoc?.type === 'epub') { // Ensure cleanup only if it was an EPUB
+            epubRenditionRef.current = null;
+            epubBookRef.current = null;
+             if (epubViewerRef.current) { // Check if ref exists before trying to clear
+                epubViewerRef.current.innerHTML = ''; 
+            }
+        }
+    };
+  }, [activeDoc]); // Depends on activeDoc. epubViewerRef.current check is inside.
+
+  // Effect for TXT file loading
+  useEffect(() => {
+    if (activeDoc?.type === 'txt' && activeDoc.fileData) {
+        setIsLoadingDoc(true);
+        setCurrentTextForTTS("Loading text file...");
+        try {
+            const decoder = new TextDecoder();
+            const text = decoder.decode(activeDoc.fileData);
+            setTxtContent(text);
+            setCurrentTextForTTS(text);
+        } catch (e: any) {
+            console.error("Error decoding TXT file:", e);
+            setDocErrorMessage(`Failed to decode TXT file: ${e.message}`);
+            setCurrentTextForTTS(`Failed to decode TXT file: ${e.message}`);
+        } finally {
+            setIsLoadingDoc(false);
+        }
+    }
+  }, [activeDoc]);
+
+  // Effect for Image file loading
+  useEffect(() => {
+    if (activeDoc?.type === 'image' && activeDoc.fileData) {
+        setIsLoadingDoc(true);
+        setCurrentTextForTTS("Loading image...");
+        try {
+            const blob = new Blob([activeDoc.fileData], { type: activeDoc.originalType });
+            const newUrl = URL.createObjectURL(blob);
+            if (currentImageObjectUrlRef.current) { URL.revokeObjectURL(currentImageObjectUrlRef.current); }
+            currentImageObjectUrlRef.current = newUrl;
+            setDisplayedImageSrc(newUrl);
+            if (activeDoc.extractedText) {
+                setCurrentTextForTTS(activeDoc.extractedText);
+            } else {
+                setCurrentTextForTTS("Image loaded. Perform OCR to extract text for reading aloud.");
+            }
+        } catch (e: any) {
+            console.error("Error creating object URL for image:", e);
+            setDocErrorMessage(`Failed to load image: ${e.message}`);
+            setCurrentTextForTTS(`Failed to load image: ${e.message}`);
+        } finally {
+            setIsLoadingDoc(false);
+        }
+    }
+  }, [activeDoc]);
 
 
   const handlePerformOcr = useCallback(async () => {
@@ -301,7 +384,7 @@ export default function ReaderPage() {
 
     stopSpeech(true);
     let dataUrlToProcess: string | null = null;
-    const currentActiveDoc = activeDoc; // Capture current activeDoc
+    const currentActiveDoc = activeDoc; 
 
     if (currentActiveDoc.type === 'pdf' && pdfPageImage && !pdfPageIsTextBased) {
         dataUrlToProcess = pdfPageImage;
@@ -337,7 +420,7 @@ export default function ReaderPage() {
             const ocrText = result.extractedText || "OCR completed, but no text found.";
             setCurrentTextForTTS(ocrText);
 
-            let updatedDoc = { ...currentActiveDoc } as ActiveMangaDocument; // Use the captured activeDoc
+            let updatedDoc = { ...currentActiveDoc } as ActiveMangaDocument; 
 
             if (updatedDoc.type === 'image') {
                 updatedDoc.extractedText = ocrText;
@@ -349,7 +432,7 @@ export default function ReaderPage() {
             }
             
             await IndexedDBService.saveDocument(updatedDoc);
-            setActiveDoc(updatedDoc); // Update state with the modified document
+            setActiveDoc(updatedDoc); 
 
         } else {
             setCurrentTextForTTS(`OCR Error: ${result.error}`);
@@ -482,19 +565,20 @@ export default function ReaderPage() {
     const effectiveTextToRead = selectedTextFromSelection || currentTextForTTS;
 
     const invalidMessages = [
-      "Error:", "Failed to load", "Loading PDF page...", "MOBI files cannot",
+      "Error:", "Failed to load", "Loading PDF page...", "MOBI files cannot", "Loading EPUB...", "Loading text file...", "Loading image...",
       "Image loaded. Perform OCR", "No text content found", "Could not extract text",
-      "EPUB viewer element not", "EPUB section loaded, but text extraction",
+      "EPUB viewer element not ready", "EPUB section loaded, but text extraction",
       "This PDF page has no selectable text", "MOBI files cannot be read directly.",
       "This PDF page seems to be an image. Use OCR to extract text.",
       "Performing OCR...", "No document ID provided", "Document with ID",
+       "EPUB viewer element is not available in the DOM yet",
       "EPUB viewer element not ready", "MOBI file format is not directly supported",
       "OCR completed, but no text found.",
       "No document selected.", "No document selected and no previously active document found."
     ];
 
     if (!effectiveTextToRead || invalidMessages.some(msg => effectiveTextToRead.startsWith(msg)) || effectiveTextToRead.length < MIN_TTS_TEXT_LENGTH) {
-      toast({ variant: "destructive", title: "No Valid Text", description: `No valid text to read, text is placeholder, or text too short (min ${MIN_TTS_TEXT_LENGTH} chars).` });
+      toast({ variant: "destructive", title: "No Valid Text", description: `No valid text to read, text is placeholder, or text too short (min ${MIN_TTS_TEXT_LENGTH} chars). Current text: "${effectiveTextToRead.substring(0,50)}..."` });
       return;
     }
 
@@ -584,12 +668,13 @@ export default function ReaderPage() {
   const handleFavoriteSelection = () => {
     const selection = window.getSelection()?.toString().trim() || currentTextForTTS;
     const invalidMessages = [
-      "Error:", "Failed to load", "Loading PDF page...", "MOBI files cannot",
+      "Error:", "Failed to load", "Loading PDF page...", "MOBI files cannot", "Loading EPUB...", "Loading text file...", "Loading image...",
       "Image loaded. Perform OCR", "No text content found", "Could not extract text",
-      "EPUB viewer element not", "EPUB section loaded, but text extraction",
+      "EPUB viewer element not ready", "EPUB section loaded, but text extraction",
       "This PDF page has no selectable text", "MOBI files cannot be read directly.",
       "This PDF page seems to be an image. Use OCR to extract text.",
       "Performing OCR...", "No document ID provided", "Document with ID",
+       "EPUB viewer element is not available in the DOM yet",
       "EPUB viewer element not ready", "MOBI file format is not directly supported",
       "OCR completed, but no text found.",
       "No document selected.", "No document selected and no previously active document found."
@@ -624,12 +709,13 @@ export default function ReaderPage() {
     const selectedText = typeof window !== 'undefined' ? window.getSelection()?.toString().trim() : '';
     const effectiveText = selectedText || currentTextForTTS;
     const invalidMessages = [
-      "Error:", "Failed to load", "Loading PDF page...", "MOBI files cannot",
+      "Error:", "Failed to load", "Loading PDF page...", "MOBI files cannot", "Loading EPUB...", "Loading text file...", "Loading image...",
       "Image loaded. Perform OCR", "No text content found", "Could not extract text",
-      "EPUB viewer element not", "EPUB section loaded, but text extraction",
+      "EPUB viewer element not ready", "EPUB section loaded, but text extraction",
       "This PDF page has no selectable text", "MOBI files cannot be read directly.",
       "This PDF page seems to be an image. Use OCR to extract text.",
       "Performing OCR...", "No document ID provided", "Document with ID",
+       "EPUB viewer element is not available in the DOM yet",
       "EPUB viewer element not ready", "MOBI file format is not directly supported",
       "OCR completed, but no text found.",
       "No document selected.", "No document selected and no previously active document found."
@@ -674,7 +760,8 @@ export default function ReaderPage() {
             </div>
         )}
 
-        {isLoadingDoc && activeDoc && <div className="flex items-center justify-center h-full"><Loader2 className="h-10 w-10 animate-spin text-primary" /><p className="ml-3">Loading content...</p></div>}
+        {isLoadingDoc && (!activeDoc || (activeDoc && (activeDoc.type === 'epub' || activeDoc.type === 'pdf' || activeDoc.type === 'image' || activeDoc.type === 'txt'))) && <div className="flex items-center justify-center h-full"><Loader2 className="h-10 w-10 animate-spin text-primary" /><p className="ml-3">Loading content...</p></div>}
+
 
         {!isLoadingDoc && activeDoc?.type === 'pdf' && (
           <div className="flex flex-col items-center">
@@ -690,7 +777,8 @@ export default function ReaderPage() {
         )}
         {!isLoadingDoc && activeDoc?.type === 'epub' && (
           <div ref={epubViewerRef} className={cn("w-full h-full epub-viewer-container bg-background rounded-md shadow-inner", (isLoadingDoc || !epubRenditionRef.current) && "opacity-50 flex items-center justify-center")}>
-            {(!epubRenditionRef.current || (isLoadingDoc && !epubBookRef.current)) && !docErrorMessage && <Loader2 className="h-10 w-10 animate-spin" />}
+             {(isLoadingDoc || (!epubRenditionRef.current && !docErrorMessage)) && <Loader2 className="h-10 w-10 animate-spin" />}
+             {/* EPUB.js will render content here. If there's an error, docErrorMessage will be shown globally or in the side panel. */}
           </div>
         )}
         {!isLoadingDoc && activeDoc?.type === 'txt' && (
@@ -737,7 +825,7 @@ export default function ReaderPage() {
                 <CardTitle className="text-base truncate flex items-center gap-1">
                     <BookOpen className="h-5 w-5 text-primary"/> {activeDoc?.title || "No Document Loaded"}
                 </CardTitle>
-                {activeDoc && <CardDescription className="text-xs">Type: {activeDoc.type.toUpperCase()}{activeDoc.type === 'pdf' && pdfTotalPages > 0 ? `, ${currentPdfPageNum}/${pdfTotalPages} pages` : ''}</CardDescription>}
+                {activeDoc && <CardDescription className="text-xs">Type: {activeDoc.type.toUpperCase()}{activeDoc.type === 'pdf' && pdfTotalPages > 0 ? `, ${currentPdfPageNum}/${pdfTotalPages} pages` : ''}{activeDoc.type === 'epub' && (isLoadingDoc || !epubRenditionRef.current) && !docErrorMessage ? ` (Loading EPUB...)`: ''}</CardDescription>}
                  {!activeDoc && !isLoadingDoc && !docErrorMessage && <CardDescription className="text-xs">No document loaded. Select one from the library or refresh if one was previously active.</CardDescription>}
                  {docErrorMessage && <CardDescription className="text-xs text-destructive">{docErrorMessage}</CardDescription>}
 
@@ -761,7 +849,7 @@ export default function ReaderPage() {
             </CardContent>
           </Card>
         )}
-        {activeDoc?.type === 'epub' && epubRenditionRef.current && (
+        {activeDoc?.type === 'epub' && (
           <Card>
             <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">EPUB Navigation</CardTitle></CardHeader>
             <CardContent className="flex items-center justify-between pt-0">
@@ -808,3 +896,4 @@ export default function ReaderPage() {
   );
 }
     
+
