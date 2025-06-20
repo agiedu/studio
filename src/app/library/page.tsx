@@ -73,7 +73,7 @@ export default function LibraryPage() {
         newDocument = { ...commonDocProps, type: 'image', extractedText: undefined };
       } else if (file.type === 'application/pdf') {
          try {
-            const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) }); 
+            const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) });
             const pdfInstance = await pdfLoadingTask.promise;
             console.log(`[LibraryPage] PDF "${file.name}" processed by pdf.js, numPages: ${pdfInstance.numPages}.`);
             newDocument = { ...commonDocProps, type: 'pdf', numPages: pdfInstance.numPages, ocrTextPerPage: {} };
@@ -101,7 +101,7 @@ export default function LibraryPage() {
         await IndexedDBService.saveDocument(newDocument);
         toast({ title: "Document Saved in Browser", description: `"${newDocument.title}" saved.` });
         console.log(`[LibraryPage] Document "${newDocument.title}" saved. Fetching updated documents list.`);
-        await fetchDocuments("Post-upload document fetch"); 
+        await fetchDocuments("Post-upload document fetch");
       }
     } catch (error: any) {
       toast({ variant: "destructive", title: "Upload & Save Error", description: `Failed to process/save "${file.name}". ${error.message}` });
@@ -116,8 +116,7 @@ export default function LibraryPage() {
   }, [fetchDocuments, toast]);
 
   const handleDeleteDocument = useCallback(async (docId: string, docTitle?: string) => {
-    const titleForConfirm = docTitle || 'this document';
-    console.log(`[LibraryPage] handleDeleteDocument invoked. DocId: "${docId}", Title: "${titleForConfirm}"`);
+    console.log(`[LibraryPage] handleDeleteDocument CALLED. DocId: "${docId}", Title: "${docTitle}"`);
 
     if (!docId || typeof docId !== 'string' || docId.trim() === "") {
       console.error("[LibraryPage] handleDeleteDocument: Invalid docId provided. Aborting deletion.", { docId });
@@ -125,6 +124,7 @@ export default function LibraryPage() {
       return;
     }
 
+    const titleForConfirm = docTitle || 'this document';
     if (!window.confirm(`Are you sure you want to delete "${titleForConfirm}" from your browser storage? This action cannot be undone.`)) {
       console.log(`[LibraryPage] Deletion cancelled by user for document: "${docId}"`);
       return;
@@ -135,7 +135,7 @@ export default function LibraryPage() {
     try {
       console.log(`[LibraryPage] Attempting IndexedDBService.deleteDocumentById for docId: "${docId}"`);
       await IndexedDBService.deleteDocumentById(docId);
-      console.log(`[LibraryPage] IndexedDBService.deleteDocumentById promise resolved for docId: "${docId}". Document should be deleted from DB.`);
+      console.log(`[LibraryPage] IndexedDBService.deleteDocumentById promise resolved for docId: "${docId}".`);
       
       setStoredDocuments(prevDocs => {
         const updatedDocs = prevDocs.filter(doc => doc.id !== docId);
@@ -153,14 +153,13 @@ export default function LibraryPage() {
       }
       
       toast({ title: "Document Deleted", description: `"${titleForConfirm}" removed from browser storage.` });
-      console.log(`[LibraryPage] Deletion process for "${docId}" seems complete. Now calling fetchDocuments for final consistency.`);
+      console.log(`[LibraryPage] Deletion process for "${docId}" completed. Fetching documents for re-sync.`);
       await fetchDocuments(`Post-delete re-sync for docId "${docId}"`);
       console.log(`[LibraryPage] fetchDocuments completed after deleting "${docId}".`);
 
     } catch (error:any) {
       console.error(`[LibraryPage] Error during deletion process for document "${docId}":`, error);
       toast({ variant: "destructive", title: "Delete Error", description: `Failed to delete "${titleForConfirm}". ${error.message}. Please refresh.` });
-      // Fetch documents even on error to try and resync UI with DB state
       await fetchDocuments(`Error recovery fetch after failed delete of "${docId}"`);
     }
   }, [fetchDocuments, toast]);
@@ -272,45 +271,56 @@ export default function LibraryPage() {
           )}
           {storedDocuments.length > 0 && (
             <ul className="space-y-3">
-              {storedDocuments.map(doc => (
-                <li key={doc.id} className="p-3 border rounded-md flex flex-col sm:flex-row justify-between items-start gap-3 bg-card hover:shadow-md transition-shadow">
-                  <div className="flex items-center gap-3 flex-grow min-w-0">
-                    {getDocumentIcon(doc.type)}
-                    <div className="min-w-0">
-                      <p className="text-base font-medium truncate" title={doc.title}>{doc.title || 'Untitled Document'}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Type: {doc.originalType || doc.type} | Stored: {new Date(doc.createdAt || 0).toLocaleDateString()}
-                        {doc.type === 'pdf' && doc.numPages !== undefined && ` | Pages: ${doc.numPages}`}
-                      </p>
+              {storedDocuments.map(doc => {
+                const currentDocId = doc.id; // For clarity in logs and handlers
+                const currentDocTitle = doc.title;
+                const isButtonDisabled = isUploading || isLoading;
+                // Log information about the delete button being rendered
+                // console.log(`[LibraryPage] Rendering Delete Button for docId: ${currentDocId}, title: "${currentDocTitle}". Effective disabled state: ${isButtonDisabled}`);
+
+                return (
+                  <li key={currentDocId} className="p-3 border rounded-md flex flex-col sm:flex-row justify-between items-start gap-3 bg-card hover:shadow-md transition-shadow">
+                    <div className="flex items-center gap-3 flex-grow min-w-0">
+                      {getDocumentIcon(doc.type)}
+                      <div className="min-w-0">
+                        <p className="text-base font-medium truncate" title={currentDocTitle}>{currentDocTitle || 'Untitled Document'}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Type: {doc.originalType || doc.type} | Stored: {new Date(doc.createdAt || 0).toLocaleDateString()}
+                          {doc.type === 'pdf' && doc.numPages !== undefined && ` | Pages: ${doc.numPages}`}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex gap-2 mt-2 sm:mt-0 sm:items-center flex-shrink-0">
-                    <Button size="sm" variant="outline" asChild>
-                      <Link href={`/reader?docId=${doc.id}`}>
-                        <BookOpen className="mr-1.5 h-4 w-4" /> Open in Reader
-                      </Link>
-                    </Button>
-                    <Button
+                    <div className="flex gap-2 mt-2 sm:mt-0 sm:items-center flex-shrink-0">
+                      <Button size="sm" variant="outline" asChild>
+                        <Link href={`/reader?docId=${currentDocId}`}>
+                          <BookOpen className="mr-1.5 h-4 w-4" /> Open in Reader
+                        </Link>
+                      </Button>
+                      <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleSaveToDevice(doc)}
+                          disabled={isSavingToDevice === currentDocId || isUploading}
+                          className="w-[150px]"
+                          title="Save a copy to your computer's file system."
+                      >
+                          {isSavingToDevice === currentDocId ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />} Save to Device
+                      </Button>
+                      <Button
                         size="sm"
-                        variant="outline"
-                        onClick={() => handleSaveToDevice(doc)}
-                        disabled={isSavingToDevice === doc.id || isUploading}
-                        className="w-[150px]"
-                        title="Save a copy to your computer's file system."
-                    >
-                        {isSavingToDevice === doc.id ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />} Save to Device
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      variant="ghost" 
-                      onClick={() => handleDeleteDocument(doc.id, doc.title)} 
-                      disabled={isUploading || !!isSavingToDevice || isLoading} // Disable if general loading is also happening
-                      aria-label="Delete Document">
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </div>
-                </li>
-              ))}
+                        variant="ghost"
+                        onClick={() => {
+                          console.log(`[LibraryPage] Delete button CLICKED for docId: ${currentDocId}, title: "${currentDocTitle}"`);
+                          handleDeleteDocument(currentDocId, currentDocTitle);
+                        }}
+                        disabled={isButtonDisabled}
+                        aria-label="Delete Document">
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </CardContent>
