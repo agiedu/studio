@@ -12,7 +12,6 @@ let dbPromise: Promise<IDBDatabase> | null = null;
 
 function getDB(): Promise<IDBDatabase> {
   if (typeof window === 'undefined') {
-    // This case should ideally not be reached in client-side components using this service.
     console.error("[IndexedDBService] getDB called in a non-browser environment.");
     return Promise.reject(new Error("IndexedDB can only be accessed in the browser."));
   }
@@ -24,7 +23,7 @@ function getDB(): Promise<IDBDatabase> {
       request.onerror = () => {
         console.error('[IndexedDBService] DB open error:', request.error);
         reject(new Error(`IndexedDB error: ${request.error?.message}`));
-        dbPromise = null; // Reset promise on error
+        dbPromise = null;
       };
 
       request.onsuccess = () => {
@@ -40,7 +39,7 @@ function getDB(): Promise<IDBDatabase> {
           db.createObjectStore(DOC_STORE_NAME, { keyPath: 'id' });
         }
         if (event.oldVersion < 2 && !db.objectStoreNames.contains(LAST_ACTIVE_DOC_STORE_NAME)) {
-          console.log(`[IndexedDBService] Creating ${LAST_ACTIVE_DOC_STORE_NAME} store.`);
+          console.log(`[IndexedDBService] Creating ${LAST_ACTIVE_DOC_STORE_NAME} store (keyPath: 'key').`);
           db.createObjectStore(LAST_ACTIVE_DOC_STORE_NAME, { keyPath: 'key' });
         }
          console.log('[IndexedDBService] DB upgrade complete.');
@@ -66,7 +65,7 @@ export async function saveDocument(doc: StoredMangaDocument): Promise<void> {
     request.onerror = (event) => {
         const error = (event.target as IDBRequest).error;
         console.error(`[IndexedDBService] saveDocument: IDBRequest FAILED for saving docId ${doc.id}:`, error);
-        // Don't reject here; let transaction.onerror handle it.
+        // Rely on transaction.onerror to reject the promise
     };
 
     transaction.oncomplete = () => {
@@ -130,7 +129,7 @@ export async function deleteDocumentById(id: string): Promise<void> {
     console.error(errorMsg);
     return Promise.reject(new Error('Invalid ID for deletion.'));
   }
-  console.log(`[IndexedDBService] deleteDocumentById: Attempting to delete docId: "${id}"`);
+  console.log(`[IndexedDBService] deleteDocumentById: Starting transaction to delete docId: "${id}"`);
   const db = await getDB();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(DOC_STORE_NAME, 'readwrite');
@@ -165,10 +164,12 @@ export async function saveLastActiveDocId(docId: string | null): Promise<void> {
   const db = await getDB();
   return new Promise((resolve, reject) => {
     if (!db.objectStoreNames.contains(LAST_ACTIVE_DOC_STORE_NAME)) {
-        const errorMsg = `[IndexedDBService] saveLastActiveDocId: Store ${LAST_ACTIVE_DOC_STORE_NAME} does not exist. Cannot ${operationType} last active doc ID.`;
+        const errorMsg = `[IndexedDBService] saveLastActiveDocId: Store ${LAST_ACTIVE_DOC_STORE_NAME} does not exist. Cannot ${operationType} last active doc ID. This might happen if DB version is old or upgrade failed.`;
         console.error(errorMsg);
-        // Depending on strictness, you might resolve or reject. Let's reject for clarity.
-        return reject(new Error(errorMsg));
+        // Resolving as it's not a critical failure for this specific function's main purpose, but logging the error.
+        // Or reject(new Error(errorMsg)); if strictness is required.
+        resolve(); 
+        return;
     }
 
     const transaction = db.transaction(LAST_ACTIVE_DOC_STORE_NAME, 'readwrite');
@@ -234,7 +235,6 @@ export async function getLastActiveDocId(): Promise<string | null> {
   });
 }
 
-// Helper to convert ArrayBuffer to Data URL for temporary use (e.g. PDF.js, Epub.js if they support it)
 export function arrayBufferToTempURL(buffer: ArrayBuffer, type: string): string {
   const blob = new Blob([buffer], { type });
   const url = URL.createObjectURL(blob);
@@ -242,7 +242,6 @@ export function arrayBufferToTempURL(buffer: ArrayBuffer, type: string): string 
   return url; 
 }
 
-// Helper to convert ArrayBuffer to Base64 Data URL for direct embedding or API calls
 export function arrayBufferToBase64DataURL(buffer: ArrayBuffer, type: string): Promise<string> {
   console.log(`[IndexedDBService] arrayBufferToBase64DataURL: Converting ArrayBuffer (length ${buffer.byteLength}) of type ${type} to Base64 Data URL.`);
   return new Promise((resolve, reject) => {
@@ -259,4 +258,6 @@ export function arrayBufferToBase64DataURL(buffer: ArrayBuffer, type: string): P
     reader.readAsDataURL(blob);
   });
 }
+    
+
     

@@ -75,14 +75,14 @@ export default function LibraryPage() {
         newDocument = { ...commonDocProps, type: 'image', extractedText: undefined };
       } else if (file.type === 'application/pdf') {
          try {
-            const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) });
+            const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) }); // Use slice(0) to create a new ArrayBuffer view if needed
             const pdfInstance = await pdfLoadingTask.promise;
             console.log(`[LibraryPage] PDF "${file.name}" processed by pdf.js, numPages: ${pdfInstance.numPages}.`);
             newDocument = { ...commonDocProps, type: 'pdf', numPages: pdfInstance.numPages, ocrTextPerPage: {} };
           } catch (pdfError: any) {
             console.warn(`[LibraryPage] Could not get PDF page count for ${file.name}:`, pdfError);
             toast({ variant: "default", title: "PDF Info", description: `Uploaded PDF "${file.name}". Page count issue: ${pdfError.message}. Document still saved.` });
-            newDocument = { ...commonDocProps, type: 'pdf', numPages: undefined, ocrTextPerPage: {} };
+            newDocument = { ...commonDocProps, type: 'pdf', numPages: undefined, ocrTextPerPage: {} }; // Save even if page count fails
           }
       } else if (file.type === 'application/epub+zip' || file.name.toLowerCase().endsWith('.epub')) {
         newDocument = { ...commonDocProps, type: 'epub', originalType: 'application/epub+zip' };
@@ -94,7 +94,7 @@ export default function LibraryPage() {
         toast({ variant: "destructive", title: "Unsupported File Type", description: `Type "${file.type || 'unknown'}" (${file.name}) not supported. Please upload Image, PDF, EPUB, MOBI, or TXT.` });
         console.warn(`[LibraryPage] Unsupported file type: "${file.type}" for file "${file.name}"`);
         setIsUploading(false);
-        if (fileInputRef.current) fileInputRef.current.value = "";
+        if (fileInputRef.current) fileInputRef.current.value = ""; // Reset file input
         return;
       }
 
@@ -111,7 +111,7 @@ export default function LibraryPage() {
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) {
-        fileInputRef.current.value = "";
+        fileInputRef.current.value = ""; // Reset file input
       }
       console.log(`[LibraryPage] File upload process finished for: "${file.name}". isUploading is now: false`);
     }
@@ -137,7 +137,7 @@ export default function LibraryPage() {
     try {
       console.log(`[LibraryPage] Attempting to delete document via IndexedDBService.deleteDocumentById for docId: "${docId}"`);
       await IndexedDBService.deleteDocumentById(docId);
-      console.log(`[LibraryPage] IndexedDBService.deleteDocumentById promise resolved for docId: "${docId}".`);
+      console.log(`[LibraryPage] IndexedDBService.deleteDocumentById promise resolved for docId: "${docId}". Deletion presumed successful at DB level.`);
       
       setStoredDocuments(prevDocs => {
         const updatedDocs = prevDocs.filter(doc => doc.id !== docId);
@@ -280,9 +280,9 @@ export default function LibraryPage() {
                 const currentDocId = doc.id; 
                 const currentDocTitle = doc.title;
                 
-                // For this test, we hardcode disabled to false
-                const isButtonDisabled = false; 
-                console.log(`[LibraryPage] Rendering item: "${currentDocTitle}" (ID: ${currentDocId}). CALCULATED isButtonDisabled: ${isLoading || isUploading}. FORCED isButtonDisabled: ${isButtonDisabled}`);
+                const isDeleteButtonDisabled = isLoading || isUploading; 
+                // Log the disabled state for each button
+                console.log(`[LibraryPage] Rendering item: "${currentDocTitle}" (ID: ${currentDocId}). Delete button disabled: ${isDeleteButtonDisabled} (isLoading: ${isLoading}, isUploading: ${isUploading})`);
                 
                 return (
                   <li key={currentDocId} className="p-3 border rounded-md flex flex-col sm:flex-row justify-between items-start gap-3 bg-card hover:shadow-md transition-shadow">
@@ -316,14 +316,10 @@ export default function LibraryPage() {
                         size="sm"
                         variant="ghost"
                         onClick={() => {
-                          console.log(`[LibraryPage] DELETE BUTTON CLICKED (Simplified - Hardcoded Disabled Test) for docId: ${currentDocId}, title: "${currentDocTitle}"`);
-                          window.alert(`DEBUG: Clicked delete for "${currentDocTitle}" (ID: ${currentDocId}). Check console. Full delete logic is still bypassed for this test.`);
-                          // For this specific test, we are NOT calling handleDeleteDocument.
-                          // If the alert shows, then the button is clickable.
-                          // Then, in the next step, we will re-integrate:
-                          // handleDeleteDocument(currentDocId, currentDocTitle); 
+                          console.log(`[LibraryPage] Delete button onClick fired for docId: ${currentDocId}, title: "${currentDocTitle}"`);
+                          handleDeleteDocument(currentDocId, currentDocTitle); 
                         }}
-                        disabled={isButtonDisabled} // Using the FORCED false value for testing
+                        disabled={isDeleteButtonDisabled}
                         aria-label="Delete Document">
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
@@ -357,4 +353,6 @@ export default function LibraryPage() {
     </div>
   );
 }
+    
+
     
