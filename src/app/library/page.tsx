@@ -280,7 +280,6 @@ export default function LibraryPage() {
                 const currentDocId = doc.id; 
                 const currentDocTitle = doc.title;
                 
-                // Simplified disabled state for the delete button for clarity
                 const isDeleteButtonDisabled = isLoading || isUploading; 
                 console.log(`[LibraryPage] Rendering item: "${currentDocTitle}" (ID: ${currentDocId}). Delete button isDeleteButtonDisabled: ${isDeleteButtonDisabled} (isLoading: ${isLoading}, isUploading: ${isUploading})`);
                 
