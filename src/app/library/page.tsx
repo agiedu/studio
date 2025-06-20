@@ -33,11 +33,11 @@ export default function LibraryPage() {
     setIsLoading(true);
     try {
       const docs = await IndexedDBService.getAllDocuments();
-      console.log(`[LibraryPage] Fetched ${docs.length} documents from IndexedDB.`);
+      console.log(`[LibraryPage] Fetched ${docs.length} documents from IndexedDB for "${operationLabel}".`);
       setStoredDocuments(docs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error Loading Documents", description: `Could not load documents. ${error.message}` });
-      console.error("[LibraryPage] Error fetching documents from IndexedDB:", error);
+      console.error(`[LibraryPage] Error during "${operationLabel}" from IndexedDB:`, error);
     } finally {
       setIsLoading(false);
       console.log(`[LibraryPage] Finished ${operationLabel} attempt. isLoading is now: false`);
@@ -137,7 +137,7 @@ export default function LibraryPage() {
     try {
       console.log(`[LibraryPage] Attempting to delete document via IndexedDBService.deleteDocumentById for docId: "${docId}"`);
       await IndexedDBService.deleteDocumentById(docId);
-      console.log(`[LibraryPage] IndexedDBService.deleteDocumentById promise resolved for docId: "${docId}". Deletion presumed successful at DB level.`);
+      console.log(`[LibraryPage] IndexedDBService.deleteDocumentById promise RESOLVED for docId: "${docId}". Deletion presumed successful at DB level.`);
       
       setStoredDocuments(prevDocs => {
         const updatedDocs = prevDocs.filter(doc => doc.id !== docId);
@@ -176,7 +176,6 @@ export default function LibraryPage() {
     }
     console.log(`[LibraryPage] handleSaveToDevice: Attempting to save docId: "${doc.id}", Title: "${doc.title}" to device.`);
     setIsSavingToDevice(doc.id);
-    // toast({ title: "Saving to Device", description: `Preparing "${doc.title}"...` }); // Toast can be annoying if save dialog is quick
 
     try {
       const blob = arrayBufferToBlob(doc.fileData, doc.originalType);
@@ -281,9 +280,9 @@ export default function LibraryPage() {
                 const currentDocId = doc.id; 
                 const currentDocTitle = doc.title;
                 
-                const isButtonDisabled = isUploading || isLoading;
-                // Log the disabled state for each button
-                console.log(`[LibraryPage] Rendering item: "${currentDocTitle}" (ID: ${currentDocId}). Delete button calculated disabled: ${isButtonDisabled} (isLoading: ${isLoading}, isUploading: ${isUploading})`);
+                // Simplified disabled state for the delete button for clarity
+                const isDeleteButtonDisabled = isLoading || isUploading; 
+                console.log(`[LibraryPage] Rendering item: "${currentDocTitle}" (ID: ${currentDocId}). Delete button isDeleteButtonDisabled: ${isDeleteButtonDisabled} (isLoading: ${isLoading}, isUploading: ${isUploading})`);
                 
                 return (
                   <li key={currentDocId} className="p-3 border rounded-md flex flex-col sm:flex-row justify-between items-start gap-3 bg-card hover:shadow-md transition-shadow">
@@ -320,7 +319,7 @@ export default function LibraryPage() {
                           console.log(`[LibraryPage] Delete button onClick fired for docId: ${currentDocId}, title: "${currentDocTitle}"`);
                           handleDeleteDocument(currentDocId, currentDocTitle); 
                         }}
-                        disabled={isButtonDisabled}
+                        disabled={isDeleteButtonDisabled}
                         aria-label="Delete Document">
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>

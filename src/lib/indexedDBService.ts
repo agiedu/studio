@@ -23,7 +23,7 @@ function getDB(): Promise<IDBDatabase> {
       request.onerror = () => {
         console.error('[IndexedDBService] DB open error:', request.error);
         reject(new Error(`IndexedDB error: ${request.error?.message}`));
-        dbPromise = null; // Reset promise on error so it can be retried
+        dbPromise = null; 
       };
 
       request.onsuccess = () => {
@@ -166,8 +166,9 @@ export async function saveLastActiveDocId(docId: string | null): Promise<void> {
     if (!db.objectStoreNames.contains(LAST_ACTIVE_DOC_STORE_NAME)) {
         const errorMsg = `[IndexedDBService] saveLastActiveDocId: Store ${LAST_ACTIVE_DOC_STORE_NAME} does not exist. Cannot ${operationType} last active doc ID.`;
         console.error(errorMsg);
-        resolve(); // Not critical, allow app to continue
-        return;
+        // Non-critical, resolve to allow app to continue, but log error.
+        // For a production app, might consider creating the store if missing, but for now, soft fail.
+        return resolve(); 
     }
 
     const transaction = db.transaction(LAST_ACTIVE_DOC_STORE_NAME, 'readwrite');
