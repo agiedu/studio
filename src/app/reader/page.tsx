@@ -123,7 +123,7 @@ export default function ReaderPage() {
                     console.log("[EPUB Cleanup RAF] Component unmounted before rendition.destroy().");
                     return;
                 }
-                if (epubRenditionRef.current === currentRendition) { // Re-check: is it still the same instance?
+                if (epubRenditionRef.current === currentRendition) {
                     console.log("[EPUB Cleanup RAF] Calling rendition.destroy() for the captured instance:", currentRendition);
                     try {
                         currentRendition.destroy();
@@ -363,7 +363,7 @@ export default function ReaderPage() {
       }
 
       console.log("[EPUB Effect] Active document is EPUB. Initializing...");
-      cleanupEpubInstances(); // Also sets isEpubSectionDisplayed to false
+      cleanupEpubInstances(); 
 
       if (!activeDoc.fileData) {
         if(isMountedRef.current) {
@@ -390,7 +390,7 @@ export default function ReaderPage() {
 
         if (isMountedRef.current) {
           setIsEpubLoading(true);
-          setIsEpubSectionDisplayed(false); // Reset for new EPUB
+          setIsEpubSectionDisplayed(false); 
           setCurrentTextForTTS("Loading EPUB..."); setDocErrorMessage(null);
         }
 
@@ -427,9 +427,11 @@ export default function ReaderPage() {
 
           rendition.on('displayed', async (sectionResult: any) => {
             console.log("[EPUB Displayed Event] Section displayed. Event data:", sectionResult);
+            const managerIsActiveNow = epubRenditionRef.current?.manager?.active;
+            console.log(`[EPUB Displayed Event] Manager active status INSIDE displayed event (before timeout): ${managerIsActiveNow}`);
+
             if (epubRenditionRef.current && epubRenditionRef.current.manager) {
                 console.log('[EPUB Displayed Event] Rendition Manager Object:', epubRenditionRef.current.manager);
-                console.log(`[EPUB Displayed Event] Manager Active: ${epubRenditionRef.current.manager?.active}`);
                  if (!epubRenditionRef.current.manager?.active) {
                     console.warn("[EPUB Displayed Event] CRITICAL: Rendition manager is NOT ACTIVE even after 'displayed' event. Navigation will likely fail.");
                 }
@@ -484,15 +486,24 @@ export default function ReaderPage() {
                   console.log("[EPUB Text Extract] No significant text extracted after all methods.");
                   setCurrentTextForTTS("EPUB section loaded. Text may be graphical or empty.");
                 }
-                console.log("[EPUB Displayed Event] About to set isEpubSectionDisplayed to true.");
-                setIsEpubSectionDisplayed(true);
-                console.log("[EPUB Displayed Event] isEpubSectionDisplayed has been set to true.");
+                
+                setTimeout(() => {
+                  if (isMountedRef.current && epubRenditionRef.current === rendition) { // Re-check instance
+                    console.log("[EPUB Displayed Event Timeout] Setting isEpubSectionDisplayed to true.");
+                    setIsEpubSectionDisplayed(true);
+                    console.log(`[EPUB Displayed Event Timeout] Manager active status AFTER timeout: ${epubRenditionRef.current?.manager?.active}`);
+                  }
+                }, 150);
               }
             } catch (textExtractError: any) {
               console.error("[EPUB Displayed Event] Error extracting text from EPUB section:", textExtractError);
               if (isMountedRef.current) {
                 setCurrentTextForTTS(""); setDocErrorMessage(`Error extracting EPUB text: ${textExtractError.message}`);
-                setIsEpubSectionDisplayed(true); // Still set as displayed, even if text extraction failed
+                 setTimeout(() => { // Still set as displayed, even if text extraction failed, after a delay
+                    if (isMountedRef.current && epubRenditionRef.current === rendition) {
+                        setIsEpubSectionDisplayed(true);
+                    }
+                 }, 150);
               }
             }
           });
@@ -914,25 +925,22 @@ export default function ReaderPage() {
   const navigateEpub = async (direction: 'prev' | 'next') => {
     if(!isMountedRef.current) return;
     console.log(`[EPUB Nav] Attempting to navigate ${direction}.`);
-    console.log(`[EPUB Nav] Initial check: isLoadingDoc: ${isLoadingDoc}, isEpubLoading: ${isEpubLoading}, isEpubSectionDisplayed (state): ${isEpubSectionDisplayed}`);
-    console.log(`[EPUB Nav] Rendition Ref: ${!!epubRenditionRef.current}, Viewer Ref: ${!!epubViewerRef.current}`);
-    if (epubRenditionRef.current) {
-      console.log('[EPUB Nav] Rendition Manager Object during navigateEpub:', epubRenditionRef.current.manager);
-      console.log(`[EPUB Nav] Manager Active during navigateEpub: ${epubRenditionRef.current.manager?.active}`);
-    }
-    console.log(`[EPUB Nav] isEpubSectionDisplayed (state) during navigateEpub: ${isEpubSectionDisplayed}`);
-    console.log(`[EPUB Nav] Viewer Ref valid: ${!!epubViewerRef.current}, Viewer in DOM: ${epubViewerRef.current && document.body.contains(epubViewerRef.current)}`);
-
+    
     const navConditionDetails = {
         hasRendition: !!epubRenditionRef.current,
-        // Ensure manager exists before checking active, to avoid error if rendition is null
         managerActive: !!(epubRenditionRef.current && epubRenditionRef.current.manager?.active),
-        isSectionDisplayedState: isEpubSectionDisplayed, // Renamed to avoid conflict with variable name
+        isSectionDisplayedState: isEpubSectionDisplayed,
         hasViewerRef: !!epubViewerRef.current,
         isViewerInDom: !!(epubViewerRef.current && document.body.contains(epubViewerRef.current))
     };
-
     console.warn("[EPUB Nav] Navigation pre-conditions check. Values:", navConditionDetails);
+    
+    console.log(`[EPUB Nav] Initial check: isLoadingDoc: ${isLoadingDoc}, isEpubLoading: ${isEpubLoading}, isEpubSectionDisplayed (state): ${isEpubSectionDisplayed}`);
+    if (epubRenditionRef.current) {
+      console.log('[EPUB Nav] Rendition Manager Object:', epubRenditionRef.current.manager);
+      console.log(`[EPUB Nav] Manager Active: ${epubRenditionRef.current.manager?.active}`);
+    }
+    console.log(`[EPUB Nav] Viewer Ref valid: ${!!epubViewerRef.current}, Viewer in DOM: ${epubViewerRef.current && document.body.contains(epubViewerRef.current)}`);
 
 
     if (!navConditionDetails.hasRendition || !navConditionDetails.managerActive || !navConditionDetails.isSectionDisplayedState || !navConditionDetails.hasViewerRef || !navConditionDetails.isViewerInDom) {
@@ -1086,11 +1094,11 @@ export default function ReaderPage() {
             <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">EPUB Navigation</CardTitle></CardHeader>
             <CardContent className="flex items-center justify-between pt-0">
               <Button onClick={() => navigateEpub('prev')} size="sm" variant="outline" 
-                disabled={isLoadingDoc || isEpubLoading || !epubRenditionRef.current}>
+                disabled={isLoadingDoc || isEpubLoading || !epubRenditionRef.current || !isEpubSectionDisplayed || !epubRenditionRef.current?.manager?.active}>
                 <ChevronLeft /> Previous
               </Button>
               <Button onClick={() => navigateEpub('next')} size="sm" variant="outline" 
-                disabled={isLoadingDoc || isEpubLoading || !epubRenditionRef.current}>
+                disabled={isLoadingDoc || isEpubLoading || !epubRenditionRef.current || !isEpubSectionDisplayed || !epubRenditionRef.current?.manager?.active}>
                 Next <ChevronRight />
               </Button>
             </CardContent>
