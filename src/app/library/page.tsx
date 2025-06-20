@@ -118,53 +118,54 @@ export default function LibraryPage() {
   }, [fetchDocuments, toast]);
 
   const handleDeleteDocument = useCallback(async (docId: string, docTitle?: string) => {
-    console.log(`[LibraryPage] handleDeleteDocument CALLED. DocId: "${docId}", Title: "${docTitle}"`);
+    console.log(`[LibraryPage] handleDeleteDocument CALLED for docId: "${docId}", Title: "${docTitle}"`);
 
-    if (!docId || typeof docId !== 'string' || docId.trim() === "") {
-      console.error("[LibraryPage] handleDeleteDocument: Invalid docId provided. Aborting deletion.", { docId });
-      toast({ variant: "destructive", title: "Delete Error", description: "Cannot delete: Document ID is invalid." });
-      return;
+    if (!docId) {
+        console.error("[LibraryPage] handleDeleteDocument: Invalid docId provided (empty or undefined). Aborting deletion.");
+        toast({ variant: "destructive", title: "Delete Error", description: "Cannot delete: Document ID is missing." });
+        return;
     }
 
     const titleForConfirm = docTitle || 'this document';
     if (!window.confirm(`Are you sure you want to delete "${titleForConfirm}" from your browser storage? This action cannot be undone.`)) {
-      console.log(`[LibraryPage] Deletion cancelled by user for document ID: "${docId}"`);
-      return;
+        console.log(`[LibraryPage] Deletion cancelled by user for document ID: "${docId}"`);
+        return;
     }
     
-    console.log(`[LibraryPage] User confirmed deletion for document ID: "${docId}". Proceeding with deletion.`);
+    console.log(`[LibraryPage] User confirmed deletion for document: "${docId}". Proceeding with deletion.`);
 
     try {
-      console.log(`[LibraryPage] Attempting to delete document via IndexedDBService.deleteDocumentById for docId: "${docId}"`);
-      await IndexedDBService.deleteDocumentById(docId);
-      console.log(`[LibraryPage] IndexedDBService.deleteDocumentById promise RESOLVED for docId: "${docId}".`);
-      
-      setStoredDocuments(prevDocs => {
-        const updatedDocs = prevDocs.filter(doc => doc.id !== docId);
-        console.log(`[LibraryPage] Manually filtered storedDocuments. Prev count: ${prevDocs.length}, New count: ${updatedDocs.length}. DocId for removal: "${docId}"`);
-        return updatedDocs;
-      });
-      
-      console.log(`[LibraryPage] Checking if deleted document "${docId}" was the last active one.`);
-      const lastActiveId = await IndexedDBService.getLastActiveDocId();
-      console.log(`[LibraryPage] Last active docId from DB was: "${lastActiveId}"`);
-      if (lastActiveId === docId) {
-        console.log(`[LibraryPage] Deleted document "${docId}" was the last active. Attempting to clear last active docId.`);
-        await IndexedDBService.saveLastActiveDocId(null);
-        console.log(`[LibraryPage] Last active docId cleared or attempt finished for "${docId}".`);
-      }
-      
-      toast({ title: "Document Deleted", description: `"${titleForConfirm}" removed from browser storage.` });
-      
-      console.log(`[LibraryPage] Deletion process for "${docId}" completed. Calling fetchDocuments() for re-sync.`);
-      await fetchDocuments(`Post-delete re-sync for docId "${docId}"`);
-      console.log(`[LibraryPage] fetchDocuments completed after deleting "${docId}".`);
+        console.log(`[LibraryPage] Attempting to delete docId: "${docId}" from IndexedDB.`);
+        await IndexedDBService.deleteDocumentById(docId); // Await the async database operation
+        console.log(`[LibraryPage] Successfully deleted docId: "${docId}" from IndexedDB.`);
+
+        // Update React state AFTER successful DB deletion
+        setStoredDocuments(prevDocs => {
+            const updatedDocs = prevDocs.filter(d => d.id !== docId);
+            console.log(`[LibraryPage] Client-side state updated. Docs before: ${prevDocs.length}, Docs after: ${updatedDocs.length}. Deleted ID: ${docId}`);
+            return updatedDocs;
+        });
+        
+        const lastActiveId = await IndexedDBService.getLastActiveDocId();
+        console.log(`[LibraryPage] Last active docId from DB was: "${lastActiveId}" (checking against deleted docId: "${docId}")`);
+        if (lastActiveId === docId) {
+            console.log(`[LibraryPage] Deleted document "${docId}" was the last active. Attempting to clear last active docId.`);
+            await IndexedDBService.saveLastActiveDocId(null);
+            console.log(`[LibraryPage] Last active docId cleared or attempt finished for "${docId}".`);
+        }
+        
+        toast({ title: "Document Deleted", description: `"${titleForConfirm}" removed from browser storage.` });
+        
+        // Optionally, re-fetch for absolute consistency, though the immediate state update should handle the UI.
+        // await fetchDocuments(`Post-delete re-sync for docId "${docId}"`);
+        // console.log(`[LibraryPage] fetchDocuments completed after deleting "${docId}".`);
 
     } catch (error:any) {
-      console.error(`[LibraryPage] Error during deletion process for document "${docId}":`, error);
-      toast({ variant: "destructive", title: "Delete Error", description: `Failed to delete "${titleForConfirm}". ${error.message}. Please refresh.` });
-      console.log(`[LibraryPage] Calling fetchDocuments() after failed delete of "${docId}" to attempt error recovery UI sync.`);
-      await fetchDocuments(`Error recovery fetch after failed delete of "${docId}"`);
+        console.error(`[LibraryPage] Error during deletion process for document "${docId}":`, error);
+        toast({ variant: "destructive", title: "Delete Error", description: `Failed to delete "${titleForConfirm}". ${error.message}. Please refresh.` });
+        // If deletion fails, it's good practice to re-fetch to ensure UI matches the actual DB state.
+        console.log(`[LibraryPage] Calling fetchDocuments() after failed delete of "${docId}" to attempt error recovery UI sync.`);
+        await fetchDocuments(`Error recovery fetch after failed delete of "${docId}"`);
     }
   }, [fetchDocuments, toast]);
 
@@ -230,8 +231,8 @@ export default function LibraryPage() {
       default: return <FileText className="h-8 w-8 text-primary flex-shrink-0" />; 
     }
   };
-
-  console.log(`[LibraryPage] RENDERING LIST. isLoading: ${isLoading}, isUploading: ${isUploading}, isSavingToDevice: ${isSavingToDevice}`);
+  
+  console.log(`[LibraryPage] RENDERING. isLoading: ${isLoading}, isUploading: ${isUploading}, isSavingToDevice: ${isSavingToDevice}, storedDocuments count: ${storedDocuments.length}`);
 
   return (
     <div className="container mx-auto p-4 md:p-6 space-y-6">
@@ -279,10 +280,9 @@ export default function LibraryPage() {
               {storedDocuments.map(doc => {
                 const currentDocId = doc.id; 
                 const currentDocTitle = doc.title;
+                const isDeleteButtonDisabled = isLoading || isUploading;
                 
-                // FORCED: Forcing button to be enabled for this test
-                const isButtonDisabled = false; 
-                console.log(`[LibraryPage] Rendering item: "${currentDocTitle}" (ID: ${currentDocId}). CALCULATED isButtonDisabled: ${isLoading || isUploading}. FORCED isButtonDisabled: ${isButtonDisabled}`);
+                console.log(`[LibraryPage] Rendering item: "${currentDocTitle}" (ID: ${currentDocId}). Delete button isDeleteButtonDisabled: ${isDeleteButtonDisabled}`);
                 
                 return (
                   <li key={currentDocId} className="p-3 border rounded-md flex flex-col sm:flex-row justify-between items-start gap-3 bg-card hover:shadow-md transition-shadow">
@@ -316,13 +316,10 @@ export default function LibraryPage() {
                         size="sm"
                         variant="ghost"
                         onClick={() => {
-                          // SIMPLIFIED onClick FOR TESTING
-                          console.log(`[LibraryPage] DELETE BUTTON CLICKED (Simplified - Hardcoded Disabled Test) for docId: ${currentDocId}, title: "${currentDocTitle}"`);
-                          window.alert(`DEBUG: Clicked delete for "${currentDocTitle}" (ID: ${currentDocId}). This is a test alert. Actual deletion is bypassed.`);
-                          // Temporarily bypassing the actual delete call for this test:
-                          // handleDeleteDocument(currentDocId, currentDocTitle); 
+                          console.log(`[LibraryPage] Delete button onClick fired for docId: ${currentDocId}, title: "${currentDocTitle}"`);
+                          handleDeleteDocument(currentDocId, currentDocTitle);
                         }}
-                        disabled={isButtonDisabled} // This will be 'false' due to hardcoding above
+                        disabled={isDeleteButtonDisabled}
                         aria-label="Delete Document">
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
@@ -356,4 +353,6 @@ export default function LibraryPage() {
     </div>
   );
 }
+    
+
     

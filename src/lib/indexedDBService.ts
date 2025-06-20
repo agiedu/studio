@@ -131,29 +131,29 @@ export async function deleteDocumentById(id: string): Promise<void> {
   }
   console.log(`[IndexedDBService] deleteDocumentById: Starting transaction to delete docId: "${id}"`);
   const db = await getDB();
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, reject) => { // This promise is key
     const transaction = db.transaction(DOC_STORE_NAME, 'readwrite');
     const store = transaction.objectStore(DOC_STORE_NAME);
     
     console.log(`[IndexedDBService] deleteDocumentById: Transaction created for docId: "${id}". Attempting store.delete().`);
-    const request = store.delete(id);
+    const request = store.delete(id); // This is an IDBRequest
 
-    request.onsuccess = () => {
+    request.onsuccess = () => { // Request queued successfully
         console.log(`[IndexedDBService] deleteDocumentById: IDBRequest for delete() was successful for docId: "${id}". Waiting for transaction to complete.`);
     };
-    request.onerror = (event) => {
+    request.onerror = (event) => { // Request failed to queue
         const error = (event.target as IDBRequest).error;
         console.error(`[IndexedDBService] deleteDocumentById: IDBRequest for delete() FAILED for docId "${id}":`, error);
-        // Transaction.onerror will handle rejection
+        // Don't reject here; let transaction.onerror handle it, which correctly rejects the main promise.
     };
 
-    transaction.oncomplete = () => {
+    transaction.oncomplete = () => { // Transaction completed successfully
       console.log(`[IndexedDBService] deleteDocumentById: Transaction COMPLETED successfully for deleting docId: "${id}"`);
-      resolve();
+      resolve(); // Resolve the main promise HERE
     };
-    transaction.onerror = () => {
+    transaction.onerror = () => { // Transaction failed
       console.error(`[IndexedDBService] deleteDocumentById: Transaction FAILED for deleting docId "${id}":`, transaction.error);
-      reject(new Error(`Failed to delete document (ID: "${id}", transaction error): ${transaction.error?.message}`));
+      reject(new Error(`Failed to delete document (ID: "${id}", transaction error): ${transaction.error?.message}`)); // Reject the main promise HERE
     };
   });
 }
@@ -255,4 +255,6 @@ export function arrayBufferToBase64DataURL(buffer: ArrayBuffer, type: string): P
     reader.readAsDataURL(blob);
   });
 }
+    
+
     
