@@ -75,14 +75,14 @@ export default function LibraryPage() {
         newDocument = { ...commonDocProps, type: 'image', extractedText: undefined };
       } else if (file.type === 'application/pdf') {
          try {
-            const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) }); // Use slice(0) to ensure it's a new buffer if pdf.js modifies it
+            const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) });
             const pdfInstance = await pdfLoadingTask.promise;
             console.log(`[LibraryPage] PDF "${file.name}" processed by pdf.js, numPages: ${pdfInstance.numPages}.`);
             newDocument = { ...commonDocProps, type: 'pdf', numPages: pdfInstance.numPages, ocrTextPerPage: {} };
           } catch (pdfError: any) {
             console.warn(`[LibraryPage] Could not get PDF page count for ${file.name}:`, pdfError);
             toast({ variant: "default", title: "PDF Info", description: `Uploaded PDF "${file.name}". Page count issue: ${pdfError.message}. Document still saved.` });
-            newDocument = { ...commonDocProps, type: 'pdf', numPages: undefined, ocrTextPerPage: {} }; // Save even if page count fails
+            newDocument = { ...commonDocProps, type: 'pdf', numPages: undefined, ocrTextPerPage: {} };
           }
       } else if (file.type === 'application/epub+zip' || file.name.toLowerCase().endsWith('.epub')) {
         newDocument = { ...commonDocProps, type: 'epub', originalType: 'application/epub+zip' };
@@ -94,7 +94,7 @@ export default function LibraryPage() {
         toast({ variant: "destructive", title: "Unsupported File Type", description: `Type "${file.type || 'unknown'}" (${file.name}) not supported. Please upload Image, PDF, EPUB, MOBI, or TXT.` });
         console.warn(`[LibraryPage] Unsupported file type: "${file.type}" for file "${file.name}"`);
         setIsUploading(false);
-        if (fileInputRef.current) fileInputRef.current.value = ""; // Reset file input
+        if (fileInputRef.current) fileInputRef.current.value = "";
         return;
       }
 
@@ -111,12 +111,11 @@ export default function LibraryPage() {
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) {
-        fileInputRef.current.value = ""; // Ensure file input is cleared
+        fileInputRef.current.value = "";
       }
       console.log(`[LibraryPage] File upload process finished for: "${file.name}". isUploading is now: false`);
     }
   }, [fetchDocuments, toast]);
-
 
   const handleDeleteDocument = useCallback(async (docId: string, docTitle?: string) => {
     console.log(`[LibraryPage] handleDeleteDocument CALLED. DocId: "${docId}", Title: "${docTitle}"`);
@@ -164,7 +163,6 @@ export default function LibraryPage() {
     } catch (error:any) {
       console.error(`[LibraryPage] Error during deletion process for document "${docId}":`, error);
       toast({ variant: "destructive", title: "Delete Error", description: `Failed to delete "${titleForConfirm}". ${error.message}. Please refresh.` });
-      // Optionally, re-fetch documents even on error to ensure UI consistency
       await fetchDocuments(`Error recovery fetch after failed delete of "${docId}"`);
     }
   }, [fetchDocuments, toast]);
@@ -233,6 +231,8 @@ export default function LibraryPage() {
     }
   };
 
+  console.log(`[LibraryPage] RENDERING LIST. isLoading: ${isLoading}, isUploading: ${isUploading}, isSavingToDevice: ${isSavingToDevice}`);
+
   return (
     <div className="container mx-auto p-4 md:p-6 space-y-6">
       <Card>
@@ -279,9 +279,10 @@ export default function LibraryPage() {
               {storedDocuments.map(doc => {
                 const currentDocId = doc.id; 
                 const currentDocTitle = doc.title;
-                // Explicitly log the states affecting the disabled prop for THIS button
-                const buttonIsCurrentlyDisabled = isUploading || isLoading;
-                console.log(`[LibraryPage] Rendering item: "${currentDocTitle}" (ID: ${currentDocId}). isLoading: ${isLoading}, isUploading: ${isUploading}. Delete button disabled: ${buttonIsCurrentlyDisabled}`);
+                
+                // For this test, we hardcode disabled to false
+                const isButtonDisabled = false; 
+                console.log(`[LibraryPage] Rendering item: "${currentDocTitle}" (ID: ${currentDocId}). CALCULATED isButtonDisabled: ${isLoading || isUploading}. FORCED isButtonDisabled: ${isButtonDisabled}`);
                 
                 return (
                   <li key={currentDocId} className="p-3 border rounded-md flex flex-col sm:flex-row justify-between items-start gap-3 bg-card hover:shadow-md transition-shadow">
@@ -315,12 +316,14 @@ export default function LibraryPage() {
                         size="sm"
                         variant="ghost"
                         onClick={() => {
-                          // SIMPLIFIED ONCLICK FOR DEBUGGING
-                          console.log(`[LibraryPage] DELETE BUTTON CLICKED (Simplified Handler) for docId: ${currentDocId}, title: "${currentDocTitle}"`);
-                          window.alert(`DEBUG: Clicked delete for "${currentDocTitle}" (ID: ${currentDocId}). Check console for more info. Full delete logic is currently bypassed.`);
-                          // handleDeleteDocument(currentDocId, currentDocTitle); // Full logic temporarily bypassed
+                          console.log(`[LibraryPage] DELETE BUTTON CLICKED (Simplified - Hardcoded Disabled Test) for docId: ${currentDocId}, title: "${currentDocTitle}"`);
+                          window.alert(`DEBUG: Clicked delete for "${currentDocTitle}" (ID: ${currentDocId}). Check console. Full delete logic is still bypassed for this test.`);
+                          // For this specific test, we are NOT calling handleDeleteDocument.
+                          // If the alert shows, then the button is clickable.
+                          // Then, in the next step, we will re-integrate:
+                          // handleDeleteDocument(currentDocId, currentDocTitle); 
                         }}
-                        disabled={buttonIsCurrentlyDisabled} // Using the calculated disabled state
+                        disabled={isButtonDisabled} // Using the FORCED false value for testing
                         aria-label="Delete Document">
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
