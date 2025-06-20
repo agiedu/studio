@@ -71,13 +71,13 @@ export default function LibraryPage() {
         newDocument = { ...commonDocProps, type: 'image', extractedText: undefined };
       } else if (file.type === 'application/pdf') {
          try {
-            const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) });
+            const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) }); // Use a copy of the buffer
             const pdfInstance = await pdfLoadingTask.promise;
             newDocument = { ...commonDocProps, type: 'pdf', numPages: pdfInstance.numPages, ocrTextPerPage: {} };
           } catch (pdfError: any) {
             console.warn(`[LibraryPage] Could not get PDF page count for ${file.name}:`, pdfError);
             toast({ variant: "default", title: "PDF Info", description: `Uploaded PDF "${file.name}". Page count determination issue: ${pdfError.message}.` });
-            newDocument = { ...commonDocProps, type: 'pdf', numPages: undefined, ocrTextPerPage: {} };
+            newDocument = { ...commonDocProps, type: 'pdf', numPages: undefined, ocrTextPerPage: {} }; // Still save if page count fails
           }
       } else if (file.type === 'application/epub+zip' || file.name.toLowerCase().endsWith('.epub')) {
         newDocument = { ...commonDocProps, type: 'epub', originalType: 'application/epub+zip' };
@@ -127,8 +127,15 @@ export default function LibraryPage() {
     try {
       console.log(`[LibraryPage] Attempting to delete document via IndexedDBService.deleteDocumentById: ${docId}`);
       await IndexedDBService.deleteDocumentById(docId);
-      toast({ title: "Document Deleted", description: `"${titleForConfirm}" removed from browser storage.` });
       console.log(`[LibraryPage] Successfully deleted docId: ${docId} from IndexedDB (according to service promise).`);
+      toast({ title: "Document Deleted", description: `"${titleForConfirm}" removed from browser storage.` });
+      
+      // Manually update local state for immediate UI feedback
+      setStoredDocuments(prevDocs => {
+        const updatedDocs = prevDocs.filter(doc => doc.id !== docId);
+        console.log(`[LibraryPage] Manually filtered storedDocuments. New count: ${updatedDocs.length}`);
+        return updatedDocs;
+      });
       
       const lastActiveId = await IndexedDBService.getLastActiveDocId();
       console.log(`[LibraryPage] Last active docId was: ${lastActiveId}`);
@@ -138,12 +145,16 @@ export default function LibraryPage() {
         console.log(`[LibraryPage] Last active docId cleared.`);
       }
       
-      console.log(`[LibraryPage] Calling fetchDocuments() after deleting ${docId}.`);
-      fetchDocuments(); // Refresh the list
-      console.log(`[LibraryPage] fetchDocuments() called after deleting ${docId}. UI should update.`);
+      // Optionally, still call fetchDocuments to ensure full consistency,
+      // though manual filter should handle immediate UI.
+      // console.log(`[LibraryPage] Calling fetchDocuments() to ensure consistency after deleting ${docId}.`);
+      // fetchDocuments(); 
+      console.log(`[LibraryPage] Document deletion process for ${docId} completed.`);
     } catch (error:any) {
       toast({ variant: "destructive", title: "Delete Error", description: `Failed to delete document "${titleForConfirm}". ${error.message}` });
       console.error(`[LibraryPage] Error during deletion process for document "${docId}":`, error);
+      // If DB delete failed, we might need to re-fetch to correct the optimistic UI update.
+      fetchDocuments();
     }
   }, [fetchDocuments, toast]);
 
