@@ -35,11 +35,11 @@ function getDB(): Promise<IDBDatabase> {
         console.log('[IndexedDBService] DB upgrade needed.');
         const db = (event.target as IDBOpenDBRequest).result;
         if (!db.objectStoreNames.contains(DOC_STORE_NAME)) {
-          console.log(`[IndexedDBService] Creating ${DOC_STORE_NAME} store.`);
+          console.log(`[IndexedDBService] Creating ${DOC_STORE_NAME} store with keyPath 'id'.`);
           db.createObjectStore(DOC_STORE_NAME, { keyPath: 'id' });
         }
         if (event.oldVersion < 2 && !db.objectStoreNames.contains(LAST_ACTIVE_DOC_STORE_NAME)) {
-          console.log(`[IndexedDBService] Creating ${LAST_ACTIVE_DOC_STORE_NAME} store (keyPath: 'key').`);
+          console.log(`[IndexedDBService] Creating ${LAST_ACTIVE_DOC_STORE_NAME} store with keyPath 'key'.`);
           db.createObjectStore(LAST_ACTIVE_DOC_STORE_NAME, { keyPath: 'key' });
         }
          console.log('[IndexedDBService] DB upgrade complete.');

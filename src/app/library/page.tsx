@@ -75,7 +75,7 @@ export default function LibraryPage() {
         newDocument = { ...commonDocProps, type: 'image', extractedText: undefined };
       } else if (file.type === 'application/pdf') {
          try {
-            const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) });
+            const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) }); // Use slice(0) to create a new ArrayBuffer instance if needed by pdf.js
             const pdfInstance = await pdfLoadingTask.promise;
             console.log(`[LibraryPage] PDF "${file.name}" processed by pdf.js, numPages: ${pdfInstance.numPages}.`);
             newDocument = { ...commonDocProps, type: 'pdf', numPages: pdfInstance.numPages, ocrTextPerPage: {} };
@@ -128,11 +128,11 @@ export default function LibraryPage() {
 
     const titleForConfirm = docTitle || 'this document';
     if (!window.confirm(`Are you sure you want to delete "${titleForConfirm}" from your browser storage? This action cannot be undone.`)) {
-      console.log(`[LibraryPage] Deletion cancelled by user for document: "${docId}"`);
+      console.log(`[LibraryPage] Deletion cancelled by user for document ID: "${docId}"`);
       return;
     }
     
-    console.log(`[LibraryPage] User confirmed deletion for document: "${docId}". Proceeding with deletion.`);
+    console.log(`[LibraryPage] User confirmed deletion for document ID: "${docId}". Proceeding with deletion.`);
 
     try {
       console.log(`[LibraryPage] Attempting to delete document via IndexedDBService.deleteDocumentById for docId: "${docId}"`);
@@ -149,7 +149,7 @@ export default function LibraryPage() {
       const lastActiveId = await IndexedDBService.getLastActiveDocId();
       console.log(`[LibraryPage] Last active docId from DB was: "${lastActiveId}"`);
       if (lastActiveId === docId) {
-        console.log(`[LibraryPage] Deleted document "${docId}" was the last active. Clearing last active docId.`);
+        console.log(`[LibraryPage] Deleted document "${docId}" was the last active. Attempting to clear last active docId.`);
         await IndexedDBService.saveLastActiveDocId(null);
         console.log(`[LibraryPage] Last active docId cleared or attempt finished for "${docId}".`);
       }
@@ -266,7 +266,7 @@ export default function LibraryPage() {
             List of documents in this browser. Click &quot;Open in Reader&quot; to view.
           </CardDescription>
           <Button variant="outline" size="sm" onClick={() => fetchDocuments("Manual refresh of document list")} disabled={isLoading || isUploading} className="mt-2 w-fit">
-            <RefreshCw className={`mr-2 h-4 w-4 animate-spin ${isLoading && !isUploading ? 'animate-spin' : ''}`} /> Refresh List
+            <RefreshCw className={`mr-2 h-4 w-4 ${isLoading && !isUploading ? 'animate-spin' : ''}`} /> Refresh List
           </Button>
         </CardHeader>
         <CardContent>
