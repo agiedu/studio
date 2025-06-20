@@ -31,14 +31,14 @@ export default function LibraryPage() {
     setIsLoading(true);
     try {
       const docs = await IndexedDBService.getAllDocuments();
-      console.log(`[LibraryPage] Fetched ${docs.length} documents.`);
+      console.log(`[LibraryPage] Fetched ${docs.length} documents from IndexedDB.`);
       setStoredDocuments(docs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error Loading Documents", description: `Could not load documents from browser storage. ${error.message}` });
       console.error("[LibraryPage] Error fetching documents from IndexedDB:", error);
     } finally {
       setIsLoading(false);
-      console.log("[LibraryPage] Finished fetching documents.");
+      console.log("[LibraryPage] Finished fetching documents attempt.");
     }
   }, [toast]);
 
@@ -128,7 +128,7 @@ export default function LibraryPage() {
     try {
       console.log(`[LibraryPage] Attempting to delete document via IndexedDBService.deleteDocumentById for docId: ${docId}`);
       await IndexedDBService.deleteDocumentById(docId);
-      console.log(`[LibraryPage] IndexedDBService.deleteDocumentById promise resolved for docId: ${docId}.`);
+      console.log(`[LibraryPage] IndexedDBService.deleteDocumentById promise resolved for docId: ${docId}. Document should be deleted from DB.`);
       
       setStoredDocuments(prevDocs => {
         const updatedDocs = prevDocs.filter(doc => doc.id !== docId);
@@ -145,8 +145,8 @@ export default function LibraryPage() {
       }
       
       toast({ title: "Document Deleted", description: `"${titleForConfirm}" removed from browser storage.` });
-      console.log(`[LibraryPage] Document deletion process for ${docId} completed successfully in try block. Now calling fetchDocuments for consistency.`);
-      fetchDocuments(); // Re-fetch for full consistency after all operations.
+      console.log(`[LibraryPage] Document deletion process for ${docId} completed successfully in try block. Now calling fetchDocuments for consistency check.`);
+      fetchDocuments(); // Re-fetch for full consistency after all operations and UI updates.
 
     } catch (error:any) {
       console.error(`[LibraryPage] Error during deletion process for document "${docId}":`, error);
