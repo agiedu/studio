@@ -75,14 +75,14 @@ export default function LibraryPage() {
         newDocument = { ...commonDocProps, type: 'image', extractedText: undefined };
       } else if (file.type === 'application/pdf') {
          try {
-            const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) });
+            const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) }); // Use slice(0) to create a copy for pdf.js
             const pdfInstance = await pdfLoadingTask.promise;
             console.log(`[LibraryPage] PDF "${file.name}" processed by pdf.js, numPages: ${pdfInstance.numPages}.`);
             newDocument = { ...commonDocProps, type: 'pdf', numPages: pdfInstance.numPages, ocrTextPerPage: {} };
           } catch (pdfError: any) {
             console.warn(`[LibraryPage] Could not get PDF page count for ${file.name}:`, pdfError);
             toast({ variant: "default", title: "PDF Info", description: `Uploaded PDF "${file.name}". Page count issue: ${pdfError.message}. Document still saved.` });
-            newDocument = { ...commonDocProps, type: 'pdf', numPages: undefined, ocrTextPerPage: {} };
+            newDocument = { ...commonDocProps, type: 'pdf', numPages: undefined, ocrTextPerPage: {} }; // Save even if page count fails
           }
       } else if (file.type === 'application/epub+zip' || file.name.toLowerCase().endsWith('.epub')) {
         newDocument = { ...commonDocProps, type: 'epub', originalType: 'application/epub+zip' };
@@ -111,63 +111,66 @@ export default function LibraryPage() {
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) {
-        fileInputRef.current.value = "";
+        fileInputRef.current.value = ""; // Reset file input
       }
       console.log(`[LibraryPage] File upload process finished for: "${file.name}". isUploading is now: false`);
     }
   }, [fetchDocuments, toast]);
 
+
   const handleDeleteDocument = useCallback(async (docId: string, docTitle?: string) => {
-    console.log(`[LibraryPage] handleDeleteDocument CALLED for docId: "${docId}", Title: "${docTitle}"`);
+    console.log(`[LibraryPage] handleDeleteDocument CALLED. DocId: "${docId}", Title: "${docTitle}"`);
 
     if (!docId) {
-        console.error("[LibraryPage] handleDeleteDocument: Invalid docId provided (empty or undefined). Aborting deletion.");
-        toast({ variant: "destructive", title: "Delete Error", description: "Cannot delete: Document ID is missing." });
-        return;
+      console.error("[LibraryPage] handleDeleteDocument: Invalid docId (null or empty). Aborting deletion.");
+      toast({ variant: "destructive", title: "Delete Error", description: "Cannot delete: Document ID is missing." });
+      return;
     }
 
-    const titleForConfirm = docTitle || 'this document';
+    const titleForConfirm = docTitle || `document with ID ${docId}`;
     if (!window.confirm(`Are you sure you want to delete "${titleForConfirm}" from your browser storage? This action cannot be undone.`)) {
-        console.log(`[LibraryPage] Deletion cancelled by user for document ID: "${docId}"`);
-        return;
+      console.log(`[LibraryPage] handleDeleteDocument: User CANCELLED deletion for docId: "${docId}"`);
+      return;
     }
     
-    console.log(`[LibraryPage] User confirmed deletion for document: "${docId}". Proceeding with deletion.`);
+    console.log(`[LibraryPage] handleDeleteDocument: User CONFIRMED deletion for docId: "${docId}".`);
 
     try {
-        console.log(`[LibraryPage] Attempting to delete docId: "${docId}" from IndexedDB.`);
-        await IndexedDBService.deleteDocumentById(docId); // Await the async database operation
-        console.log(`[LibraryPage] Successfully deleted docId: "${docId}" from IndexedDB.`);
+      console.log(`[LibraryPage] handleDeleteDocument: Attempting IndexedDBService.deleteDocumentById("${docId}")...`);
+      await IndexedDBService.deleteDocumentById(docId);
+      console.log(`[LibraryPage] handleDeleteDocument: SUCCESS - IndexedDBService.deleteDocumentById("${docId}") resolved.`);
 
-        // Update React state AFTER successful DB deletion
-        setStoredDocuments(prevDocs => {
-            const updatedDocs = prevDocs.filter(d => d.id !== docId);
-            console.log(`[LibraryPage] Client-side state updated. Docs before: ${prevDocs.length}, Docs after: ${updatedDocs.length}. Deleted ID: ${docId}`);
-            return updatedDocs;
-        });
-        
-        const lastActiveId = await IndexedDBService.getLastActiveDocId();
-        console.log(`[LibraryPage] Last active docId from DB was: "${lastActiveId}" (checking against deleted docId: "${docId}")`);
-        if (lastActiveId === docId) {
-            console.log(`[LibraryPage] Deleted document "${docId}" was the last active. Attempting to clear last active docId.`);
-            await IndexedDBService.saveLastActiveDocId(null);
-            console.log(`[LibraryPage] Last active docId cleared or attempt finished for "${docId}".`);
-        }
-        
-        toast({ title: "Document Deleted", description: `"${titleForConfirm}" removed from browser storage.` });
-        
-        // Optionally, re-fetch for absolute consistency, though the immediate state update should handle the UI.
-        // await fetchDocuments(`Post-delete re-sync for docId "${docId}"`);
-        // console.log(`[LibraryPage] fetchDocuments completed after deleting "${docId}".`);
+      setStoredDocuments(prevDocs => {
+        const updatedDocs = prevDocs.filter(d => d.id !== docId);
+        console.log(`[LibraryPage] handleDeleteDocument: React state 'storedDocuments' updated. Prev count: ${prevDocs.length}, New count: ${updatedDocs.length}. Removed ID: ${docId}`);
+        return updatedDocs;
+      });
+      
+      const lastActiveId = await IndexedDBService.getLastActiveDocId();
+      console.log(`[LibraryPage] handleDeleteDocument: Last active docId from DB was: "${lastActiveId}" (checking against deleted docId: "${docId}")`);
+      if (lastActiveId === docId) {
+        console.log(`[LibraryPage] handleDeleteDocument: Deleted document "${docId}" was the last active. Attempting to clear last active docId.`);
+        await IndexedDBService.saveLastActiveDocId(null);
+        console.log(`[LibraryPage] handleDeleteDocument: Last active docId cleared or attempt finished for "${docId}".`);
+      }
+      
+      toast({ title: "Document Deleted", description: `"${titleForConfirm}" removed from browser storage.` });
+      console.log(`[LibraryPage] handleDeleteDocument: Successfully processed deletion for docId: "${docId}".`);
+
+      // Optional: Re-fetch for absolute consistency, though the immediate state update should handle the UI.
+      // console.log(`[LibraryPage] handleDeleteDocument: Calling fetchDocuments for post-delete re-sync for docId "${docId}".`);
+      // await fetchDocuments(`Post-delete re-sync for docId "${docId}"`);
+      // console.log(`[LibraryPage] handleDeleteDocument: fetchDocuments completed after deleting "${docId}".`);
 
     } catch (error:any) {
-        console.error(`[LibraryPage] Error during deletion process for document "${docId}":`, error);
-        toast({ variant: "destructive", title: "Delete Error", description: `Failed to delete "${titleForConfirm}". ${error.message}. Please refresh.` });
-        // If deletion fails, it's good practice to re-fetch to ensure UI matches the actual DB state.
-        console.log(`[LibraryPage] Calling fetchDocuments() after failed delete of "${docId}" to attempt error recovery UI sync.`);
-        await fetchDocuments(`Error recovery fetch after failed delete of "${docId}"`);
+      console.error(`[LibraryPage] handleDeleteDocument: ERROR during deletion process for document "${docId}":`, error);
+      toast({ variant: "destructive", title: "Delete Failed", description: `Failed to delete "${titleForConfirm}". ${error.message || 'Unknown error'}. Please refresh.` });
+      // If deletion fails, it's good practice to re-fetch to ensure UI matches the actual DB state.
+      console.log(`[LibraryPage] handleDeleteDocument: Calling fetchDocuments() after failed delete of "${docId}" to attempt error recovery UI sync.`);
+      await fetchDocuments(`Error recovery fetch after failed delete of "${docId}"`);
     }
   }, [fetchDocuments, toast]);
+
 
   const handleSaveToDevice = useCallback(async (doc: StoredMangaDocument) => {
     if (!doc.fileData || !doc.title || !doc.originalType) {
@@ -280,6 +283,7 @@ export default function LibraryPage() {
               {storedDocuments.map(doc => {
                 const currentDocId = doc.id; 
                 const currentDocTitle = doc.title;
+                // This isDeleteButtonDisabled logic will be used for the delete button
                 const isDeleteButtonDisabled = isLoading || isUploading;
                 
                 console.log(`[LibraryPage] Rendering item: "${currentDocTitle}" (ID: ${currentDocId}). Delete button isDeleteButtonDisabled: ${isDeleteButtonDisabled}`);
