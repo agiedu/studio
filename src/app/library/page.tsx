@@ -110,10 +110,10 @@ export default function LibraryPage() {
 
   const handleDeleteDocument = useCallback(async (docId: string, docTitle?: string) => {
     const titleForConfirm = docTitle || 'this document';
-    console.log(`[LibraryPage] handleDeleteDocument called for docId: ${docId}, title: ${titleForConfirm}`);
+    console.log(`[LibraryPage] handleDeleteDocument called for docId: ${docId}, title: "${titleForConfirm}"`);
 
     if (!docId || typeof docId !== 'string' || docId.trim() === "") {
-      console.error("[LibraryPage] handleDeleteDocument called with invalid docId. Aborting.", docId);
+      console.error("[LibraryPage] handleDeleteDocument: Invalid docId provided. Aborting.", docId);
       toast({ variant: "destructive", title: "Delete Error", description: "Cannot delete document: Document ID is invalid." });
       return;
     }
@@ -122,39 +122,36 @@ export default function LibraryPage() {
       console.log(`[LibraryPage] Deletion cancelled by user for document: ${docId}`);
       return;
     }
+    
     console.log(`[LibraryPage] User confirmed deletion for document: ${docId}`);
 
     try {
-      console.log(`[LibraryPage] Attempting to delete document via IndexedDBService.deleteDocumentById: ${docId}`);
+      console.log(`[LibraryPage] Attempting to delete document via IndexedDBService.deleteDocumentById for docId: ${docId}`);
       await IndexedDBService.deleteDocumentById(docId);
-      console.log(`[LibraryPage] Successfully deleted docId: ${docId} from IndexedDB.`);
+      console.log(`[LibraryPage] IndexedDBService.deleteDocumentById promise resolved for docId: ${docId}.`);
       
-      // Manual UI update for immediate feedback
       setStoredDocuments(prevDocs => {
         const updatedDocs = prevDocs.filter(doc => doc.id !== docId);
-        console.log(`[LibraryPage] Manually filtered storedDocuments. Prev count: ${prevDocs.length}, New count: ${updatedDocs.length}`);
+        console.log(`[LibraryPage] Manually filtered storedDocuments. Prev count: ${prevDocs.length}, New count: ${updatedDocs.length}. DocId for removal: ${docId}`);
         return updatedDocs;
       });
-      
-      toast({ title: "Document Deleted", description: `"${titleForConfirm}" removed from browser storage.` });
       
       const lastActiveId = await IndexedDBService.getLastActiveDocId();
       console.log(`[LibraryPage] Last active docId was: ${lastActiveId}`);
       if (lastActiveId === docId) {
         console.log(`[LibraryPage] Clearing last active docId because it matches deleted docId: ${docId}`);
         await IndexedDBService.saveLastActiveDocId(null);
-        console.log(`[LibraryPage] Last active docId cleared.`);
+        console.log(`[LibraryPage] Last active docId cleared or attempt finished.`);
       }
       
-      console.log(`[LibraryPage] Document deletion process for ${docId} completed successfully in try block. Re-fetching documents for consistency.`);
-      // Re-fetch for full consistency, although manual filter updated UI.
-      fetchDocuments(); 
+      toast({ title: "Document Deleted", description: `"${titleForConfirm}" removed from browser storage.` });
+      console.log(`[LibraryPage] Document deletion process for ${docId} completed successfully in try block. Now calling fetchDocuments for consistency.`);
+      fetchDocuments(); // Re-fetch for full consistency after all operations.
 
     } catch (error:any) {
       console.error(`[LibraryPage] Error during deletion process for document "${docId}":`, error);
       toast({ variant: "destructive", title: "Delete Error", description: `Failed to delete document "${titleForConfirm}". ${error.message}. Please refresh the page.` });
-      // If deletion fails, re-fetch to ensure UI consistency with the DB state.
-      fetchDocuments();
+      fetchDocuments(); // Fetch documents even on error to try and resync UI with DB state
     }
   }, [fetchDocuments, toast]);
 
@@ -327,6 +324,4 @@ export default function LibraryPage() {
     </div>
   );
 }
-    
-
     
