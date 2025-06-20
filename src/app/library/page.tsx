@@ -27,15 +27,18 @@ export default function LibraryPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const fetchDocuments = useCallback(async () => {
+    console.log("[LibraryPage] Fetching documents...");
     setIsLoading(true);
     try {
       const docs = await IndexedDBService.getAllDocuments();
+      console.log(`[LibraryPage] Fetched ${docs.length} documents.`);
       setStoredDocuments(docs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error Loading Documents", description: `Could not load documents from browser storage. ${error.message}` });
       console.error("[LibraryPage] Error fetching documents from IndexedDB:", error);
     } finally {
       setIsLoading(false);
+      console.log("[LibraryPage] Finished fetching documents.");
     }
   }, [toast]);
 
@@ -108,22 +111,28 @@ export default function LibraryPage() {
   const handleDeleteDocument = useCallback(async (docId: string, docTitle?: string) => {
     const titleForConfirm = docTitle || 'this document';
     if (!window.confirm(`Are you sure you want to delete "${titleForConfirm}" from your browser storage? This action cannot be undone.`)) {
+      console.log(`[LibraryPage] Deletion cancelled for document: ${docId}`);
       return;
     }
+    console.log(`[LibraryPage] Attempting to delete document: ${docId}, Title: ${docTitle}`);
     try {
       await IndexedDBService.deleteDocumentById(docId);
       toast({ title: "Document Deleted", description: `"${titleForConfirm}" removed from browser storage.` });
+      console.log(`[LibraryPage] Successfully deleted docId: ${docId} from IndexedDB.`);
       
-      // Check if the deleted document was the last active one
       const lastActiveId = await IndexedDBService.getLastActiveDocId();
+      console.log(`[LibraryPage] Last active docId was: ${lastActiveId}`);
       if (lastActiveId === docId) {
+        console.log(`[LibraryPage] Clearing last active docId because it matches deleted docId: ${docId}`);
         await IndexedDBService.saveLastActiveDocId(null);
       }
       
-      fetchDocuments(); // Refresh the list after deletion and potential last active ID update
+      console.log(`[LibraryPage] Calling fetchDocuments() after deleting ${docId}.`);
+      fetchDocuments(); // Refresh the list
+      console.log(`[LibraryPage] fetchDocuments() called after deleting ${docId}.`);
     } catch (error:any) {
       toast({ variant: "destructive", title: "Delete Error", description: `Failed to delete document "${titleForConfirm}". ${error.message}` });
-      console.error(`[LibraryPage] Error deleting document "${docId}" from IndexedDB:`, error);
+      console.error(`[LibraryPage] Error during deletion process for document "${docId}":`, error);
     }
   }, [fetchDocuments, toast]);
 
@@ -144,7 +153,7 @@ export default function LibraryPage() {
           suggestedName: suggestedName,
           types: [
             {
-              description: 'Document', // Generic description
+              description: 'Document', 
               accept: { [doc.originalType]: [`.${doc.title.split('.').pop() || 'bin'}`] },
             },
           ],
@@ -179,9 +188,9 @@ export default function LibraryPage() {
   const getDocumentIcon = (docType: StoredMangaDocument['type']) => {
     switch (docType) {
       case 'image': return <ImageIcon className="h-8 w-8 text-primary flex-shrink-0" />;
-      case 'pdf': return <FileType2 className="h-8 w-8 text-primary flex-shrink-0" />; // Using FileType2 for PDF
+      case 'pdf': return <FileType2 className="h-8 w-8 text-primary flex-shrink-0" />; 
       case 'epub': return <BookOpen className="h-8 w-8 text-primary flex-shrink-0" />;
-      case 'mobi': return <Book className="h-8 w-8 text-primary flex-shrink-0" />; // Using Book for MOBI
+      case 'mobi': return <Book className="h-8 w-8 text-primary flex-shrink-0" />; 
       case 'txt': return <FileText className="h-8 w-8 text-primary flex-shrink-0" />;
       default: return <FileText className="h-8 w-8 text-primary flex-shrink-0" />;
     }
@@ -291,3 +300,4 @@ export default function LibraryPage() {
     </div>
   );
 }
+
