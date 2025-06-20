@@ -266,7 +266,7 @@ export default function LibraryPage() {
             List of documents in this browser. Click &quot;Open in Reader&quot; to view.
           </CardDescription>
           <Button variant="outline" size="sm" onClick={() => fetchDocuments("Manual refresh of document list")} disabled={isLoading || isUploading} className="mt-2 w-fit">
-            <RefreshCw className={`mr-2 h-4 w-4 ${isLoading && !isUploading ? 'animate-spin' : ''}`} /> Refresh List
+            <RefreshCw className={`mr-2 h-4 w-4 animate-spin ${isLoading && !isUploading ? 'animate-spin' : ''}`} /> Refresh List
           </Button>
         </CardHeader>
         <CardContent>
