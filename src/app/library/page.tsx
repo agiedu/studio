@@ -127,7 +127,7 @@ export default function LibraryPage() {
     try {
       console.log(`[LibraryPage] Attempting to delete document via IndexedDBService.deleteDocumentById: ${docId}`);
       await IndexedDBService.deleteDocumentById(docId);
-      console.log(`[LibraryPage] IndexedDBService.deleteDocumentById promise resolved for docId: ${docId}.`);
+      console.log(`[LibraryPage] Successfully deleted docId: ${docId} from IndexedDB.`);
       
       // Manual UI update for immediate feedback
       setStoredDocuments(prevDocs => {
@@ -143,11 +143,12 @@ export default function LibraryPage() {
       if (lastActiveId === docId) {
         console.log(`[LibraryPage] Clearing last active docId because it matches deleted docId: ${docId}`);
         await IndexedDBService.saveLastActiveDocId(null);
-        console.log(`[LibraryPage] Last active docId cleared (promise resolved).`);
+        console.log(`[LibraryPage] Last active docId cleared.`);
       }
       
       console.log(`[LibraryPage] Document deletion process for ${docId} completed successfully in try block. Re-fetching documents for consistency.`);
-      fetchDocuments(); // Re-fetch to ensure full consistency with DB, though manual filter updated UI.
+      // Re-fetch for full consistency, although manual filter updated UI.
+      fetchDocuments(); 
 
     } catch (error:any) {
       console.error(`[LibraryPage] Error during deletion process for document "${docId}":`, error);
@@ -289,7 +290,12 @@ export default function LibraryPage() {
                     >
                         {isSavingToDevice === doc.id ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />} Save to Device
                     </Button>
-                    <Button size="sm" variant="ghost" onClick={() => handleDeleteDocument(doc.id, doc.title)} disabled={isUploading || !!isSavingToDevice} aria-label="Delete Document">
+                    <Button 
+                      size="sm" 
+                      variant="ghost" 
+                      onClick={() => handleDeleteDocument(doc.id, doc.title)} 
+                      disabled={isUploading || !!isSavingToDevice} 
+                      aria-label="Delete Document">
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
                   </div>
@@ -321,4 +327,6 @@ export default function LibraryPage() {
     </div>
   );
 }
+    
+
     
