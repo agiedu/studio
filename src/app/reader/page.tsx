@@ -176,7 +176,7 @@ export default function ReaderPage() {
             epubBookRef.current = bookInstance;
             await bookInstance.ready;
 
-            const renditionInstance = bookInstance.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "auto" });
+            const renditionInstance = bookInstance.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
             epubRenditionRef.current = renditionInstance;
 
             renditionInstance.on('displayed', async (section: any) => {
