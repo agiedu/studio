@@ -20,13 +20,13 @@ function arrayBufferToBlob(buffer: ArrayBuffer, type: string): Blob {
 
 export default function LibraryPage() {
   const { toast } = useToast();
-  const [isLoading, setIsLoading] = useState(true); 
+  const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [isSavingToDevice, setIsSavingToDevice] = useState<string | null>(null);
   const [storedDocuments, setStoredDocuments] = useState<StoredMangaDocument[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  console.log(`[LibraryPage] Rendering. isLoading: ${isLoading}, isUploading: ${isUploading}, isSavingToDevice: ${isSavingToDevice}`);
+  console.log(`[LibraryPage] Component rendering. Initial states: isLoading: ${isLoading}, isUploading: ${isUploading}, isSavingToDevice: ${isSavingToDevice}`);
 
   const fetchDocuments = useCallback(async (operationLabel: string = "Fetching documents") => {
     console.log(`[LibraryPage] ${operationLabel}...`);
@@ -40,7 +40,7 @@ export default function LibraryPage() {
       console.error("[LibraryPage] Error fetching documents from IndexedDB:", error);
     } finally {
       setIsLoading(false);
-      console.log(`[LibraryPage] Finished ${operationLabel} attempt.`);
+      console.log(`[LibraryPage] Finished ${operationLabel} attempt. isLoading is now: false`);
     }
   }, [toast]);
 
@@ -75,14 +75,14 @@ export default function LibraryPage() {
         newDocument = { ...commonDocProps, type: 'image', extractedText: undefined };
       } else if (file.type === 'application/pdf') {
          try {
-            const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) });
+            const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) }); // Use slice(0) to ensure it's a new buffer if pdf.js modifies it
             const pdfInstance = await pdfLoadingTask.promise;
             console.log(`[LibraryPage] PDF "${file.name}" processed by pdf.js, numPages: ${pdfInstance.numPages}.`);
             newDocument = { ...commonDocProps, type: 'pdf', numPages: pdfInstance.numPages, ocrTextPerPage: {} };
           } catch (pdfError: any) {
             console.warn(`[LibraryPage] Could not get PDF page count for ${file.name}:`, pdfError);
             toast({ variant: "default", title: "PDF Info", description: `Uploaded PDF "${file.name}". Page count issue: ${pdfError.message}. Document still saved.` });
-            newDocument = { ...commonDocProps, type: 'pdf', numPages: undefined, ocrTextPerPage: {} };
+            newDocument = { ...commonDocProps, type: 'pdf', numPages: undefined, ocrTextPerPage: {} }; // Save even if page count fails
           }
       } else if (file.type === 'application/epub+zip' || file.name.toLowerCase().endsWith('.epub')) {
         newDocument = { ...commonDocProps, type: 'epub', originalType: 'application/epub+zip' };
@@ -94,7 +94,7 @@ export default function LibraryPage() {
         toast({ variant: "destructive", title: "Unsupported File Type", description: `Type "${file.type || 'unknown'}" (${file.name}) not supported. Please upload Image, PDF, EPUB, MOBI, or TXT.` });
         console.warn(`[LibraryPage] Unsupported file type: "${file.type}" for file "${file.name}"`);
         setIsUploading(false);
-        if (fileInputRef.current) fileInputRef.current.value = "";
+        if (fileInputRef.current) fileInputRef.current.value = ""; // Reset file input
         return;
       }
 
@@ -111,11 +111,12 @@ export default function LibraryPage() {
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) {
-        fileInputRef.current.value = ""; 
+        fileInputRef.current.value = ""; // Ensure file input is cleared
       }
-      console.log(`[LibraryPage] File upload process finished for: "${file.name}"`);
+      console.log(`[LibraryPage] File upload process finished for: "${file.name}". isUploading is now: false`);
     }
   }, [fetchDocuments, toast]);
+
 
   const handleDeleteDocument = useCallback(async (docId: string, docTitle?: string) => {
     console.log(`[LibraryPage] handleDeleteDocument CALLED. DocId: "${docId}", Title: "${docTitle}"`);
@@ -135,13 +136,13 @@ export default function LibraryPage() {
     console.log(`[LibraryPage] User confirmed deletion for document: "${docId}". Proceeding with deletion.`);
 
     try {
-      console.log(`[LibraryPage] Attempting IndexedDBService.deleteDocumentById for docId: "${docId}"`);
+      console.log(`[LibraryPage] Attempting to delete document via IndexedDBService.deleteDocumentById for docId: "${docId}"`);
       await IndexedDBService.deleteDocumentById(docId);
       console.log(`[LibraryPage] IndexedDBService.deleteDocumentById promise resolved for docId: "${docId}".`);
       
       setStoredDocuments(prevDocs => {
         const updatedDocs = prevDocs.filter(doc => doc.id !== docId);
-        console.log(`[LibraryPage] Client-side state updated. Prev doc count: ${prevDocs.length}, New doc count: ${updatedDocs.length}. Removed docId: "${docId}"`);
+        console.log(`[LibraryPage] Client-side state updated (manual filter). Prev doc count: ${prevDocs.length}, New doc count: ${updatedDocs.length}. Removed docId: "${docId}"`);
         return updatedDocs;
       });
       
@@ -155,6 +156,7 @@ export default function LibraryPage() {
       }
       
       toast({ title: "Document Deleted", description: `"${titleForConfirm}" removed from browser storage.` });
+      
       console.log(`[LibraryPage] Deletion process for "${docId}" completed. Fetching documents for re-sync.`);
       await fetchDocuments(`Post-delete re-sync for docId "${docId}"`);
       console.log(`[LibraryPage] fetchDocuments completed after deleting "${docId}".`);
@@ -162,6 +164,7 @@ export default function LibraryPage() {
     } catch (error:any) {
       console.error(`[LibraryPage] Error during deletion process for document "${docId}":`, error);
       toast({ variant: "destructive", title: "Delete Error", description: `Failed to delete "${titleForConfirm}". ${error.message}. Please refresh.` });
+      // Optionally, re-fetch documents even on error to ensure UI consistency
       await fetchDocuments(`Error recovery fetch after failed delete of "${docId}"`);
     }
   }, [fetchDocuments, toast]);
@@ -215,7 +218,7 @@ export default function LibraryPage() {
         }
     } finally {
         setIsSavingToDevice(null);
-        console.log(`[LibraryPage] handleSaveToDevice finished for docId: "${doc.id}".`);
+        console.log(`[LibraryPage] handleSaveToDevice finished for docId: "${doc.id}". isSavingToDevice is now: null`);
     }
   }, [toast]);
   
@@ -276,10 +279,10 @@ export default function LibraryPage() {
               {storedDocuments.map(doc => {
                 const currentDocId = doc.id; 
                 const currentDocTitle = doc.title;
-                const isButtonDisabled = isUploading || isLoading;
+                // Explicitly log the states affecting the disabled prop for THIS button
+                const buttonIsCurrentlyDisabled = isUploading || isLoading;
+                console.log(`[LibraryPage] Rendering item: "${currentDocTitle}" (ID: ${currentDocId}). isLoading: ${isLoading}, isUploading: ${isUploading}. Delete button disabled: ${buttonIsCurrentlyDisabled}`);
                 
-                console.log(`[LibraryPage] Rendering Delete Button for docId: ${currentDocId}, title: "${currentDocTitle}". Calculated disabled state: ${isButtonDisabled}`);
-
                 return (
                   <li key={currentDocId} className="p-3 border rounded-md flex flex-col sm:flex-row justify-between items-start gap-3 bg-card hover:shadow-md transition-shadow">
                     <div className="flex items-center gap-3 flex-grow min-w-0">
@@ -312,10 +315,12 @@ export default function LibraryPage() {
                         size="sm"
                         variant="ghost"
                         onClick={() => {
-                          console.log(`[LibraryPage] Delete button CLICKED for docId: ${currentDocId}, title: "${currentDocTitle}"`);
-                          handleDeleteDocument(currentDocId, currentDocTitle);
+                          // SIMPLIFIED ONCLICK FOR DEBUGGING
+                          console.log(`[LibraryPage] DELETE BUTTON CLICKED (Simplified Handler) for docId: ${currentDocId}, title: "${currentDocTitle}"`);
+                          window.alert(`DEBUG: Clicked delete for "${currentDocTitle}" (ID: ${currentDocId}). Check console for more info. Full delete logic is currently bypassed.`);
+                          // handleDeleteDocument(currentDocId, currentDocTitle); // Full logic temporarily bypassed
                         }}
-                        disabled={isButtonDisabled}
+                        disabled={buttonIsCurrentlyDisabled} // Using the calculated disabled state
                         aria-label="Delete Document">
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
@@ -349,6 +354,4 @@ export default function LibraryPage() {
     </div>
   );
 }
-    
-
     
