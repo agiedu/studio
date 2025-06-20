@@ -99,17 +99,15 @@ export default function ReaderPage() {
     const loadDocumentMetadata = async () => {
       console.log("[ReaderPage] loadDocumentMetadata: Initiating document metadata load.");
       
-      // --- Start Global Cleanup for any new document ---
       stopSpeech(true);
-      setActiveDoc(null); // Will trigger other cleanup effects if they depend on activeDoc being nullified
       
       // PDF specific cleanup
-      if (pdfDocProxy) pdfDocProxy.destroy(); // Destroy existing PDF proxy if any
+      if (pdfDocProxy) { try { pdfDocProxy.destroy(); } catch(e) { console.warn("Error destroying PDF proxy", e);}}
       setPdfDocProxy(null);
       setCurrentPdfPageNum(1);
       setPdfTotalPages(0);
       setPdfPageImage(null);
-      setPdfPageIsTextBased(true); // Reset PDF page text status
+      setPdfPageIsTextBased(true);
       setIsRenderingPdfPage(false);
 
       // Image specific cleanup
@@ -119,27 +117,15 @@ export default function ReaderPage() {
       // TXT specific cleanup
       setTxtContent("");
       
-      // EPUB specific cleanup (will also be handled by its own effect, but good to be defensive)
-      if (epubRenditionRef.current) {
-        try { epubRenditionRef.current.destroy(); console.log("[ReaderPage] loadDocumentMetadata: Destroyed global epubRenditionRef."); }
-        catch (e) { console.warn("[ReaderPage] loadDocumentMetadata: Error destroying global epubRenditionRef:", e); }
-        epubRenditionRef.current = null;
-      }
-      if (epubBookRef.current) {
-        epubBookRef.current = null; // No destroy method on book
-        console.log("[ReaderPage] loadDocumentMetadata: Cleared global epubBookRef.");
-      }
-      if (epubViewerRef.current) {
-        epubViewerRef.current.innerHTML = ''; // Clear the viewer div
-        console.log("[ReaderPage] loadDocumentMetadata: Cleared epubViewerRef innerHTML.");
-      }
+      // EPUB specific cleanup will be handled by its own effect's logic when activeDoc changes.
+      // Setting activeDoc to null here will trigger the EPUB effect's cleanup path if an EPUB was active.
+      setActiveDoc(null);
 
-      // General state cleanup
+
       setCurrentTextForTTS("");
       setDocErrorMessage(null);
-      setIsLoadingDoc(true); // Set loading true for the new document
+      setIsLoadingDoc(true); 
       setIsPerformingOcr(false);
-      // --- End Global Cleanup ---
 
       let docIdToLoad = searchParams.get('docId');
       console.log(`[ReaderPage] loadDocumentMetadata: docId from searchParams: ${docIdToLoad}`);
@@ -157,7 +143,7 @@ export default function ReaderPage() {
         }
       }
 
-      if (!docIdToLoad) { // Should be redundant if logic above is correct, but as a fallback
+      if (!docIdToLoad) { 
          setDocErrorMessage("No document selected and no previously active document found. Please go to the Library.");
          setIsLoadingDoc(false);
          console.log("[ReaderPage] loadDocumentMetadata: Still no docId after checking last active, showing error.");
@@ -169,51 +155,44 @@ export default function ReaderPage() {
         const doc = await IndexedDBService.getDocumentById(docIdToLoad);
         if (!doc) {
           setDocErrorMessage(`Document with ID "${docIdToLoad}" not found.`);
-          await IndexedDBService.saveLastActiveDocId(null); // Clear invalid last active ID
+          await IndexedDBService.saveLastActiveDocId(null); 
           setIsLoadingDoc(false);
           console.log(`[ReaderPage] loadDocumentMetadata: Document "${docIdToLoad}" not found in DB.`);
           return;
         }
 
         console.log(`[ReaderPage] loadDocumentMetadata: Document "${docIdToLoad}" found. Type: ${doc.type}. Setting activeDoc.`);
-        setActiveDoc(doc as ActiveMangaDocument); // This will trigger other effects for PDF, EPUB, etc.
+        setActiveDoc(doc as ActiveMangaDocument); 
         await IndexedDBService.saveLastActiveDocId(docIdToLoad);
-        // setIsLoadingDoc will be set to false by the specific document type effects (PDF, EPUB, etc.)
-        // or if no specific type effect runs, it should be handled.
 
       } catch (err: any) {
         console.error("[ReaderPage] loadDocumentMetadata: Error loading document from IndexedDB:", err);
         setDocErrorMessage(`Error loading document: ${err.message}`);
-        setCurrentTextForTTS(`Error loading document: ${err.message}`); // Show error in TTS area too
-        setIsLoadingDoc(false); // Ensure loading stops on error
+        setCurrentTextForTTS(`Error loading document: ${err.message}`); 
+        setIsLoadingDoc(false); 
       }
     };
 
     loadDocumentMetadata();
 
-    // Cleanup for this main effect (when component unmounts or searchParams change)
     return () => {
       console.log("[ReaderPage] Main document loading useEffect cleanup: Stopping speech and revoking image object URL.");
       stopSpeech(true);
       if (currentImageObjectUrlRef.current) { URL.revokeObjectURL(currentImageObjectUrlRef.current); currentImageObjectUrlRef.current = null; }
-      // EPUB and PDF instances should be cleaned up by their own effects when activeDoc changes or component unmounts.
     };
-  }, [searchParams, router, stopSpeech]); // router might not be needed but kept for safety if navigation logic is added here
+  }, [searchParams, router, stopSpeech]); 
 
 
   // Effect for PDF Loading
   useEffect(() => {
     if (activeDoc?.type === 'pdf' && activeDoc.fileData) {
       console.log("[ReaderPage PDF] activeDoc is PDF. Initializing PDF document proxy.");
-      setIsLoadingDoc(true); // Manages loading specifically for PDF part
+      setIsLoadingDoc(true); 
       setCurrentTextForTTS("Loading PDF...");
       setDocErrorMessage(null);
       
-      // Ensure previous PDF proxy is destroyed if any
-      if (pdfDocProxy) {
-        pdfDocProxy.destroy();
-        setPdfDocProxy(null);
-      }
+      if (pdfDocProxy) { try { pdfDocProxy.destroy(); } catch(e){console.warn("Error destroying previous pdfDocProxy", e);}}
+      setPdfDocProxy(null);
 
       getDocument({ data: activeDoc.fileData.slice(0) }).promise.then(pdf => {
         console.log("[ReaderPage PDF] PDF document proxy loaded. Total pages:", pdf.numPages);
@@ -221,29 +200,25 @@ export default function ReaderPage() {
         setPdfTotalPages(pdf.numPages);
         const savedPageIndex = LocalStorageService.loadCurrentPdfPageIndexForDoc(activeDoc.id);
         const pageToLoad = (savedPageIndex && savedPageIndex > 0 && savedPageIndex <= pdf.numPages) ? savedPageIndex : 1;
-        setCurrentPdfPageNum(pageToLoad); // This will trigger the PDF page rendering effect
+        setCurrentPdfPageNum(pageToLoad); 
         console.log(`[ReaderPage PDF] Setting current PDF page to: ${pageToLoad}`);
-        // setIsLoadingDoc(false) will be handled by page rendering effect
       }).catch(e => {
         console.error("[ReaderPage PDF] Error loading PDF document proxy:", e);
         setDocErrorMessage(`Failed to load PDF: ${e.message}`);
         setCurrentTextForTTS(`Failed to load PDF: ${e.message}`);
-        setIsLoadingDoc(false); // Stop loading on PDF load error
+        setIsLoadingDoc(false); 
       });
     } else if (activeDoc?.type !== 'pdf' && pdfDocProxy) {
-        // If activeDoc is no longer PDF, ensure PDF resources are cleared
         console.log("[ReaderPage PDF] activeDoc is no longer PDF. Clearing PDF proxy.");
-        if (pdfDocProxy) pdfDocProxy.destroy();
+        if (pdfDocProxy) { try {pdfDocProxy.destroy();} catch(e){console.warn("Error destroying pdfDocProxy on non-pdf path", e);}}
         setPdfDocProxy(null);
         setPdfTotalPages(0);
         setPdfPageImage(null);
-        // If isLoadingDoc was true because of PDF, and now it's not PDF, ensure it's false
-        // This assumes other doc types (EPUB, IMG, TXT) will set isLoadingDoc true when they start.
-        if (isLoadingDoc && activeDoc && !['epub', 'image', 'txt', 'pdf'].includes(activeDoc.type)) {
+        if (isLoadingDoc && activeDoc && !['epub', 'image', 'txt'].includes(activeDoc.type)) {
              setIsLoadingDoc(false);
         }
     }
-  }, [activeDoc]); // Depends only on activeDoc to initiate PDF loading
+  }, [activeDoc]); 
 
   // Effect for PDF Page Rendering
   useEffect(() => {
@@ -251,8 +226,8 @@ export default function ReaderPage() {
       console.log(`[ReaderPage PDF] Rendering PDF page ${currentPdfPageNum} of ${pdfTotalPages} with scale ${pdfScale}.`);
       stopSpeech(true);
       setIsRenderingPdfPage(true);
-      setPdfPageImage(null); // Clear previous page image
-      setPdfPageIsTextBased(true); // Assume text-based until checked
+      setPdfPageImage(null); 
+      setPdfPageIsTextBased(true); 
       setCurrentTextForTTS(`Loading PDF page ${currentPdfPageNum}...`);
       LocalStorageService.saveCurrentPdfPageIndexForDoc(activeDoc.id, currentPdfPageNum);
 
@@ -276,7 +251,7 @@ export default function ReaderPage() {
         if (pdfDoc.ocrTextPerPage?.[currentPdfPageNum]) {
             console.log(`[ReaderPage PDF] Page ${currentPdfPageNum} has pre-existing OCR text.`);
             setCurrentTextForTTS(pdfDoc.ocrTextPerPage[currentPdfPageNum]);
-            setPdfPageIsTextBased(false); // If using OCR text, likely it wasn't text-based
+            setPdfPageIsTextBased(false); 
         } else {
             const textContent = await page.getTextContent();
             const pageText = textContent.items.map(item => ('str' in item ? item.str : '')).join(' ').replace(/\s+/g, ' ').trim();
@@ -290,13 +265,13 @@ export default function ReaderPage() {
                 setPdfPageIsTextBased(false);
             }
         }
-        setIsLoadingDoc(false); // Content for this page is now loaded/rendered
+        setIsLoadingDoc(false); 
       }).catch(e => {
         console.error(`[ReaderPage PDF] Error rendering PDF page ${currentPdfPageNum}:`, e);
         setPdfPageImage(null);
         setCurrentTextForTTS(`Error rendering PDF page ${currentPdfPageNum}: ${e.message}`);
-        setPdfPageIsTextBased(false); // Assume error means no text
-        setIsLoadingDoc(false); // Stop loading on page render error
+        setPdfPageIsTextBased(false); 
+        setIsLoadingDoc(false); 
       }).finally(() => {
         setIsRenderingPdfPage(false);
         console.log(`[ReaderPage PDF] Finished rendering attempt for page ${currentPdfPageNum}.`);
@@ -307,137 +282,76 @@ export default function ReaderPage() {
 
   // Effect for EPUB Loading and Rendering
   useEffect(() => {
-    // Condition to run this effect: activeDoc is EPUB, has fileData. Viewer ref check is inside.
-    if (activeDoc?.type !== 'epub' || !activeDoc.fileData) {
-      // If not an EPUB or no data, ensure any existing EPUB resources are cleaned up.
-      if (epubRenditionRef.current) {
-        try { epubRenditionRef.current.destroy(); console.log("[ReaderPage EPUB] Cleanup: Destroyed epubRenditionRef (activeDoc not EPUB)."); }
-        catch(e) { console.warn("[ReaderPage EPUB] Cleanup: Error destroying epubRenditionRef (activeDoc not EPUB):", e); }
-        epubRenditionRef.current = null;
-      }
-      if (epubBookRef.current) {
-        epubBookRef.current = null; // No destroy method on book
-        console.log("[ReaderPage EPUB] Cleanup: Cleared epubBookRef (activeDoc not EPUB).");
-      }
-      if (epubViewerRef.current) { // If viewer existed but doc changed
-          epubViewerRef.current.innerHTML = '';
-      }
-      // If main loading indicator was for EPUB, but it's no longer EPUB, ensure it's false.
-      // This check is a bit broad, might need refinement based on other loaders.
-      if (isLoadingDoc && activeDoc && activeDoc.type !== 'epub') {
-         // Consider if this setIsLoadingDoc(false) is always correct here.
-         // If another loader (PDF, IMG) is active, it might cause issues.
-         // For now, assume if it's not EPUB, this effect is not responsible for isLoadingDoc.
-      }
-      return; // Exit if not an EPUB
-    }
-
-    // At this point, activeDoc IS an EPUB and has fileData.
-    // Now, check if the viewer DOM element is ready.
-    if (!epubViewerRef.current) {
-      console.warn("[ReaderPage EPUB] epubViewerRef.current is null. Deferring EPUB initialization until viewer div is rendered.");
-      // This state can occur if activeDoc is set, but the conditional render of the epubViewer div hasn't completed.
-      // React should re-run this effect once the div is in the DOM.
-      setDocErrorMessage("EPUB viewer element not ready. Waiting for DOM to render...");
-      setCurrentTextForTTS(""); // Clear any stale text
-      // If this is the first time trying to load this EPUB, and viewer isn't ready,
-      // we might want to keep isLoadingDoc true, or set a specific "waiting for viewer" message.
-      // For simplicity, if isLoadingDoc is already true from main loader, let it be.
-      // If it became false due to some other path, and now we are here, that's a tricky state.
-      // Safest might be to set isLoadingDoc false if we can't proceed.
-      if (isLoadingDoc) setIsLoadingDoc(false); 
-      return; // Exit effect, will re-run when/if epubViewerRef.current becomes available
-    }
-
-    // If we reach here: activeDoc is EPUB, has fileData, AND epubViewerRef.current is available.
-    
+    const activeDocIdOnEffectStart = activeDoc?.id; // Capture ID for cleanup comparison
+    let isMounted = true; // Flag to prevent state updates if component unmounts during async ops
     let localBookInstance: EpubBook | null = null;
     let localRenditionInstance: Rendition | null = null;
 
     const initializeEpub = async () => {
+      if (!activeDoc || activeDoc.type !== 'epub' || !activeDoc.fileData || !epubViewerRef.current || !isMounted) {
+        if (!epubViewerRef.current && activeDoc?.type === 'epub') console.warn("[ReaderPage EPUB] initializeEpub: epubViewerRef.current is null. Aborting.");
+        return;
+      }
       console.log("[ReaderPage EPUB] Initializing EPUB for doc:", activeDoc.id);
       setIsLoadingDoc(true);
       setCurrentTextForTTS("Loading EPUB...");
-      setDocErrorMessage(null); // Clear previous errors
+      setDocErrorMessage(null);
 
-      // Explicitly destroy global refs before re-assigning, and clear viewer
-      // This ensures that if this effect runs multiple times for the same activeDoc (e.g., due to other state changes),
-      // it always starts fresh with the global refs.
+      // Cleanup global refs from any previous EPUB
       if (epubRenditionRef.current) {
-        try { epubRenditionRef.current.destroy(); console.log("[ReaderPage EPUB] Init: Destroyed existing global epubRenditionRef."); }
-        catch (e) { console.warn("[ReaderPage EPUB] Init: Error destroying old global epubRenditionRef:", e); }
-        epubRenditionRef.current = null;
+        try {
+          if (epubRenditionRef.current.manager?.container?.parentNode) epubRenditionRef.current.destroy();
+          else console.warn("[ReaderPage EPUB] Init: Global rendition's container detached, skipping destroy.");
+        } catch (e) { console.warn("[ReaderPage EPUB] Init: Error destroying old global epubRenditionRef:", e); }
       }
-      if (epubBookRef.current) {
-        epubBookRef.current = null;
-        console.log("[ReaderPage EPUB] Init: Cleared existing global epubBookRef.");
-      }
-      if (epubViewerRef.current) { // Should be non-null due to check above
-        epubViewerRef.current.innerHTML = ''; 
-        console.log("[ReaderPage EPUB] Init: Cleared epubViewerRef.current.innerHTML.");
-      }
-
+      epubRenditionRef.current = null;
+      epubBookRef.current = null;
+      epubViewerRef.current.innerHTML = ''; // Clear viewer for new book
 
       try {
         const ePubModule = await import('epubjs');
         const EPub = ePubModule.default;
-        localBookInstance = EPub(activeDoc.fileData); // Use local var for the instance being created
-        console.log("[ReaderPage EPUB] EpubBook instance created:", localBookInstance.id);
+        localBookInstance = EPub(activeDoc.fileData);
+        console.log("[ReaderPage EPUB] EpubBook instance created locally:", localBookInstance.id);
 
         await localBookInstance.ready;
-        // After await, re-check conditions, especially if activeDoc changed or viewer disappeared
-        if (!epubViewerRef.current || !activeDoc || activeDoc.type !== 'epub' || activeDoc.id !== localBookInstance.id) {
-            console.warn("[ReaderPage EPUB] Conditions changed during book.ready (e.g., document changed, viewer disappeared). Aborting EPUB setup for:", localBookInstance.id);
-            if (localBookInstance && epubBookRef.current && epubBookRef.current.id === localBookInstance.id) epubBookRef.current = null; // If global was set to this one
-            setIsLoadingDoc(false);
+        if (!isMounted || !epubViewerRef.current || activeDoc?.id !== localBookInstance.id) {
+            console.warn("[ReaderPage EPUB] Conditions changed during book.ready. Aborting EPUB setup for:", localBookInstance.id);
+            if(localBookInstance) { /* book doesn't have destroy */ }
             return;
         }
         console.log("[ReaderPage EPUB] Book ready:", localBookInstance.id);
 
         localRenditionInstance = localBookInstance.renderTo(epubViewerRef.current, {
-          width: "100%",
-          height: "100%",
-          flow: "paginated", // Ensure single page flow
-          spread: "none",   // Ensure single page spread
+          width: "100%", height: "100%", flow: "paginated", spread: "none",
         });
-        console.log("[ReaderPage EPUB] Rendition instance created:", localRenditionInstance.id);
+        console.log("[ReaderPage EPUB] Rendition instance created locally:", localRenditionInstance.id);
 
         localRenditionInstance.on('displayed', (section: any) => {
-          // Check if this rendition is still the active one
-          if (!localRenditionInstance || !epubRenditionRef.current || localRenditionInstance.id !== epubRenditionRef.current.id) {
-              console.log("[ReaderPage EPUB] 'displayed' event for a stale rendition. Ignoring. Current Rendition ID:", epubRenditionRef.current?.id, "Event Rendition ID:", localRenditionInstance?.id);
-              return;
-          }
+          if (!isMounted || !localRenditionInstance || epubRenditionRef.current?.id !== localRenditionInstance.id) return;
           console.log("[ReaderPage EPUB] Rendition 'displayed' event for section:", section.idref);
           try {
             const contents = section.contents || (section.document ? section.document.body : null);
             let text = "";
-            if (contents && typeof contents.innerText === 'string') text = contents.innerText.replace(/\s+/g, ' ').trim();
-            else if (contents && typeof contents.textContent === 'string') text = contents.textContent.replace(/\s+/g, ' ').trim();
-            else if (section.output && typeof section.output === 'string') {
-                const tempDiv = document.createElement('div'); tempDiv.innerHTML = section.output;
-                text = (tempDiv.innerText || tempDiv.textContent || "").replace(/\s+/g, ' ').trim();
-            }
+            if (contents) text = (contents.innerText || contents.textContent || "").replace(/\s+/g, ' ').trim();
+            else if (section.output) { const d = document.createElement('div'); d.innerHTML = section.output; text = (d.innerText || d.textContent || "").replace(/\s+/g, ' ').trim(); }
             
-            setCurrentTextForTTS(text || "Could not extract text from this EPUB section.");
+            if (isMounted) setCurrentTextForTTS(text || "Could not extract text from this EPUB section.");
             console.log(`[ReaderPage EPUB] Extracted text length: ${text.length}`);
           } catch (textExtractError: any) {
             console.error("[ReaderPage EPUB] Error extracting text from EPUB section:", textExtractError);
-            setCurrentTextForTTS(`Error extracting text from EPUB: ${textExtractError.message}`);
+            if (isMounted) setCurrentTextForTTS(`Error extracting text from EPUB: ${textExtractError.message}`);
           }
         });
 
         await localRenditionInstance.display();
-        // After await, re-check conditions again
-        if (!epubViewerRef.current || !activeDoc || activeDoc.type !== 'epub' || activeDoc.id !== localBookInstance.id || !localRenditionInstance) {
+        if (!isMounted || !epubViewerRef.current || activeDoc?.id !== localBookInstance.id || !localRenditionInstance) {
             console.warn("[ReaderPage EPUB] Conditions changed during rendition.display. Aborting EPUB setup for:", localBookInstance.id);
-            if (localRenditionInstance) { try { localRenditionInstance.destroy(); console.log("[ReaderPage EPUB] Destroyed localRenditionInstance due to changed conditions post-display."); } catch(err){/*ignore*/} }
-            if (localBookInstance && epubBookRef.current && epubBookRef.current.id === localBookInstance.id) epubBookRef.current = null;
-            setIsLoadingDoc(false);
+            if (localRenditionInstance) { try { if (localRenditionInstance.manager?.container?.parentNode) localRenditionInstance.destroy(); } catch(err){/*ignore*/} }
             return;
         }
         
-        // If all successful, now assign to global refs
+        // Success: assign local instances to global refs
         epubBookRef.current = localBookInstance;
         epubRenditionRef.current = localRenditionInstance;
         console.log("[ReaderPage EPUB] Rendition displayed. Global refs updated. Book ID:", epubBookRef.current?.id, "Rendition ID:", epubRenditionRef.current?.id);
@@ -445,54 +359,91 @@ export default function ReaderPage() {
       } catch (e: any) {
         console.error("[ReaderPage EPUB] Error during EPUB initialization process:", e);
         const errorMsg = e instanceof Error ? e.message : String(e);
-        let userFriendlyError = `Failed to load EPUB: ${errorMsg}`;
-        if (errorMsg.toLowerCase().includes("uncompressed data size mismatch") || errorMsg.toLowerCase().includes("reading 'package')")) {
-            userFriendlyError = `Failed to load EPUB: The file might be corrupted or not a valid EPUB. (Detail: ${errorMsg})`;
-        } else if (errorMsg.toLowerCase().includes("cannot read properties of undefined (reading 'package')")){
-            userFriendlyError = `Failed to load EPUB: Error initializing EPUB reader. The file might be incompatible. (Detail: ${errorMsg})`;
+        if (isMounted) {
+            setDocErrorMessage(`Failed to load EPUB: ${errorMsg}`);
+            setCurrentTextForTTS(`Failed to load EPUB: ${errorMsg}`);
         }
-        setDocErrorMessage(userFriendlyError);
-        setCurrentTextForTTS(userFriendlyError);
-
-        // Ensure cleanup of local instances if they were created before error
-        if (localRenditionInstance) { try { localRenditionInstance.destroy(); console.log("[ReaderPage EPUB] Catch: Destroyed localRenditionInstance.");} catch(errDestroy){ console.warn("Error destroying localRenditionInstance on catch:", errDestroy); } }
-        if (epubViewerRef.current) epubViewerRef.current.innerHTML = ''; // Clear viewer on error
-        
-        // Also clear global refs if they somehow got set or were from a previous attempt for this doc
-        epubBookRef.current = null;
-        epubRenditionRef.current = null;
+        if (localRenditionInstance) { try { if(localRenditionInstance.manager?.container?.parentNode) localRenditionInstance.destroy(); } catch(errDestroy){ console.warn("Error destroying localRenditionInstance on catch:", errDestroy); } }
+        if (epubViewerRef.current) epubViewerRef.current.innerHTML = '';
+        epubBookRef.current = null; epubRenditionRef.current = null;
       } finally {
-        setIsLoadingDoc(false);
+        if (isMounted) setIsLoadingDoc(false);
         console.log("[ReaderPage EPUB] Finished EPUB initialization attempt for doc:", activeDoc?.id);
       }
     };
 
-    initializeEpub();
-
-    // Cleanup function for this useEffect
-    return () => {
-      console.log("[ReaderPage EPUB] Cleanup for useEffect [activeDoc]. Current activeDoc ID:", activeDoc?.id, "Attempting to destroy rendition:", epubRenditionRef.current?.id);
-      // This cleanup runs when `activeDoc` changes (before the new effect run for the new `activeDoc`) or when the component unmounts.
-      // It should destroy the rendition that is currently in the global ref, as that's the one associated with the `activeDoc`
-      // for which this effect instance is now being cleaned up.
-      if (epubRenditionRef.current) {
-        try {
-          epubRenditionRef.current.destroy();
-          console.log("[ReaderPage EPUB] Cleanup: Successfully destroyed epubRenditionRef.current:", epubRenditionRef.current.id);
-        } catch (e) {
-          console.warn("[ReaderPage EPUB] Cleanup: Error destroying epubRenditionRef.current:", e);
+    // Main logic for this effect
+    if (activeDoc?.type === 'epub' && activeDoc.fileData) {
+      if (epubViewerRef.current) {
+        initializeEpub();
+      } else {
+        console.warn(`[ReaderPage EPUB] epubViewerRef.current is null when trying to load EPUB: ${activeDoc.id}. Waiting for div to render.`);
+        if (isMounted) {
+          setDocErrorMessage("EPUB viewer initializing..."); // User feedback
+          setCurrentTextForTTS("");
+          // setIsLoadingDoc(true); // Keep loading if viewer is expected
         }
+      }
+    } else {
+      // Not an EPUB, or no fileData. Clean up any existing global EPUB instance.
+      const globalRendition = epubRenditionRef.current;
+      if (globalRendition) {
+        console.log("[ReaderPage EPUB] Not an EPUB or no data. Destroying existing global rendition:", globalRendition.id);
+        try {
+          // Check if its container is still in DOM before destroy.
+          if (globalRendition.manager?.container?.parentNode) {
+             globalRendition.destroy();
+          } else {
+            console.warn("[ReaderPage EPUB] Global rendition's container already detached during non-EPUB path cleanup. Skipping destroy.");
+          }
+        } catch (e) { console.warn("[ReaderPage EPUB] Error destroying global rendition (non-EPUB path):", e); }
         epubRenditionRef.current = null;
       }
-       if (epubBookRef.current) {
-        // epub.js Book doesn't have a destroy method. Just nullify the ref.
+      if (epubBookRef.current) {
         epubBookRef.current = null;
-        console.log("[ReaderPage EPUB] Cleanup: Cleared epubBookRef.current.");
       }
-      // Do not clear epubViewerRef.current.innerHTML here if another EPUB might be loading immediately after.
-      // The initialization part of the new effect run should handle clearing the viewer for the new book.
+      if (epubViewerRef.current) { // If the viewer div exists, but we're not using it for EPUB
+        epubViewerRef.current.innerHTML = '';
+      }
+       // If isLoadingDoc was for an EPUB, but now it's not, ensure it's false
+      if (isLoadingDoc && isMounted && activeDoc && activeDoc.type !== 'epub' && !['pdf', 'image', 'txt'].includes(activeDoc.type)) {
+          setIsLoadingDoc(false);
+      }
+    }
+
+    return () => {
+      isMounted = false;
+      console.log(`[ReaderPage EPUB] Cleanup for EPUB effect. Effect was for docId: ${activeDocIdOnEffectStart}. Local Rendition that was created by this run: ${localRenditionInstance?.id}`);
+      
+      const renditionInstanceToDestroyInCleanup = localRenditionInstance || epubRenditionRef.current;
+
+      if (renditionInstanceToDestroyInCleanup && renditionInstanceToDestroyInCleanup.book.id === activeDocIdOnEffectStart) {
+          console.log(`[ReaderPage EPUB] Cleanup: Attempting to destroy rendition (ID: ${renditionInstanceToDestroyInCleanup.id}) associated with docId: ${activeDocIdOnEffectStart}`);
+          try {
+              if (renditionInstanceToDestroyInCleanup.manager?.container?.parentNode) {
+                  renditionInstanceToDestroyInCleanup.destroy();
+                  console.log(`[ReaderPage EPUB] Cleanup: Successfully destroyed rendition (ID: ${renditionInstanceToDestroyInCleanup.id})`);
+              } else {
+                  console.warn(`[ReaderPage EPUB] Cleanup: Rendition's (ID: ${renditionInstanceToDestroyInCleanup.id}) container already detached. Skipping destroy.`);
+              }
+          } catch (e) {
+              console.warn(`[ReaderPage EPUB] Cleanup: Error destroying rendition (ID: ${renditionInstanceToDestroyInCleanup.id}):`, e);
+          }
+      } else if (renditionInstanceToDestroyInCleanup) {
+          console.log(`[ReaderPage EPUB] Cleanup: Rendition (ID: ${renditionInstanceToDestroyInCleanup.id}) book ID ${renditionInstanceToDestroyInCleanup.book.id} does not match effect's docId ${activeDocIdOnEffectStart}. Not destroying this instance as it might belong to a new doc.`);
+      }
+
+
+      // Nullify global refs if they point to the instance this effect managed or if it's a general cleanup
+      if (epubRenditionRef.current && (epubRenditionRef.current === localRenditionInstance || epubRenditionRef.current.book.id === activeDocIdOnEffectStart)) {
+        epubRenditionRef.current = null;
+      }
+      if (epubBookRef.current && (epubBookRef.current === localBookInstance || epubBookRef.current.id === activeDocIdOnEffectStart)) {
+        epubBookRef.current = null;
+      }
+      console.log("[ReaderPage EPUB] Cleanup: EPUB effect cleanup process finished for doc:", activeDocIdOnEffectStart);
     };
-  }, [activeDoc, stopSpeech]); // stopSpeech might be needed if TTS starts on load
+  }, [activeDoc, stopSpeech]);
 
 
   // Effect for TXT file loading
@@ -503,7 +454,7 @@ export default function ReaderPage() {
         setCurrentTextForTTS("Loading text file...");
         setDocErrorMessage(null);
         try {
-            const decoder = new TextDecoder(); // Use default (UTF-8) or allow selection later
+            const decoder = new TextDecoder(); 
             const text = decoder.decode(activeDoc.fileData);
             setTxtContent(text);
             setCurrentTextForTTS(text);
@@ -516,9 +467,7 @@ export default function ReaderPage() {
             setIsLoadingDoc(false);
         }
     } else if (activeDoc?.type !== 'txt') {
-        setTxtContent(""); // Clear content if not a TXT doc
-        // If isLoadingDoc was true due to TXT loading, and it's no longer TXT, ensure it's false
-        // This requires careful thought about how isLoadingDoc is managed across all doc types
+        setTxtContent(""); 
     }
   }, [activeDoc]);
 
@@ -531,7 +480,6 @@ export default function ReaderPage() {
         setDocErrorMessage(null);
         try {
             const blob = new Blob([activeDoc.fileData], { type: activeDoc.originalType });
-            // Revoke previous object URL if it exists
             if (currentImageObjectUrlRef.current) { URL.revokeObjectURL(currentImageObjectUrlRef.current); }
             
             const newUrl = URL.createObjectURL(blob);
@@ -554,7 +502,6 @@ export default function ReaderPage() {
             setIsLoadingDoc(false);
         }
     } else if (activeDoc?.type !== 'image') {
-        // If not an image doc, ensure cleanup
         if (currentImageObjectUrlRef.current) { URL.revokeObjectURL(currentImageObjectUrlRef.current); currentImageObjectUrlRef.current = null; }
         setDisplayedImageSrc(null);
     }
@@ -570,22 +517,18 @@ export default function ReaderPage() {
 
     stopSpeech(true);
     let dataUrlToProcess: string | null = null;
-    const currentActiveDoc = activeDoc; // Capture current activeDoc for async operations
+    const currentActiveDoc = activeDoc; 
 
     if (currentActiveDoc.type === 'pdf' && pdfPageImage && !pdfPageIsTextBased) {
-        // For PDF, if current page is rendered as an image and deemed not text-based
         dataUrlToProcess = pdfPageImage;
         console.log("[ReaderPage OCR] Using current PDF page image for OCR.");
     } else if (currentActiveDoc.type === 'image' && currentActiveDoc.fileData) {
-        // For Image documents, convert ArrayBuffer to base64 data URL
         console.log("[ReaderPage OCR] Preparing image document for OCR from ArrayBuffer.");
         try {
-            // Re-fetch the document to ensure we have the latest fileData, just in case.
-            // Though activeDoc should ideally be up-to-date.
             const docToProcess = await IndexedDBService.getDocumentById(currentActiveDoc.id);
             if (!docToProcess || !docToProcess.fileData || !docToProcess.originalType) {
                 toast({variant: "destructive", title: "OCR Error", description: "Image data or type is missing for OCR."});
-                setIsPerformingOcr(false); // Ensure state is reset
+                setIsPerformingOcr(false); 
                 console.error("[ReaderPage OCR] Image data or type missing from fetched doc for OCR.");
                 return;
             }
@@ -594,14 +537,14 @@ export default function ReaderPage() {
         } catch (conversionError: any) {
           toast({variant: "destructive", title: "OCR Error", description: `Could not prepare image data for OCR: ${conversionError.message}`});
           console.error("[ReaderPage OCR] Error converting image ArrayBuffer to Base64 for OCR:", conversionError);
-          setIsPerformingOcr(false); // Ensure state is reset
+          setIsPerformingOcr(false); 
           return;
         }
     }
 
     if (!dataUrlToProcess) {
         toast({ variant: "destructive", title: "OCR Error", description: "No image data available for OCR for the current document type or state." });
-        setIsPerformingOcr(false); // Ensure state is reset
+        setIsPerformingOcr(false); 
         console.warn("[ReaderPage OCR] No dataUrlToProcess for OCR. ActiveDoc type:", currentActiveDoc.type, "PDF Page Image exists:", !!pdfPageImage, "PDF Page is text based:", pdfPageIsTextBased);
         return;
     }
@@ -616,32 +559,26 @@ export default function ReaderPage() {
             setCurrentTextForTTS(ocrText);
             console.log(`[ReaderPage OCR] OCR successful. Extracted text length: ${ocrText.length}`);
 
-            // Update the document in IndexedDB with the new OCR text
-            // And update the activeDoc state
             const updatedDocFields: Partial<ActiveMangaDocument> = {};
             if (currentActiveDoc.type === 'image') {
                 (updatedDocFields as Partial<StoredImageDocument>).extractedText = ocrText;
             } else if (currentActiveDoc.type === 'pdf') {
-                // Ensure ocrTextPerPage exists before trying to update it
                 const existingOcrTextPerPage = (currentActiveDoc as StoredPdfDocument).ocrTextPerPage || {};
                 const ocrPages = { ...existingOcrTextPerPage, [currentPdfPageNum]: ocrText };
                 (updatedDocFields as Partial<StoredPdfDocument>).ocrTextPerPage = ocrPages;
             }
 
-            // Create a new object for state update to ensure React detects the change
             const newActiveDocState = { ...currentActiveDoc, ...updatedDocFields } as ActiveMangaDocument;
             await IndexedDBService.saveDocument(newActiveDocState);
-            setActiveDoc(newActiveDocState); // Update the local state
+            setActiveDoc(newActiveDocState); 
             console.log("[ReaderPage OCR] Updated document saved to IndexedDB and activeDoc state updated.");
 
         } else {
-            // OCR action returned an error
             setCurrentTextForTTS(`OCR Error: ${result.error}`);
             toast({ variant: "destructive", title: "OCR Error", description: result.error });
             console.error(`[ReaderPage OCR] OCR action returned error: ${result.error}`);
         }
     } catch (e: any) {
-        // Catch errors from the performOCR call itself (e.g., network issues)
         console.error("[ReaderPage OCR] Detailed OCR error from server action call:", e);
         setCurrentTextForTTS(`OCR failed: ${e.message}`);
         toast({ variant: "destructive", title: "OCR Failed", description: e.message });
@@ -651,11 +588,9 @@ export default function ReaderPage() {
     }
   }, [activeDoc, pdfPageImage, pdfPageIsTextBased, currentPdfPageNum, stopSpeech, toast]);
 
-  // Effect for TTS settings loading and voice list population
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const loadedSettings = LocalStorageService.loadTTSSettings();
-      // Ensure engine and type are consistent
       const engine = loadedSettings.engine || loadedSettings.type || 'local';
       setTtsSettings(prev => ({ ...prev, ...loadedSettings, type: engine, engine: engine }));
     }
@@ -670,7 +605,7 @@ export default function ReaderPage() {
   }, []);
 
   useEffect(() => {
-    populateVoiceList(); // Initial population
+    populateVoiceList(); 
     if (typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.onvoiceschanged !== undefined) {
       window.speechSynthesis.onvoiceschanged = populateVoiceList;
       console.log("[ReaderPage TTS] Attached onvoiceschanged listener.");
@@ -680,31 +615,25 @@ export default function ReaderPage() {
           window.speechSynthesis.onvoiceschanged = null;
           console.log("[ReaderPage TTS] Detached onvoiceschanged listener.");
       }
-      stopSpeech(true); // Ensure speech stops on component unmount
+      stopSpeech(true); 
     };
   }, [populateVoiceList, stopSpeech]);
 
-  // Effect to update TTS settings (especially voice) based on availability and current settings
  useEffect(() => {
-    let settingsToSave = { ...ttsSettings }; // Work with a copy
+    let settingsToSave = { ...ttsSettings }; 
     let changesMadeToSettingsState = false;
 
-    // This logic primarily applies to 'local' engine for voice selection
     if (typeof window !== 'undefined' && window.speechSynthesis && settingsToSave.engine === 'local') {
-        // Use already populated `availableVoices` state if possible, otherwise fetch fresh
         const systemVoices = availableVoices.length > 0 ? availableVoices : window.speechSynthesis.getVoices().map(v => ({ name: v.name, lang: v.lang, voiceURI: v.voiceURI, localService: v.localService, default: v.default }));
 
         if (systemVoices.length > 0) {
             let voiceToSet: TTSVoice | undefined = settingsToSave.voiceURI ? systemVoices.find(v => v.voiceURI === settingsToSave.voiceURI) : undefined;
-            let langToSet = settingsToSave.language; // Start with current language
+            let langToSet = settingsToSave.language; 
 
-            // Validate if the current voiceURI is suitable for the selected language
-            // A voice is suitable if its language exactly matches or starts with the primary language subtag (e.g., 'en' for 'en-US')
             const currentVoiceIsValidForLanguage = voiceToSet && voiceToSet.lang && 
                                                    (voiceToSet.lang === settingsToSave.language || voiceToSet.lang.startsWith(settingsToSave.language.split('-')[0]));
 
             if (!voiceToSet || !currentVoiceIsValidForLanguage) {
-                // Attempt to find a default or suitable voice for the current language
                 const defaultForLang = systemVoices.find(v => v.lang === settingsToSave.language && v.default) ||
                                      systemVoices.find(v => v.lang === settingsToSave.language) ||
                                      systemVoices.find(v => v.lang?.startsWith(settingsToSave.language.split('-')[0]) && v.default) ||
@@ -712,17 +641,14 @@ export default function ReaderPage() {
 
                 if (defaultForLang && defaultForLang.lang) {
                     voiceToSet = defaultForLang;
-                    langToSet = defaultForLang.lang; // Update language to the chosen voice's specific lang
+                    langToSet = defaultForLang.lang; 
                 } else {
-                    // If no voice for the specific language, try a broader system default or the first available voice
                     const absoluteFallback = systemVoices.find(v => v.default && v.lang) || (systemVoices.length > 0 ? systemVoices[0] : undefined);
                     if (absoluteFallback && absoluteFallback.lang) {
                         voiceToSet = absoluteFallback;
-                        langToSet = absoluteFallback.lang; // Update language if falling back
+                        langToSet = absoluteFallback.lang; 
                     } else {
-                        // No voices available at all or no voices with language property
                         voiceToSet = undefined;
-                        // Keep langToSet as is, or reset to a default if no voices
                     }
                 }
             }
@@ -738,15 +664,14 @@ export default function ReaderPage() {
                 changesMadeToSettingsState = true;
                 console.log("[ReaderPage TTS] Updated language to:", langToSet, "based on voice selection.");
             }
-        } else { // No system voices available
-             if(settingsToSave.voiceURI !== undefined) { // If a voiceURI was set but no voices exist
+        } else { 
+             if(settingsToSave.voiceURI !== undefined) { 
                 settingsToSave.voiceURI = undefined;
                 changesMadeToSettingsState = true;
                 console.log("[ReaderPage TTS] No system voices. Cleared voiceURI.");
              }
         }
     } else if (settingsToSave.engine === 'cloud') {
-        // Cloud engine doesn't use local voiceURI, so ensure it's undefined
         if (settingsToSave.voiceURI !== undefined) {
             settingsToSave.voiceURI = undefined;
             changesMadeToSettingsState = true;
@@ -754,26 +679,22 @@ export default function ReaderPage() {
         }
     }
 
-    // If any relevant part of ttsSettings changed that requires a state update and save
     if (changesMadeToSettingsState || 
         settingsToSave.rate !== ttsSettings.rate ||
         settingsToSave.pitch !== ttsSettings.pitch
-        // No need to compare engine or language directly if they triggered changesMade
         ) {
-      if(changesMadeToSettingsState) { // Only update state if voice/lang logic made changes
+      if(changesMadeToSettingsState) { 
         setTtsSettings(settingsToSave);
       }
-      LocalStorageService.saveTTSSettings(settingsToSave); // Always save the potentially modified settingsToSave
+      LocalStorageService.saveTTSSettings(settingsToSave); 
       console.log("[ReaderPage TTS] Saved TTS settings to localStorage:", settingsToSave);
     }
-// Key dependencies: engine, language, voiceURI (direct user changes), availableVoices (system changes), rate, pitch
-}, [ttsSettings.engine, ttsSettings.language, ttsSettings.voiceURI, availableVoices, ttsSettings.rate, ttsSettings.pitch]);
+}, [ttsSettings.engine, ttsSettings.language, ttsSettings.voiceURI, availableVoices, ttsSettings.rate, ttsSettings.pitch, ttsSettings]);
 
 
-  // Effect for Audio Player setup (for cloud TTS)
   useEffect(() => {
     const player = new Audio();
-    audioPlayerRef.current = player; // Assign to ref
+    audioPlayerRef.current = player; 
 
     const handleAudioEnded = () => { 
       if (audioPlayerRef.current === player && isSpeaking && ttsSettings.engine === 'cloud') {
@@ -784,7 +705,7 @@ export default function ReaderPage() {
     const handleAudioPlaying = () => { 
       if (audioPlayerRef.current === player && ttsSettings.engine === 'cloud' && isSpeaking) {
         console.log("[ReaderPage CloudTTS] Audio playing.");
-        setIsLoadingTTS(false); // Cloud TTS is now playing, no longer loading
+        setIsLoadingTTS(false); 
       }
     };
     const handleAudioError = (e: Event) => { 
@@ -808,13 +729,13 @@ export default function ReaderPage() {
           console.log("[ReaderPage CloudTTS] Pausing player on cleanup.");
           player.pause();
         }
-        player.src = ""; // Release resource
-        if (audioPlayerRef.current === player) { // Ensure we're nullifying the correct ref
+        player.src = ""; 
+        if (audioPlayerRef.current === player) { 
           audioPlayerRef.current = null;
           console.log("[ReaderPage CloudTTS] audioPlayerRef.current set to null.");
         }
     };
-  }, [ttsSettings.engine, isSpeaking, stopSpeech, toast]); // Dependencies that affect cloud playback
+  }, [ttsSettings.engine, isSpeaking, stopSpeech, toast]); 
 
   const playPauseSpeech = async () => {
     const selection = typeof window !== 'undefined' ? window.getSelection() : null;
@@ -834,7 +755,8 @@ export default function ReaderPage() {
        "EPUB viewer element not ready. Waiting for render.", 
       "EPUB viewer element not ready", "MOBI file format is not directly supported",
       "OCR completed, but no text found.",
-      "No document selected.", "No document selected and no previously active document found."
+      "No document selected.", "No document selected and no previously active document found.",
+      "EPUB viewer initializing..."
     ];
 
     if (!effectiveTextToRead || invalidMessages.some(msg => effectiveTextToRead.startsWith(msg)) || effectiveTextToRead.length < MIN_TTS_TEXT_LENGTH) {
@@ -844,26 +766,24 @@ export default function ReaderPage() {
     }
 
     if (isSpeaking) {
-      if (isPaused) { // Resume
+      if (isPaused) { 
         console.log("[ReaderPage TTS] Resuming speech. Engine:", ttsSettings.engine);
         if (ttsSettings.engine === 'local' && utteranceRef.current && window.speechSynthesis?.paused) { window.speechSynthesis.resume(); setIsPaused(false); }
         else if (ttsSettings.engine === 'cloud' && audioPlayerRef.current?.paused) { 
             audioPlayerRef.current.play().then(() => setIsPaused(false)).catch((e) => { console.error("Error resuming cloud TTS:", e); stopSpeech(true); });
         } else {
             console.warn("[ReaderPage TTS] Resume called but conditions not met. Utterance:", !!utteranceRef.current, "Synth Paused:", window.speechSynthesis?.paused, "Audio Paused:", audioPlayerRef.current?.paused);
-            // stopSpeech(true); // If in weird state, reset
         }
-      } else { // Pause
+      } else { 
         console.log("[ReaderPage TTS] Pausing speech. Engine:", ttsSettings.engine);
         if (ttsSettings.engine === 'local' && utteranceRef.current && window.speechSynthesis?.speaking) { window.speechSynthesis.pause(); setIsPaused(true); }
         else if (ttsSettings.engine === 'cloud' && audioPlayerRef.current && !audioPlayerRef.current.paused) { audioPlayerRef.current.pause(); setIsPaused(true); }
         else {
             console.warn("[ReaderPage TTS] Pause called but conditions not met. Utterance:", !!utteranceRef.current, "Synth Speaking:", window.speechSynthesis?.speaking, "Audio Playing:", !audioPlayerRef.current?.paused);
-            // stopSpeech(true); // If in weird state, reset
         }
       }
-    } else { // Start speech
-      stopSpeech(false); // Clear any previous speech, but don't reset all UI yet
+    } else { 
+      stopSpeech(false); 
       setIsLoadingTTS(true);
       setIsSpeaking(true);
       setIsPaused(false);
@@ -879,16 +799,16 @@ export default function ReaderPage() {
         let voiceToUse: SpeechSynthesisVoice | undefined = undefined;
 
         if (systemVoices.length > 0) {
-            if (ttsSettings.voiceURI) { // Prefer the voiceURI from settings if valid for current language
+            if (ttsSettings.voiceURI) { 
                 voiceToUse = systemVoices.find(v => v.voiceURI === ttsSettings.voiceURI && v.lang.startsWith(ttsSettings.language.split('-')[0]));
             }
-            if (!voiceToUse && ttsSettings.language) { // Fallback to language-based match
+            if (!voiceToUse && ttsSettings.language) { 
                 voiceToUse = systemVoices.find(v => v.lang === ttsSettings.language && v.default) ||
                              systemVoices.find(v => v.lang === ttsSettings.language) ||
                              systemVoices.find(v => v.lang?.startsWith(ttsSettings.language.split('-')[0]) && v.default) ||
                              systemVoices.find(v => v.lang?.startsWith(ttsSettings.language.split('-')[0]));
             }
-            if (!voiceToUse) { // Absolute fallback
+            if (!voiceToUse) { 
                 voiceToUse = systemVoices.find(v => v.default && v.lang) || (systemVoices.length > 0 ? systemVoices[0] : undefined);
             }
         }
@@ -906,8 +826,8 @@ export default function ReaderPage() {
         utterance.onerror = (event) => { console.error("[ReaderPage TTS] Local speech error:", event.error); if(utteranceRef.current === utterance) { toast({ variant: "destructive", title: "TTS Error", description: event.error || "Speech failed." }); stopSpeech(true); }};
         utteranceRef.current = utterance;
         window.speechSynthesis.speak(utterance);
-        setIsLoadingTTS(false); // Local TTS usually starts quickly
-      } else { // Cloud TTS
+        setIsLoadingTTS(false); 
+      } else { 
         console.log("[ReaderPage TTS] Requesting Cloud TTS.");
         try {
           const result = await getCloudSpeech(effectiveTextToRead, ttsSettings.language);
@@ -915,7 +835,6 @@ export default function ReaderPage() {
             console.log("[ReaderPage TTS] Cloud TTS audio URL received:", result.audioUrl);
             audioPlayerRef.current.src = result.audioUrl;
             await audioPlayerRef.current.play();
-            // setIsLoadingTTS(false) will be handled by the 'playing' event of the audio player
           }
           else if ('error' in result) { 
             toast({ variant: "destructive", title: "Cloud TTS Error", description: result.error }); 
@@ -933,28 +852,21 @@ export default function ReaderPage() {
 
   const handleSettingChange = <K extends keyof TTSSettings>(key: K, value: TTSSettings[K]) => {
     console.log(`[ReaderPage TTS] handleSettingChange: key=${key}, value=${value}`);
-    stopSpeech(true); // Stop any ongoing speech when settings change
+    stopSpeech(true); 
 
     setTtsSettings(prevSettings => {
         let newSettings = { ...prevSettings, [key]: value };
 
-        // If engine or type (which are now aliases) changes, update both
         if (key === 'engine') {
-            newSettings.type = value as 'local' | 'cloud'; // Update type to match engine
+            newSettings.type = value as 'local' | 'cloud'; 
         }
         if (key === 'type') {
-            newSettings.engine = value as 'local' | 'cloud'; // Update engine to match type
+            newSettings.engine = value as 'local' | 'cloud'; 
         }
 
-        // If switching to cloud, voiceURI is not applicable
         if ((key === 'engine' || key === 'type') && newSettings.engine === 'cloud') {
             newSettings.voiceURI = undefined;
         }
-        // If language is changed for local engine, voiceURI might need re-evaluation (handled by the dedicated voice selection useEffect)
-        // If voiceURI is changed directly, that's a user selection.
-        
-        // The main useEffect for TTS settings (dependent on engine, lang, voiceURI, availableVoices)
-        // will handle saving to LocalStorage and further adjustments like finding a default voice.
         return newSettings;
     });
   };
@@ -975,7 +887,8 @@ export default function ReaderPage() {
        "EPUB viewer element not ready. Waiting for render.",
       "EPUB viewer element not ready", "MOBI file format is not directly supported",
       "OCR completed, but no text found.",
-      "No document selected.", "No document selected and no previously active document found."
+      "No document selected.", "No document selected and no previously active document found.",
+      "EPUB viewer initializing..."
     ];
 
     if (selection && activeDoc && !invalidMessages.some(msg => selection.startsWith(msg)) && selection.length >= MIN_TTS_TEXT_LENGTH) {
@@ -997,20 +910,20 @@ export default function ReaderPage() {
   };
   const handlePdfScaleChange = (newScale: number) => {
     if (isRenderingPdfPage) return;
-    stopSpeech(true); // Stop speech as page content will change
+    stopSpeech(true); 
     setPdfScale(newScale);
   };
 
   const navigateEpub = (direction: 'prev' | 'next') => {
-    if (!epubRenditionRef.current || isLoadingDoc) return; // isLoadingDoc check for EPUB safety
-    stopSpeech(true); // Stop speech before changing EPUB section
+    if (!epubRenditionRef.current || isLoadingDoc) return; 
+    stopSpeech(true); 
     if (direction === 'prev') epubRenditionRef.current.prev(); else epubRenditionRef.current.next();
   };
 
   const getButtonState = () => {
     const selectedText = typeof window !== 'undefined' ? window.getSelection()?.toString().trim() : '';
     const effectiveText = selectedText || currentTextForTTS;
-    const invalidMessages = [ // Keep this list consistent
+    const invalidMessages = [ 
       "Error:", "Failed to load", "Loading PDF page...", "MOBI files cannot", "Loading EPUB...", "Loading text file...", "Loading image...",
       "Image loaded. Perform OCR", "No text content found", "Could not extract text",
       "EPUB viewer element not ready", "EPUB section loaded, but text extraction",
@@ -1021,7 +934,8 @@ export default function ReaderPage() {
        "EPUB viewer element not ready. Waiting for render.",
       "EPUB viewer element not ready", "MOBI file format is not directly supported",
       "OCR completed, but no text found.",
-      "No document selected.", "No document selected and no previously active document found."
+      "No document selected.", "No document selected and no previously active document found.",
+      "EPUB viewer initializing..."
     ];
     const canPlay = !!(effectiveText && !invalidMessages.some(msg => effectiveText.startsWith(msg)) && effectiveText.length >= MIN_TTS_TEXT_LENGTH && activeDoc && !isLoadingDoc && !isPerformingOcr && !isRenderingPdfPage && !docErrorMessage);
 
@@ -1032,13 +946,10 @@ export default function ReaderPage() {
   };
   const buttonState = getButtonState();
 
-  // If still loading initial docId determination and no activeDoc yet and no specific error message
   if (isLoadingDoc && !activeDoc && !docErrorMessage) {
     return <div className="flex items-center justify-center h-full flex-grow"><Loader2 className="h-12 w-12 animate-spin text-primary" /><p className="ml-4 text-lg">Loading document...</p></div>;
   }
 
-  // If there's a critical document-level error message and no specific content type can be rendered
-  // (e.g., doc not found, or a general loading error not specific to PDF/EPUB rendering phases)
   if (docErrorMessage && (!activeDoc || (activeDoc && !['pdf', 'epub', 'txt', 'image'].includes(activeDoc.type))) ) {
     return <div className="flex flex-col items-center justify-center h-full flex-grow p-4 text-center">
         <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
@@ -1048,19 +959,14 @@ export default function ReaderPage() {
     </div>;
   }
   
-  // Determine if OCR button should be shown for PDF (if page is image-like)
   const showOcrButtonForPdfPage = activeDoc?.type === 'pdf' && !pdfPageIsTextBased && pdfPageImage && !isRenderingPdfPage && !isLoadingDoc && !isPerformingOcr;
-  // Determine if OCR button should be shown for Image (if no extracted text yet)
   const showOcrButtonForImage = activeDoc?.type === 'image' && displayedImageSrc && !isLoadingDoc && !isPerformingOcr && !(activeDoc as StoredImageDocument).extractedText;
 
 
   return (
-    <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)]"> {/* Ensure header height is accounted for */}
-      {/* Main Content Area */}
+    <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)]"> 
       <div className="flex-grow overflow-y-auto bg-muted/20 p-2 md:p-4 relative">
-        {/* Global loading indicator or error message for specific document content rendering phases */}
          {docErrorMessage && activeDoc && (activeDoc.type === 'epub' || activeDoc.type === 'pdf') && (
-            // This error message is for issues specific to PDF/EPUB rendering AFTER activeDoc is set
             <div className="absolute inset-x-0 top-4 mx-auto w-fit max-w-md bg-destructive/10 border border-destructive text-destructive p-3 rounded-md shadow-lg z-10 flex items-start gap-2">
                 <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
                 <div>
@@ -1071,14 +977,12 @@ export default function ReaderPage() {
             </div>
         )}
 
-        {/* General loading indicator for when content is being fetched/rendered for a specific type */}
         {isLoadingDoc && (activeDoc?.type === 'pdf' || activeDoc?.type === 'epub' || activeDoc?.type === 'image' || activeDoc?.type === 'txt') &&
             <div className="flex items-center justify-center h-full">
                 <Loader2 className="h-10 w-10 animate-spin text-primary" /><p className="ml-3">Loading content for {activeDoc.type.toUpperCase()}...</p>
             </div>
         }
 
-        {/* PDF Content */}
         {!isLoadingDoc && activeDoc?.type === 'pdf' && (
           <div className="flex flex-col items-center">
             {isRenderingPdfPage && !pdfPageImage && <Loader2 className="h-10 w-10 animate-spin my-8 text-primary" />}
@@ -1094,30 +998,24 @@ export default function ReaderPage() {
           </div>
         )}
 
-        {/* EPUB Content */}
-        {/* The div for EPUB is always in the DOM structure if activeDoc.type is 'epub', controlled by the outer conditional rendering logic */}
         {activeDoc?.type === 'epub' && (
             <div
                 ref={epubViewerRef}
                 className={cn(
                 "w-full h-full epub-viewer-container bg-background rounded-md shadow-inner",
-                // Show loader inside if isLoadingDoc (for EPUB specifically) AND no rendition yet AND no error
-                (isLoadingDoc && !epubRenditionRef.current && !docErrorMessage) && "flex items-center justify-center" 
+                (isLoadingDoc && !epubRenditionRef.current && !docErrorMessage && activeDoc.type === 'epub') && "flex items-center justify-center" 
                 )}
             >
                 {(isLoadingDoc && !epubRenditionRef.current && !docErrorMessage && activeDoc.type === 'epub') && 
                  <Loader2 className="h-10 w-10 animate-spin text-primary" />}
-                {/* If there's an EPUB-specific error and no rendition, it will be handled by the global error message above */}
             </div>
         )}
 
 
-        {/* TXT Content */}
         {!isLoadingDoc && activeDoc?.type === 'txt' && (
           <pre className="whitespace-pre-wrap p-4 bg-background rounded-md shadow-inner text-sm font-mono h-full overflow-y-auto select-text">{txtContent}</pre>
         )}
 
-        {/* Image Content */}
         {!isLoadingDoc && activeDoc?.type === 'image' && displayedImageSrc && (
             <div className="flex flex-col items-center">
                 <NextImage src={displayedImageSrc} alt={activeDoc.title || 'Uploaded Image'} width={800} height={600} style={{objectFit: 'contain'}} className="max-w-full max-h-[calc(100vh-15rem)] shadow-lg border rounded-md" />
@@ -1129,7 +1027,6 @@ export default function ReaderPage() {
             </div>
         )}
 
-        {/* MOBI Placeholder/Error */}
          {!isLoadingDoc && activeDoc?.type === 'mobi' && (
            <div className="p-4 bg-background rounded-md shadow-inner text-center h-full flex flex-col justify-center items-center">
              <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-2"/>
@@ -1138,7 +1035,6 @@ export default function ReaderPage() {
            </div>
          )}
 
-        {/* Current Text for TTS Area - Show if there's text and no critical doc error AND not loading the main doc content */}
         { (activeDoc?.type === 'pdf' || activeDoc?.type === 'epub' || activeDoc?.type === 'image' || activeDoc?.type === 'txt') && 
           currentTextForTTS && !docErrorMessage && !isLoadingDoc && !isRenderingPdfPage && !isPerformingOcr &&
             <Card className="mt-4 sticky bottom-2 bg-background/90 backdrop-blur-sm shadow-md">
@@ -1157,7 +1053,6 @@ export default function ReaderPage() {
         }
       </div>
 
-      {/* Sidebar Controls */}
       <div className="w-full lg:w-80 xl:w-96 p-3 border-l bg-background flex-shrink-0 overflow-y-auto space-y-4">
         <Card>
             <CardHeader className="pb-2 pt-4">
@@ -1173,7 +1068,6 @@ export default function ReaderPage() {
             </CardHeader>
         </Card>
 
-        {/* PDF Controls */}
         {(activeDoc?.type === 'pdf' && pdfTotalPages > 0) && (
           <Card>
             <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">PDF Navigation & View</CardTitle></CardHeader>
@@ -1191,18 +1085,16 @@ export default function ReaderPage() {
             </CardContent>
           </Card>
         )}
-        {/* EPUB Controls */}
         {activeDoc?.type === 'epub' && (
           <Card>
             <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">EPUB Navigation</CardTitle></CardHeader>
             <CardContent className="flex items-center justify-between pt-0">
-              <Button onClick={() => navigateEpub('prev')} size="sm" variant="outline" disabled={isLoadingDoc || !epubRenditionRef.current || isRenderingPdfPage /* EPUB doesn't have isRenderingPdfPage but disable if general loading */}><ChevronLeft /> Previous</Button>
+              <Button onClick={() => navigateEpub('prev')} size="sm" variant="outline" disabled={isLoadingDoc || !epubRenditionRef.current || isRenderingPdfPage }><ChevronLeft /> Previous</Button>
               <Button onClick={() => navigateEpub('next')} size="sm" variant="outline" disabled={isLoadingDoc || !epubRenditionRef.current || isRenderingPdfPage}>Next <ChevronRight /></Button>
             </CardContent>
           </Card>
         )}
 
-        {/* TTS Controls */}
         <Card>
           <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm flex items-center gap-1"><Settings2 className="h-4 w-4"/> Text-to-Speech</CardTitle></CardHeader>
           <CardContent className="space-y-2 pt-0">
@@ -1243,5 +1135,3 @@ export default function ReaderPage() {
     </div>
   );
 }
-
-    
