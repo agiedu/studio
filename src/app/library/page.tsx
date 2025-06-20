@@ -20,11 +20,13 @@ function arrayBufferToBlob(buffer: ArrayBuffer, type: string): Blob {
 
 export default function LibraryPage() {
   const { toast } = useToast();
-  const [isLoading, setIsLoading] = useState(true); // Start true to load initial docs
+  const [isLoading, setIsLoading] = useState(true); 
   const [isUploading, setIsUploading] = useState(false);
   const [isSavingToDevice, setIsSavingToDevice] = useState<string | null>(null);
   const [storedDocuments, setStoredDocuments] = useState<StoredMangaDocument[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  console.log(`[LibraryPage] Rendering. isLoading: ${isLoading}, isUploading: ${isUploading}, isSavingToDevice: ${isSavingToDevice}`);
 
   const fetchDocuments = useCallback(async (operationLabel: string = "Fetching documents") => {
     console.log(`[LibraryPage] ${operationLabel}...`);
@@ -109,7 +111,7 @@ export default function LibraryPage() {
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) {
-        fileInputRef.current.value = ""; // Reset file input
+        fileInputRef.current.value = ""; 
       }
       console.log(`[LibraryPage] File upload process finished for: "${file.name}"`);
     }
@@ -224,7 +226,7 @@ export default function LibraryPage() {
       case 'epub': return <BookOpen className="h-8 w-8 text-primary flex-shrink-0" />;
       case 'mobi': return <Book className="h-8 w-8 text-primary flex-shrink-0" />; 
       case 'txt': return <FileText className="h-8 w-8 text-primary flex-shrink-0" />;
-      default: return <FileText className="h-8 w-8 text-primary flex-shrink-0" />; // Fallback
+      default: return <FileText className="h-8 w-8 text-primary flex-shrink-0" />; 
     }
   };
 
@@ -272,11 +274,11 @@ export default function LibraryPage() {
           {storedDocuments.length > 0 && (
             <ul className="space-y-3">
               {storedDocuments.map(doc => {
-                const currentDocId = doc.id; // For clarity in logs and handlers
+                const currentDocId = doc.id; 
                 const currentDocTitle = doc.title;
                 const isButtonDisabled = isUploading || isLoading;
-                // Log information about the delete button being rendered
-                // console.log(`[LibraryPage] Rendering Delete Button for docId: ${currentDocId}, title: "${currentDocTitle}". Effective disabled state: ${isButtonDisabled}`);
+                
+                console.log(`[LibraryPage] Rendering Delete Button for docId: ${currentDocId}, title: "${currentDocTitle}". Calculated disabled state: ${isButtonDisabled}`);
 
                 return (
                   <li key={currentDocId} className="p-3 border rounded-md flex flex-col sm:flex-row justify-between items-start gap-3 bg-card hover:shadow-md transition-shadow">
@@ -300,7 +302,7 @@ export default function LibraryPage() {
                           size="sm"
                           variant="outline"
                           onClick={() => handleSaveToDevice(doc)}
-                          disabled={isSavingToDevice === currentDocId || isUploading}
+                          disabled={isSavingToDevice === currentDocId || isUploading || isLoading}
                           className="w-[150px]"
                           title="Save a copy to your computer's file system."
                       >
@@ -347,4 +349,6 @@ export default function LibraryPage() {
     </div>
   );
 }
+    
+
     
