@@ -55,7 +55,8 @@ export default function ReaderPage() {
   const epubBookRef = useRef<EpubBook | null>(null);
   const epubRenditionRef = useRef<Rendition | null>(null);
   const epubViewerRef = useRef<HTMLDivElement | null>(null);
-  const [isEpubLoading, setIsEpubLoading] = useState(false); 
+  const [isEpubLoading, setIsEpubLoading] = useState(false);
+  const [isEpubSectionDisplayed, setIsEpubSectionDisplayed] = useState(false);
   const isMountedRef = useRef(false);
 
   // TXT specific state
@@ -99,7 +100,7 @@ export default function ReaderPage() {
     if (utteranceRef.current) {
       utteranceRef.current.onend = null; utteranceRef.current.onboundary = null; utteranceRef.current.onerror = null; utteranceRef.current = null;
     }
-    if (resetUIState) {
+    if (resetUIState && isMountedRef.current) {
       setIsSpeaking(false); setIsPaused(false); setIsLoadingTTS(false);
     }
   }, []);
@@ -107,21 +108,22 @@ export default function ReaderPage() {
   // General document metadata loading effect
   useEffect(() => {
     console.log("[ReaderPage] Main metadata load effect: Initiating.");
-    
     stopSpeech(true);
 
     // Non-EPUB general cleanup (PDF, Image, TXT)
     if (pdfDocProxy) { try { pdfDocProxy.destroy(); } catch(e) { console.warn("Error destroying PDF proxy on doc change", e);}}
-    setPdfDocProxy(null); setCurrentPdfPageNum(1); setPdfTotalPages(0); setPdfPageImage(null); setPdfPageIsTextBased(true); setIsRenderingPdfPage(false);
+    if (isMountedRef.current) {
+      setPdfDocProxy(null); setCurrentPdfPageNum(1); setPdfTotalPages(0); setPdfPageImage(null); setPdfPageIsTextBased(true); setIsRenderingPdfPage(false);
+    }
     if (currentImageObjectUrlRef.current) { URL.revokeObjectURL(currentImageObjectUrlRef.current); currentImageObjectUrlRef.current = null; }
-    setDisplayedImageSrc(null);
-    setTxtContent("");
-    
-    // Reset shared states
-    setCurrentTextForTTS("");
-    setDocErrorMessage(null);
-    setIsLoadingDoc(true); 
-    setIsPerformingOcr(false);
+    if (isMountedRef.current) {
+        setDisplayedImageSrc(null);
+        setTxtContent("");
+        setCurrentTextForTTS("");
+        setDocErrorMessage(null);
+        setIsLoadingDoc(true);
+        setIsPerformingOcr(false);
+    }
 
     const loadDocumentMetadata = async () => {
       let docIdToLoad = searchParams.get('docId');
@@ -133,7 +135,7 @@ export default function ReaderPage() {
           return;
         }
       }
-      if (!docIdToLoad) { 
+      if (!docIdToLoad) {
          if(isMountedRef.current) { setDocErrorMessage("No document selected and no previously active document found."); setIsLoadingDoc(false); setActiveDoc(null); }
          return;
       }
@@ -145,70 +147,65 @@ export default function ReaderPage() {
           if(isMountedRef.current) { setDocErrorMessage(`Document with ID "${docIdToLoad}" not found.`); await IndexedDBService.saveLastActiveDocId(null); setIsLoadingDoc(false); setActiveDoc(null); }
           return;
         }
-        if(isMountedRef.current) { setActiveDoc(doc as ActiveMangaDocument); } 
+        if(isMountedRef.current) { setActiveDoc(doc as ActiveMangaDocument); }
         await IndexedDBService.saveLastActiveDocId(docIdToLoad);
       } catch (err: any) {
         if(isMountedRef.current) { setDocErrorMessage(`Error loading document metadata: ${err.message}`); setIsLoadingDoc(false); setActiveDoc(null); }
       }
     };
     loadDocumentMetadata();
-    
-    // Cleanup for this effect is now handled by the EPUB specific effect and individual type effects.
+
     return () => {
       console.log("[ReaderPage] Main metadata load useEffect UNMOUNT/CLEANUP]: General speech stop. Specific resource cleanup in other effects.");
-      stopSpeech(true); // General speech stop
+      stopSpeech(true);
       if (currentImageObjectUrlRef.current) { URL.revokeObjectURL(currentImageObjectUrlRef.current); currentImageObjectUrlRef.current = null; }
       if (pdfDocProxy) { try { pdfDocProxy.destroy(); } catch(e) { console.warn("Error destroying PDF proxy on main unmount", e);}}
-      // EPUB cleanup is handled by its dedicated effect's return function via cleanupEpubInstances.
     };
-  }, [searchParams, stopSpeech]); // pdfDocProxy removed as it's managed by its own effect now
+  }, [searchParams, stopSpeech]); // pdfDocProxy removed
 
 
   // PDF Loading Effect
   useEffect(() => {
     if (activeDoc?.type === 'pdf' && activeDoc.fileData && isMountedRef.current) {
       setIsLoadingDoc(true); setCurrentTextForTTS("Loading PDF..."); setDocErrorMessage(null);
-      // Ensure previous PDF proxy is destroyed before creating a new one
-      if (pdfDocProxy) { 
+      if (pdfDocProxy) {
         try { pdfDocProxy.destroy(); } catch(e){console.warn("Error destroying previous pdfDocProxy", e);}
-        setPdfDocProxy(null); 
+        setPdfDocProxy(null);
       }
-      
+
       getDocument({ data: activeDoc.fileData.slice(0) }).promise.then(pdf => {
         if(!isMountedRef.current) { try {pdf.destroy();} catch(e){} return; }
         setPdfDocProxy(pdf); setPdfTotalPages(pdf.numPages);
         const savedPageIndex = LocalStorageService.loadCurrentPdfPageIndexForDoc(activeDoc.id);
         const pageToLoad = (savedPageIndex && savedPageIndex > 0 && savedPageIndex <= pdf.numPages) ? savedPageIndex : 1;
-        setCurrentPdfPageNum(pageToLoad); 
-        // setIsLoadingDoc(false) will be handled by page rendering effect
+        setCurrentPdfPageNum(pageToLoad);
       }).catch(e => {
         if(!isMountedRef.current) return;
         setDocErrorMessage(`Failed to load PDF: ${e.message}`); setCurrentTextForTTS(`Failed to load PDF: ${e.message}`); setIsLoadingDoc(false);
       });
     } else if (isMountedRef.current && activeDoc && activeDoc.type !== 'pdf' && pdfDocProxy) {
-      // Cleanup if activeDoc changes away from PDF
       try { pdfDocProxy.destroy(); } catch(e) { console.warn("Error destroying PDF proxy on doc type change", e); }
       setPdfDocProxy(null); setPdfTotalPages(0); setPdfPageImage(null);
     }
-  }, [activeDoc]); 
+  }, [activeDoc]);
 
   // PDF Page Rendering Effect
   useEffect(() => {
     if (activeDoc?.type === 'pdf' && pdfDocProxy && currentPdfPageNum > 0 && currentPdfPageNum <= pdfTotalPages && isMountedRef.current) {
       stopSpeech(true); setIsRenderingPdfPage(true); setPdfPageImage(null); setPdfPageIsTextBased(true); setCurrentTextForTTS(`Loading PDF page ${currentPdfPageNum}...`);
       LocalStorageService.saveCurrentPdfPageIndexForDoc(activeDoc.id, currentPdfPageNum);
-      
+
       pdfDocProxy.getPage(currentPdfPageNum).then(async (page: PDFPageProxy) => {
         if(!isMountedRef.current) return;
         const viewport = page.getViewport({ scale: pdfScale });
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d');
         canvas.height = viewport.height; canvas.width = viewport.width;
-        
+
         if (context) {
           await page.render({ canvasContext: context, viewport }).promise;
           if(isMountedRef.current) setPdfPageImage(canvas.toDataURL('image/png'));
-        } else { 
+        } else {
           if(isMountedRef.current) {
             setDocErrorMessage("Could not get canvas context for PDF rendering.");
             setCurrentTextForTTS("Error: Could not get canvas context for PDF page.");
@@ -216,8 +213,8 @@ export default function ReaderPage() {
             return;
           }
         }
-        
-        const pdfDocFromState = activeDoc as StoredPdfDocument; 
+
+        const pdfDocFromState = activeDoc as StoredPdfDocument;
         if (pdfDocFromState.ocrTextPerPage?.[currentPdfPageNum]) {
             if(isMountedRef.current) { setCurrentTextForTTS(pdfDocFromState.ocrTextPerPage[currentPdfPageNum]); setPdfPageIsTextBased(false); }
         } else {
@@ -229,7 +226,7 @@ export default function ReaderPage() {
                 if(isMountedRef.current) { setCurrentTextForTTS("This PDF page has no selectable text or is image-based. Use OCR to extract text for reading."); setPdfPageIsTextBased(false); }
             }
         }
-        if(isMountedRef.current) setIsLoadingDoc(false); // Loading finished for this page
+        if(isMountedRef.current) setIsLoadingDoc(false);
       }).catch(e => {
         if(!isMountedRef.current) return;
         setPdfPageImage(null); setCurrentTextForTTS(`Error rendering PDF page ${currentPdfPageNum}: ${e.message}`); setPdfPageIsTextBased(false); setIsLoadingDoc(false);
@@ -245,7 +242,7 @@ export default function ReaderPage() {
     if (activeDoc?.type === 'txt' && activeDoc.fileData && isMountedRef.current) {
         setIsLoadingDoc(true); setCurrentTextForTTS("Loading text file..."); setDocErrorMessage(null);
         try {
-            const decoder = new TextDecoder(); 
+            const decoder = new TextDecoder();
             const text = decoder.decode(activeDoc.fileData);
             if(isMountedRef.current) { setTxtContent(text); setCurrentTextForTTS(text); }
         } catch (e: any) {
@@ -254,7 +251,7 @@ export default function ReaderPage() {
             if(isMountedRef.current) setIsLoadingDoc(false);
         }
     } else if (isMountedRef.current && (!activeDoc || activeDoc.type !== 'txt')) {
-      setTxtContent(""); 
+      setTxtContent("");
     }
   }, [activeDoc]);
 
@@ -268,7 +265,7 @@ export default function ReaderPage() {
             const newUrl = URL.createObjectURL(blob);
             currentImageObjectUrlRef.current = newUrl;
             if(isMountedRef.current) setDisplayedImageSrc(newUrl);
-            
+
             const imageDoc = activeDoc as StoredImageDocument;
             if (imageDoc.extractedText) {
                 if(isMountedRef.current) setCurrentTextForTTS(imageDoc.extractedText);
@@ -292,43 +289,56 @@ export default function ReaderPage() {
     const currentBook = epubBookRef.current;
     const viewerNode = epubViewerRef.current;
 
-    if (currentRendition) {
-        console.log("[EPUB Cleanup] Found epubRenditionRef.current.");
-        // Critical checks before calling destroy
-        if (viewerNode && document.body.contains(viewerNode) && 
-            currentRendition.manager?.container && viewerNode.contains(currentRendition.manager.container)) {
-            console.log("[EPUB Cleanup] Rendition container is valid and attached. Calling rendition.destroy().");
-            try {
-                currentRendition.destroy();
-            } catch (e: any) {
-                console.warn("[EPUB Cleanup] Error destroying EPUB rendition:", e.message || e);
+    if (isMountedRef.current) {
+        setIsEpubSectionDisplayed(false);
+    }
+
+    const destroyRendition = () => {
+        if (currentRendition) {
+            // CRITICAL CHECK: Ensure the rendition's container is still a child of our viewer
+            // This is the primary defense against "removeChild" errors.
+            if (viewerNode && document.body.contains(viewerNode) &&
+                currentRendition.manager?.container && viewerNode.contains(currentRendition.manager.container)) {
+                console.log("[EPUB Cleanup] Rendition container is valid. Calling rendition.destroy().");
+                try {
+                    currentRendition.destroy();
+                } catch (e: any) {
+                    console.warn("[EPUB Cleanup] Error destroying EPUB rendition:", e.message || e);
+                }
+            } else {
+                console.warn("[EPUB Cleanup] Rendition container no longer valid or viewer detached. Skipping rendition.destroy() to prevent 'removeChild' error.");
             }
-        } else {
-            console.warn("[EPUB Cleanup] Rendition container no longer valid, viewer detached, or rendition not fully attached. Skipping rendition.destroy().");
+            epubRenditionRef.current = null;
         }
-        epubRenditionRef.current = null;
-    } else {
-        console.log("[EPUB Cleanup] No epubRenditionRef.current found to destroy.");
-    }
+    };
 
-    if (currentBook) {
-        console.log("[EPUB Cleanup] Found epubBookRef.current. Attempting book.destroy().");
-        try {
-            currentBook.destroy();
-        } catch (e: any) {
-            console.warn("[EPUB Cleanup] Error destroying EPUB book:", e.message || e);
+    // Defer rendition destruction slightly to allow React to finish its cycle
+    requestAnimationFrame(() => {
+        // Re-check instance before actual destruction inside rAF
+        if (epubRenditionRef.current === currentRendition) {
+            destroyRendition();
         }
-        epubBookRef.current = null;
-    } else {
-        console.log("[EPUB Cleanup] No epubBookRef.current found to destroy.");
-    }
 
-    if (viewerNode && document.body.contains(viewerNode)) {
-        console.log("[EPUB Cleanup] Clearing epubViewerRef.current.innerHTML.");
-        viewerNode.innerHTML = ''; // Clear the container
-    }
-    console.log("[EPUB Cleanup] Finished.");
-  }, []); 
+        if (currentBook) {
+            console.log("[EPUB Cleanup] Attempting book.destroy().");
+             try {
+                // Re-check instance for book if it was captured at start of cleanup
+                if (epubBookRef.current === currentBook) {
+                    currentBook.destroy();
+                }
+            } catch (e: any) {
+                console.warn("[EPUB Cleanup] Error destroying EPUB book:", e.message || e);
+            }
+            epubBookRef.current = null;
+        }
+
+        if (viewerNode && document.body.contains(viewerNode)) {
+            console.log("[EPUB Cleanup] Clearing epubViewerRef.current.innerHTML.");
+            viewerNode.innerHTML = ''; // Clear the container
+        }
+        console.log("[EPUB Cleanup] Finished.");
+    });
+  }, []);
 
   // EPUB Loading and Lifecycle Effect
   useEffect(() => {
@@ -337,10 +347,10 @@ export default function ReaderPage() {
         console.warn("[EPUB Effect] Component not mounted, skipping EPUB initialization.");
         return;
       }
-      
+
       console.log("[EPUB Effect] Active document is EPUB. Initializing...");
-      cleanupEpubInstances(); // Always cleanup before starting a new EPUB instance
-      
+      cleanupEpubInstances();
+
       if (!activeDoc.fileData) {
         if(isMountedRef.current) {
           setDocErrorMessage("EPUB file data is missing.");
@@ -349,58 +359,41 @@ export default function ReaderPage() {
         return;
       }
 
-      if (!epubViewerRef.current || !document.body.contains(epubViewerRef.current)) {
-        if (isMountedRef.current) {
-          setDocErrorMessage("EPUB viewer element not ready. Please wait or reload.");
-          setIsEpubLoading(true); setIsLoadingDoc(true); 
-        }
-        console.warn("[EPUB Init] epubViewerRef.current is null or detached. Cannot render EPUB yet.");
-        // Schedule a re-check or rely on next render if viewer becomes available
-        const checkViewerInterval = setInterval(() => {
-            if (epubViewerRef.current && document.body.contains(epubViewerRef.current)) {
-                clearInterval(checkViewerInterval);
-                if (activeDoc?.type === 'epub') { // Re-trigger initialization if still relevant
-                    initializeNewEpub();
-                }
-            }
-        }, 100);
-        setTimeout(() => clearInterval(checkViewerInterval), 3000); // Stop checking after 3s
-        return;
-      }
-      
       const initializeNewEpub = async () => {
         if (!isMountedRef.current || !activeDoc || activeDoc.type !== 'epub' || !activeDoc.fileData) {
-            // Condition might have changed during async import or waiting
-            cleanupEpubInstances();
-            return;
+             console.warn("[EPUB Init] Conditions for EPUB initialization no longer met (e.g., unmounted, wrong doc type).");
+             cleanupEpubInstances();
+             return;
         }
         if (!epubViewerRef.current || !document.body.contains(epubViewerRef.current)) {
-             if(isMountedRef.current) setDocErrorMessage("EPUB viewer element became unavailable during init.");
+             if(isMountedRef.current) {
+                setDocErrorMessage("EPUB viewer element became unavailable during init.");
+                setIsLoadingDoc(false); setIsEpubLoading(false);
+             }
              console.warn("[EPUB Init] epubViewerRef became unavailable after check.");
-             if(isMountedRef.current) { setIsLoadingDoc(false); setIsEpubLoading(false); }
              return;
         }
 
         if (isMountedRef.current) {
-          setIsLoadingDoc(true); setIsEpubLoading(true); 
-          setCurrentTextForTTS("Loading EPUB..."); setDocErrorMessage(null); 
+          setIsLoadingDoc(true); setIsEpubLoading(true); setIsEpubSectionDisplayed(false);
+          setCurrentTextForTTS("Loading EPUB..."); setDocErrorMessage(null);
         }
-        
+
         try {
           console.log("[EPUB Init] Dynamically importing epubjs...");
           const ePubModule = await import('epubjs');
           const EPub = ePubModule.default;
           console.log("[EPUB Init] epubjs imported. Creating book instance.");
-          
+
           const book = EPub(activeDoc.fileData);
+          epubBookRef.current = book; // Assign early for potential cleanup
           await book.ready;
 
-          if (!isMountedRef.current || epubBookRef.current === book) { // Check if this book instance is already being processed or unmounted
-             console.log("[EPUB Init] Unmounted during book.ready or book instance is stale."); 
-             try { book.destroy(); } catch(e){} 
-             return; 
+          if (!isMountedRef.current || epubBookRef.current !== book) {
+             console.log("[EPUB Init] Unmounted during book.ready or book instance is stale.");
+             try { book.destroy(); if (epubBookRef.current === book) epubBookRef.current = null; } catch(e){}
+             return;
           }
-          epubBookRef.current = book;
           console.log("[EPUB Init] Book ready.");
 
           if (!epubViewerRef.current || !document.body.contains(epubViewerRef.current)) {
@@ -409,26 +402,27 @@ export default function ReaderPage() {
               if(isMountedRef.current) { setIsLoadingDoc(false); setIsEpubLoading(false); }
               return;
           }
-          
+
           console.log("[EPUB Init] Rendering book to epubViewerRef.current.");
           const rendition = book.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "auto" });
-          epubRenditionRef.current = rendition;
+          epubRenditionRef.current = rendition; // Assign early
           console.log("[EPUB Init] Rendition created.");
-          
+
           rendition.on('displayed', async (sectionResult: any) => {
             if (!isMountedRef.current || epubRenditionRef.current !== rendition || !activeDoc || activeDoc.type !== 'epub') {
               console.log("[EPUB Displayed Event] Conditions not met. Mounted:", isMountedRef.current, "Rendition Stale:", epubRenditionRef.current !== rendition ); return;
             }
+            console.log("[EPUB Displayed Event] Section displayed. Attempting text extraction...");
             try {
               const currentSection: Section | undefined = rendition.currentLocation()?.start?.displayed?.section || (sectionResult as Section) || (sectionResult?.section as Section);
               let extractedText = "";
-              const minTextLengthForSuccess = 20; 
+              const minTextLengthForSuccess = 20;
 
               if (currentSection && currentSection.contents) {
                   const displayedContentsElement = currentSection.contents as HTMLElement;
                   if (displayedContentsElement && typeof displayedContentsElement.innerText === 'string') {
                       extractedText = displayedContentsElement.innerText.replace(/\s+/g, ' ').trim();
-                      console.log("[EPUB Text Extract] Method 1 (innerText): Length", extractedText.length);
+                      console.log("[EPUB Text Extract] Method 1 (innerText): Length", extractedText.length, "Text:", extractedText.substring(0, 100));
                   }
                   if (extractedText.length < minTextLengthForSuccess && displayedContentsElement) {
                       let treeWalkerText = "";
@@ -436,7 +430,7 @@ export default function ReaderPage() {
                       let node;
                       while(node = walker.nextNode()) { treeWalkerText += (node.nodeValue || "").trim() + " "; }
                       treeWalkerText = treeWalkerText.replace(/\s+/g, ' ').trim();
-                      console.log("[EPUB Text Extract] Method 2 (TreeWalker): Length", treeWalkerText.length);
+                      console.log("[EPUB Text Extract] Method 2 (TreeWalker): Length", treeWalkerText.length, "Text:", treeWalkerText.substring(0, 100));
                       if (treeWalkerText.length > extractedText.length) extractedText = treeWalkerText;
                   }
               }
@@ -444,27 +438,45 @@ export default function ReaderPage() {
                   const tempDiv = document.createElement('div');
                   tempDiv.innerHTML = currentSection.output;
                   const outputText = (tempDiv.innerText || tempDiv.textContent || "").replace(/\s+/g, ' ').trim();
-                  console.log("[EPUB Text Extract] Method 3 (section.output): Length", outputText.length);
+                  console.log("[EPUB Text Extract] Method 3 (section.output): Length", outputText.length, "Text:", outputText.substring(0, 100));
                   if (outputText.length > extractedText.length) extractedText = outputText;
               }
-              
+
               if (isMountedRef.current) {
-                if (extractedText && extractedText.length >= MIN_TTS_TEXT_LENGTH) { // Use MIN_TTS_TEXT_LENGTH for TTS usability
+                if (extractedText && extractedText.length >= MIN_TTS_TEXT_LENGTH) {
                   setCurrentTextForTTS(extractedText);
                 } else {
                   setCurrentTextForTTS("EPUB section loaded. Text may be graphical or empty. Try navigating.");
                 }
+                setIsEpubSectionDisplayed(true); // Section is displayed and processed
               }
             } catch (textExtractError: any) {
               console.error("[EPUB Displayed Event] Error extracting text from EPUB section:", textExtractError);
-              if (isMountedRef.current) setCurrentTextForTTS(`Error extracting EPUB text: ${textExtractError.message}`);
+              if (isMountedRef.current) {
+                setCurrentTextForTTS(`Error extracting EPUB text: ${textExtractError.message}`);
+                setIsEpubSectionDisplayed(true); // Still mark as displayed, even if text extraction failed
+              }
             }
           });
-          
+
+          rendition.on('removed', (section: Section) => {
+            console.log('[EPUB Removed Event] Section removed:', section?.id || 'unknown');
+          });
+          rendition.on('resized', (size: {width: number, height: number}) => {
+            console.log('[EPUB Resized Event] New size:', size);
+          });
+          rendition.on('orientationchange', (orientation: string) => {
+            console.log('[EPUB Orientation Change Event] New orientation:', orientation);
+          });
+
+
           console.log("[EPUB Init] Calling rendition.display().");
-          await rendition.display(); 
-          if (!isMountedRef.current) { console.log("[EPUB Init] Unmounted after rendition.display()."); return; }
-          console.log("[EPUB Init] rendition.display() completed.");
+          await rendition.display();
+          if (!isMountedRef.current) {
+            console.log("[EPUB Init] Unmounted after rendition.display(). Cleanup should have run.");
+            return;
+          }
+          console.log("[EPUB Init] rendition.display() completed. Manager active:", epubRenditionRef.current?.manager?.active);
         } catch (e: any) {
           console.error("[EPUB Init] Error during EPUB initialization:", e);
           if (isMountedRef.current) {
@@ -472,58 +484,86 @@ export default function ReaderPage() {
             setCurrentTextForTTS(`Failed to load EPUB: ${e.message || String(e)}`);
           }
         } finally {
-          if (isMountedRef.current) { 
-              setIsLoadingDoc(false); setIsEpubLoading(false);
-              console.log("[EPUB Init] Finally block: setIsLoadingDoc and setIsEpubLoading set to false.");
+          if (isMountedRef.current) {
+              // setIsLoadingDoc(false); // Keep this true until a section is displayed, or handle by specific type
+              setIsEpubLoading(false); // Signifies book structure processing is done
+              console.log("[EPUB Init] Finally block: setIsEpubLoading set to false.");
           }
         }
       };
-      initializeNewEpub();
+
+      const checkViewerAndInit = () => {
+        if (epubViewerRef.current && document.body.contains(epubViewerRef.current)) {
+          initializeNewEpub();
+        } else {
+          console.warn("[EPUB Init] epubViewerRef.current is null or detached. Scheduling re-check.");
+          const intervalId = setInterval(() => {
+            if (epubViewerRef.current && document.body.contains(epubViewerRef.current)) {
+              clearInterval(intervalId);
+              if (activeDoc?.type === 'epub' && isMountedRef.current) { // Re-check if still relevant
+                initializeNewEpub();
+              }
+            } else if (!isMountedRef.current || activeDoc?.type !== 'epub') { // Stop if component unmounted or doc changed
+                clearInterval(intervalId);
+            }
+          }, 100);
+          // Safety timeout to prevent infinite loop
+          setTimeout(() => {
+            clearInterval(intervalId);
+            if (!epubViewerRef.current && isMountedRef.current && activeDoc?.type === 'epub' && !isEpubLoading && !isEpubSectionDisplayed) {
+                 setDocErrorMessage("EPUB viewer did not become available.");
+                 setIsLoadingDoc(false); setIsEpubLoading(false);
+            }
+          }, 5000);
+        }
+      };
+      checkViewerAndInit();
 
     } else {
-      // If activeDoc is not EPUB, ensure any existing EPUB instances are cleaned up.
       console.log("[EPUB Effect] Active document is NOT EPUB or null. Cleaning up any existing EPUB instances.");
-      cleanupEpubInstances(); 
-      if (isMountedRef.current && (isEpubLoading || isLoadingDoc)) {
-          setIsEpubLoading(false);
-          // Only set isLoadingDoc to false if it was true due to EPUB processing
-          // and no other document type is now actively loading.
+      cleanupEpubInstances();
+      if (isMountedRef.current ) {
+          if (isEpubLoading) setIsEpubLoading(false);
+          if (isEpubSectionDisplayed) setIsEpubSectionDisplayed(false);
+          // Determine if isLoadingDoc should be set to false
           if (activeDoc === null || (activeDoc && activeDoc.type !== 'pdf' && activeDoc.type !== 'image' && activeDoc.type !== 'txt')) {
-            setIsLoadingDoc(false);
+            if(isLoadingDoc) setIsLoadingDoc(false);
           }
       }
     }
 
-    return () => { 
+    return () => {
       console.log("[EPUB Effect Cleanup] Running cleanup for EPUB effect (activeDoc changed or component unmounted).");
-      cleanupEpubInstances(); 
+      cleanupEpubInstances();
     };
-  }, [activeDoc, cleanupEpubInstances]); // Added cleanupEpubInstances as a stable dependency
+  }, [activeDoc, cleanupEpubInstances]);
 
 
   const handlePerformOcr = useCallback(async () => {
     if (!activeDoc) { toast({ variant: "destructive", title: "OCR Error", description: "No active document." }); return; }
+    if (!isMountedRef.current) return;
     stopSpeech(true);
     let dataUrlToProcess: string | null = null;
-    const currentActiveDoc = activeDoc; 
+    const currentActiveDoc = activeDoc;
     if (currentActiveDoc.type === 'pdf' && pdfPageImage && !pdfPageIsTextBased) { dataUrlToProcess = pdfPageImage; }
     else if (currentActiveDoc.type === 'image' && currentActiveDoc.fileData) {
-        setIsPerformingOcr(true); 
+        setIsPerformingOcr(true);
         try {
             const docToProcess = await IndexedDBService.getDocumentById(currentActiveDoc.id) as StoredImageDocument | null;
             if (!docToProcess || !docToProcess.fileData || !docToProcess.originalType) {
-                toast({variant: "destructive", title: "OCR Error", description: "Image data/type missing."}); setIsPerformingOcr(false); return;
+                toast({variant: "destructive", title: "OCR Error", description: "Image data/type missing."}); if(isMountedRef.current) setIsPerformingOcr(false); return;
             }
             dataUrlToProcess = await IndexedDBService.arrayBufferToBase64DataURL(docToProcess.fileData, docToProcess.originalType);
         } catch (conversionError: any) {
-          toast({variant: "destructive", title: "OCR Error", description: `Image prep failed: ${conversionError.message}`}); setIsPerformingOcr(false); return;
+          toast({variant: "destructive", title: "OCR Error", description: `Image prep failed: ${conversionError.message}`}); if(isMountedRef.current) setIsPerformingOcr(false); return;
         }
     }
-    if (!dataUrlToProcess) { toast({ variant: "destructive", title: "OCR Error", description: "No image data for OCR." }); setIsPerformingOcr(false); return; }
-    if(!isPerformingOcr) setIsPerformingOcr(true); 
-    setCurrentTextForTTS("Performing OCR...");
+    if (!dataUrlToProcess) { toast({ variant: "destructive", title: "OCR Error", description: "No image data for OCR." }); if(isMountedRef.current) setIsPerformingOcr(false); return; }
+    if(!isPerformingOcr && isMountedRef.current) setIsPerformingOcr(true);
+    if(isMountedRef.current) setCurrentTextForTTS("Performing OCR...");
     try {
         const result = await performOCR(dataUrlToProcess);
+        if(!isMountedRef.current) return;
         if ('extractedText' in result) {
             const ocrText = result.extractedText || "OCR completed, no text found.";
             setCurrentTextForTTS(ocrText);
@@ -533,12 +573,12 @@ export default function ReaderPage() {
             if (updatedDocForSave.type === 'image') { (updatedDocForSave as StoredImageDocument).extractedText = ocrText; }
             else if (updatedDocForSave.type === 'pdf') {
                 const ocrPages = { ...((updatedDocForSave as StoredPdfDocument).ocrTextPerPage || {}), [currentPdfPageNum]: ocrText };
-                (updatedDocForSave as StoredPdfDocument).ocrTextPerPage = ocrPages; setPdfPageIsTextBased(false); 
+                (updatedDocForSave as StoredPdfDocument).ocrTextPerPage = ocrPages; setPdfPageIsTextBased(false);
             }
             await IndexedDBService.saveDocument(updatedDocForSave);
-            if(isMountedRef.current) setActiveDoc(updatedDocForSave as ActiveMangaDocument); 
+            if(isMountedRef.current) setActiveDoc(updatedDocForSave as ActiveMangaDocument);
         } else { setCurrentTextForTTS(`OCR Error: ${result.error}`); toast({ variant: "destructive", title: "OCR Error", description: result.error }); }
-    } catch (e: any) { setCurrentTextForTTS(`OCR failed: ${e.message}`); toast({ variant: "destructive", title: "OCR Failed", description: e.message });
+    } catch (e: any) { if(isMountedRef.current) {setCurrentTextForTTS(`OCR failed: ${e.message}`); toast({ variant: "destructive", title: "OCR Failed", description: e.message });}
     } finally { if(isMountedRef.current) setIsPerformingOcr(false); }
   }, [activeDoc, pdfPageImage, pdfPageIsTextBased, currentPdfPageNum, stopSpeech, toast]);
 
@@ -546,7 +586,7 @@ export default function ReaderPage() {
     if (typeof window !== 'undefined') {
       const loadedSettings = LocalStorageService.loadTTSSettings();
       const engine = loadedSettings.engine || loadedSettings.type || 'local';
-      setTtsSettings(prev => ({ ...prev, ...loadedSettings, type: engine, engine: engine }));
+      if (isMountedRef.current) setTtsSettings(prev => ({ ...prev, ...loadedSettings, type: engine, engine: engine }));
     }
   }, []);
 
@@ -558,24 +598,24 @@ export default function ReaderPage() {
   }, []);
 
   useEffect(() => {
-    populateVoiceList(); 
+    populateVoiceList();
     if (typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.onvoiceschanged !== undefined) {
       window.speechSynthesis.onvoiceschanged = populateVoiceList;
     }
     return () => {
       if (typeof window !== 'undefined' && window.speechSynthesis) { window.speechSynthesis.onvoiceschanged = null; }
-      stopSpeech(true); 
+      stopSpeech(true);
     };
   }, [populateVoiceList, stopSpeech]);
 
  useEffect(() => {
-    let settingsToSave = { ...ttsSettings }; 
+    let settingsToSave = { ...ttsSettings };
     let changesMadeToSettingsState = false;
     if (typeof window !== 'undefined' && window.speechSynthesis && settingsToSave.engine === 'local') {
         const systemVoices = availableVoices.length > 0 ? availableVoices : window.speechSynthesis.getVoices().map(v => ({ name: v.name, lang: v.lang, voiceURI: v.voiceURI, localService: v.localService, default: v.default }));
         if (systemVoices.length > 0) {
             let voiceToSet: TTSVoice | undefined = settingsToSave.voiceURI ? systemVoices.find(v => v.voiceURI === settingsToSave.voiceURI) : undefined;
-            let langToSet = settingsToSave.language; 
+            let langToSet = settingsToSave.language;
             const currentVoiceIsValidForLanguage = voiceToSet && voiceToSet.lang && (voiceToSet.lang === settingsToSave.language || voiceToSet.lang.startsWith(settingsToSave.language.split('-')[0]));
             if (!voiceToSet || !currentVoiceIsValidForLanguage) {
                 const defaultForLang = systemVoices.find(v => v.lang === settingsToSave.language && v.default) || systemVoices.find(v => v.lang === settingsToSave.language) || systemVoices.find(v => v.lang?.startsWith(settingsToSave.language.split('-')[0]) && v.default) || systemVoices.find(v => v.lang?.startsWith(settingsToSave.language.split('-')[0]));
@@ -587,35 +627,34 @@ export default function ReaderPage() {
             if (langToSet && langToSet !== settingsToSave.language) { settingsToSave.language = langToSet; changesMadeToSettingsState = true; }
         } else { if(settingsToSave.voiceURI !== undefined) { settingsToSave.voiceURI = undefined; changesMadeToSettingsState = true; } }
     } else if (settingsToSave.engine === 'cloud') { if (settingsToSave.voiceURI !== undefined) { settingsToSave.voiceURI = undefined; changesMadeToSettingsState = true; } }
-    
-    let settingsChanged = changesMadeToSettingsState || 
-                          settingsToSave.rate !== ttsSettings.rate || 
+
+    let settingsChanged = changesMadeToSettingsState ||
+                          settingsToSave.rate !== ttsSettings.rate ||
                           settingsToSave.pitch !== ttsSettings.pitch ||
                           settingsToSave.engine !== ttsSettings.engine ||
                           settingsToSave.language !== ttsSettings.language ||
                           settingsToSave.type !== ttsSettings.type;
 
 
-    if (settingsChanged) { // Save to LS if any part of settingsToSave differs from current ttsSettings in state
-      if(changesMadeToSettingsState && isMountedRef.current) { setTtsSettings(settingsToSave); } // Only update state if voice/lang changed by this effect
-      LocalStorageService.saveTTSSettings(settingsToSave); 
+    if (settingsChanged) {
+      if(changesMadeToSettingsState && isMountedRef.current) { setTtsSettings(settingsToSave); }
+      LocalStorageService.saveTTSSettings(settingsToSave);
     }
-// Explicitly list dependencies of ttsSettings that are read to avoid excessive runs.
 }, [ttsSettings.engine, ttsSettings.language, ttsSettings.voiceURI, ttsSettings.rate, ttsSettings.pitch, ttsSettings.type, availableVoices, ttsSettings]);
 
 
   useEffect(() => {
-    const player = new Audio(); audioPlayerRef.current = player; 
+    const player = new Audio(); audioPlayerRef.current = player;
     const handleAudioEnded = () => { if (audioPlayerRef.current === player && isSpeaking && ttsSettings.engine === 'cloud' && isMountedRef.current) stopSpeech(true); };
     const handleAudioPlaying = () => { if (audioPlayerRef.current === player && ttsSettings.engine === 'cloud' && isSpeaking && isMountedRef.current) setIsLoadingTTS(false); };
     const handleAudioError = (e: Event) => { if (audioPlayerRef.current === player && isSpeaking && ttsSettings.engine === 'cloud' && isMountedRef.current) { toast({variant: "destructive", title: "Audio Error", description: "Failed to play cloud TTS audio."}); stopSpeech(true); }};
     player.addEventListener('ended', handleAudioEnded); player.addEventListener('playing', handleAudioPlaying); player.addEventListener('error', handleAudioError);
     return () => {
         player.removeEventListener('ended', handleAudioEnded); player.removeEventListener('playing', handleAudioPlaying); player.removeEventListener('error', handleAudioError);
-        if (player.src && !player.paused) player.pause(); player.src = ""; 
+        if (player.src && !player.paused) player.pause(); player.src = "";
         if (audioPlayerRef.current === player) audioPlayerRef.current = null;
     };
-  }, [ttsSettings.engine, isSpeaking, stopSpeech, toast]); 
+  }, [ttsSettings.engine, isSpeaking, stopSpeech, toast]);
 
   const playPauseSpeech = async () => {
     if(!isMountedRef.current) return;
@@ -627,15 +666,15 @@ export default function ReaderPage() {
       toast({ variant: "destructive", title: "No Valid Text", description: `No valid text to read or text too short (min ${MIN_TTS_TEXT_LENGTH} chars). Selected: "${selectedTextFromSelection ? selectedTextFromSelection.substring(0,30)+'...' : ''}", Current: "${currentTextForTTS.substring(0,30)}..."` }); return;
     }
     if (isSpeaking) {
-      if (isPaused) { 
-        if (ttsSettings.engine === 'local' && utteranceRef.current && window.speechSynthesis?.paused) { window.speechSynthesis.resume(); setIsPaused(false); }
+      if (isPaused) {
+        if (ttsSettings.engine === 'local' && utteranceRef.current && window.speechSynthesis?.paused) { window.speechSynthesis.resume(); if(isMountedRef.current) setIsPaused(false); }
         else if (ttsSettings.engine === 'cloud' && audioPlayerRef.current?.paused) { audioPlayerRef.current.play().then(() => {if(isMountedRef.current) setIsPaused(false);}).catch(() => {if(isMountedRef.current) stopSpeech(true);}); }
-      } else { 
-        if (ttsSettings.engine === 'local' && utteranceRef.current && window.speechSynthesis?.speaking) { window.speechSynthesis.pause(); setIsPaused(true); }
-        else if (ttsSettings.engine === 'cloud' && audioPlayerRef.current && !audioPlayerRef.current.paused) { audioPlayerRef.current.pause(); setIsPaused(true); }
+      } else {
+        if (ttsSettings.engine === 'local' && utteranceRef.current && window.speechSynthesis?.speaking) { window.speechSynthesis.pause(); if(isMountedRef.current) setIsPaused(true); }
+        else if (ttsSettings.engine === 'cloud' && audioPlayerRef.current && !audioPlayerRef.current.paused) { audioPlayerRef.current.pause(); if(isMountedRef.current) setIsPaused(true); }
       }
-    } else { 
-      stopSpeech(false); setIsLoadingTTS(true); setIsSpeaking(true); setIsPaused(false);
+    } else {
+      stopSpeech(false); if(isMountedRef.current) { setIsLoadingTTS(true); setIsSpeaking(true); setIsPaused(false); }
       if (ttsSettings.engine === 'local') {
         if (typeof window === 'undefined' || !window.speechSynthesis) { toast({ variant: "destructive", title: "TTS Error", description: "Browser Speech Synthesis not supported." }); stopSpeech(true); return; }
         const utterance = new SpeechSynthesisUtterance(effectiveTextToRead);
@@ -649,26 +688,26 @@ export default function ReaderPage() {
         if (voiceToUse) utterance.voice = voiceToUse; else if (availableVoices.length === 0 && systemVoices.length === 0) { toast({variant: "destructive", title: "TTS Error", description: "No speech synthesis voices available."}); stopSpeech(true); return; }
         utterance.onend = () => { if(utteranceRef.current === utterance && isMountedRef.current) stopSpeech(true); };
         utterance.onerror = (event) => { if(utteranceRef.current === utterance && isMountedRef.current) { toast({ variant: "destructive", title: "TTS Error", description: event.error || "Speech failed." }); stopSpeech(true); }};
-        utteranceRef.current = utterance; window.speechSynthesis.speak(utterance); if(isMountedRef.current) setIsLoadingTTS(false); 
-      } else { 
+        utteranceRef.current = utterance; window.speechSynthesis.speak(utterance); if(isMountedRef.current) setIsLoadingTTS(false);
+      } else {
         try {
           const result = await getCloudSpeech(effectiveTextToRead, ttsSettings.language);
-          if ('audioUrl' in result && audioPlayerRef.current) { audioPlayerRef.current.src = result.audioUrl; await audioPlayerRef.current.play(); } // setIsLoadingTTS(false) handled by 'playing' event
+          if(!isMountedRef.current) return;
+          if ('audioUrl' in result && audioPlayerRef.current) { audioPlayerRef.current.src = result.audioUrl; await audioPlayerRef.current.play(); }
           else if ('error' in result) { toast({ variant: "destructive", title: "Cloud TTS Error", description: result.error }); if(isMountedRef.current) stopSpeech(true); }
-        } catch (e: any) { toast({ variant: "destructive", title: "Cloud TTS Failed", description: e.message }); if(isMountedRef.current) stopSpeech(true); }
+        } catch (e: any) { if(isMountedRef.current) {toast({ variant: "destructive", title: "Cloud TTS Failed", description: e.message }); stopSpeech(true);} }
       }
     }
   };
 
   const handleSettingChange = <K extends keyof TTSSettings>(key: K, value: TTSSettings[K]) => {
     if(!isMountedRef.current) return;
-    stopSpeech(true); 
+    stopSpeech(true);
     setTtsSettings(prevSettings => {
         let newSettings = { ...prevSettings, [key]: value };
-        if (key === 'engine') newSettings.type = value as 'local' | 'cloud'; 
-        if (key === 'type') newSettings.engine = value as 'local' | 'cloud'; 
+        if (key === 'engine') newSettings.type = value as 'local' | 'cloud';
+        if (key === 'type') newSettings.engine = value as 'local' | 'cloud';
         if ((key === 'engine' || key === 'type') && newSettings.engine === 'cloud') newSettings.voiceURI = undefined;
-        // Voice/language selection logic is handled by the dedicated useEffect for ttsSettings and availableVoices
         return newSettings;
     });
   };
@@ -698,24 +737,24 @@ export default function ReaderPage() {
       newPage++;
     } else {
         console.log(`[ReaderPage] navigatePdf: Already at first/last page or invalid direction. current: ${currentPdfPageNum}, total: ${pdfTotalPages}, dir: ${direction}`);
-        return; // No change if at bounds or invalid direction
+        return;
     }
-    
+
     console.log(`[ReaderPage] navigatePdf: Calculated newPage: ${newPage}. (Old page was ${currentPdfPageNum})`);
     if (newPage !== currentPdfPageNum) {
       stopSpeech(true);
-      setCurrentPdfPageNum(newPage); // This will trigger the PDF Page Rendering Effect
+      if(isMountedRef.current) setCurrentPdfPageNum(newPage);
       console.log(`[ReaderPage] navigatePdf: setCurrentPdfPageNum called with ${newPage}.`);
     } else {
       console.log(`[ReaderPage] navigatePdf: newPage is the same as currentPdfPageNum. No navigation action taken.`);
     }
   };
-  const handlePdfScaleChange = (newScale: number) => { if (isRenderingPdfPage || !isMountedRef.current) return; stopSpeech(true); setPdfScale(newScale); };
+  const handlePdfScaleChange = (newScale: number) => { if (isRenderingPdfPage || !isMountedRef.current) return; stopSpeech(true); if(isMountedRef.current) setPdfScale(newScale); };
 
   const navigateEpub = async (direction: 'prev' | 'next') => {
     if(!isMountedRef.current) return;
     console.log(`[EPUB Nav] Attempting to navigate ${direction}.`);
-    console.log(`[EPUB Nav] isLoadingDoc: ${isLoadingDoc}, isEpubLoading: ${isEpubLoading}`);
+    console.log(`[EPUB Nav] isLoadingDoc: ${isLoadingDoc}, isEpubLoading: ${isEpubLoading}, isEpubSectionDisplayed: ${isEpubSectionDisplayed}`);
     console.log(`[EPUB Nav] epubRenditionRef.current exists: ${!!epubRenditionRef.current}, epubViewerRef.current exists: ${!!epubViewerRef.current}`);
     if (epubRenditionRef.current) console.log(`[EPUB Nav] epubRenditionRef.current.manager?.active: ${epubRenditionRef.current.manager?.active}`);
 
@@ -723,13 +762,13 @@ export default function ReaderPage() {
         console.warn("[EPUB Nav] Pre-condition failed: Rendition, loading state, or viewer ref missing/detached. Cannot navigate.");
         return;
     }
-    if (!epubRenditionRef.current.manager?.active) {
-        console.warn("[EPUB Nav] Pre-condition failed: Rendition manager is not active. Cannot navigate.");
+    if (!epubRenditionRef.current.manager?.active || !isEpubSectionDisplayed) {
+        console.warn("[EPUB Nav] Pre-condition failed: Rendition manager is not active or no section displayed. Cannot navigate.");
         toast({ variant: "default", title: "EPUB State", description: "EPUB reader is not ready for navigation. Please wait."});
         return;
     }
 
-    stopSpeech(true); 
+    stopSpeech(true);
     console.log(`[EPUB Nav] Calling rendition.${direction}()`);
     try {
       if (direction === 'prev') {
@@ -738,6 +777,7 @@ export default function ReaderPage() {
         await epubRenditionRef.current.next();
       }
       console.log(`[EPUB Nav] rendition.${direction}() completed successfully.`);
+      if (isMountedRef.current) setIsEpubSectionDisplayed(false); // Await new 'displayed' event
     } catch (error) {
       console.error(`[EPUB Nav] Error during rendition.${direction}():`, error);
       toast({
@@ -752,7 +792,7 @@ export default function ReaderPage() {
     const selectedText = typeof window !== 'undefined' ? window.getSelection()?.toString().trim() : '';
     const effectiveText = selectedText || currentTextForTTS;
     const invalidMessages = [ "Error:", "Failed to load", "Loading PDF page...", "MOBI files cannot", "Loading EPUB...", "Loading text file...", "Loading image...", "Image loaded. Perform OCR", "No text content found", "Could not extract text", "EPUB viewer element not ready", "This PDF page has no selectable text", "Performing OCR...", "No document ID provided", "Document with ID", "EPUB viewer became unavailable.", "OCR completed, but no text found.", "No document selected.", "EPUB section loaded. Text may be graphical or empty.", "Could not load EPUB section content."];
-    const canPlay = !!(effectiveText && !invalidMessages.some(msg => effectiveText.startsWith(msg)) && effectiveText.length >= MIN_TTS_TEXT_LENGTH && activeDoc && !isLoadingDoc && !isPerformingOcr && !isRenderingPdfPage && !docErrorMessage && !isEpubLoading);
+    const canPlay = !!(effectiveText && !invalidMessages.some(msg => effectiveText.startsWith(msg)) && effectiveText.length >= MIN_TTS_TEXT_LENGTH && activeDoc && !isLoadingDoc && !isPerformingOcr && !isRenderingPdfPage && !docErrorMessage && (!isEpubLoading || (activeDoc?.type === 'epub' && isEpubSectionDisplayed)) );
     if (isLoadingTTS) return { text: "Loading...", icon: <Loader2 className="mr-1 h-4 w-4 animate-spin" />, disabled: true };
     if (isSpeaking && !isPaused) return { text: "Pause", icon: <Pause className="mr-1 h-4 w-4" />, disabled: false };
     if (isSpeaking && isPaused) return { text: "Resume", icon: <Play className="mr-1 h-4 w-4" />, disabled: false };
@@ -770,7 +810,7 @@ export default function ReaderPage() {
   const showOcrButtonForImage = activeDoc?.type === 'image' && displayedImageSrc && !isLoadingDoc && !isPerformingOcr && !(activeDoc as StoredImageDocument).extractedText;
 
   return (
-    <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)]"> 
+    <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)]">
       <div className="flex-grow overflow-y-auto bg-muted/20 p-2 md:p-4 relative">
          {docErrorMessage && activeDoc && (activeDoc.type === 'epub' || activeDoc.type === 'pdf') && (
             <div className="absolute inset-x-0 top-4 mx-auto w-fit max-w-md bg-destructive/10 border border-destructive text-destructive p-3 rounded-md shadow-lg z-10 flex items-start gap-2"> <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" /> <div> <p className="font-medium text-sm">Document Display Issue</p> <p className="text-xs">{docErrorMessage}</p> <Button variant="ghost" size="sm" className="text-xs h-auto p-1 mt-1 text-destructive hover:bg-destructive/20" onClick={() => {if(isMountedRef.current) setDocErrorMessage(null);}}>Dismiss</Button> </div> </div>
@@ -788,8 +828,8 @@ export default function ReaderPage() {
         )}
         {activeDoc?.type === 'epub' && (
             <div ref={epubViewerRef} className={cn("w-full h-full epub-viewer-container bg-background rounded-md shadow-inner", (isLoadingDoc || isEpubLoading) && "flex items-center justify-center", !isEpubLoading && docErrorMessage && activeDoc.type === 'epub' && "p-4 text-center" )}>
-                {(isLoadingDoc || isEpubLoading) && !docErrorMessage && <Loader2 className="h-10 w-10 animate-spin text-primary" />}
-                {!isEpubLoading && docErrorMessage && activeDoc.type === 'epub' && 
+                {(isLoadingDoc || isEpubLoading) && !isEpubSectionDisplayed && !docErrorMessage && <Loader2 className="h-10 w-10 animate-spin text-primary" />}
+                {!isEpubLoading && !isEpubSectionDisplayed && docErrorMessage && activeDoc.type === 'epub' &&
                   <div className="text-destructive"> <AlertTriangle className="h-8 w-8 mx-auto mb-2"/> <p className="font-semibold">EPUB Load Error</p> <p className="text-sm">{docErrorMessage}</p> </div>
                 }
             </div>
@@ -806,14 +846,14 @@ export default function ReaderPage() {
          {!isLoadingDoc && activeDoc?.type === 'mobi' && (
            <div className="p-4 bg-background rounded-md shadow-inner text-center h-full flex flex-col justify-center items-center"> <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-2"/> <p className="font-semibold">MOBI File Format Not Supported</p> <p className="text-sm text-muted-foreground">Please convert to EPUB or PDF.</p> </div>
          )}
-        { (activeDoc?.type === 'pdf' || activeDoc?.type === 'epub' || activeDoc?.type === 'image' || activeDoc?.type === 'txt') && currentTextForTTS && !docErrorMessage && !isLoadingDoc && !isRenderingPdfPage && !isPerformingOcr && !isEpubLoading &&
+        { (activeDoc?.type === 'pdf' || activeDoc?.type === 'epub' || activeDoc?.type === 'image' || activeDoc?.type === 'txt') && currentTextForTTS && !docErrorMessage && !isLoadingDoc && !isRenderingPdfPage && !isPerformingOcr && (!isEpubLoading || isEpubSectionDisplayed) &&
             <Card className="mt-4 sticky bottom-2 bg-background/90 backdrop-blur-sm shadow-md"> <CardHeader className="pb-1 pt-3"> <CardTitle className="text-sm flex items-center"><FileText className="mr-2 h-4 w-4"/> Current Text for TTS</CardTitle> </CardHeader> <CardContent className="pt-0"> <textarea readOnly value={currentTextForTTS} className="w-full h-20 p-2 border rounded-md bg-muted/30 text-xs select-text" placeholder="Text for TTS..." /> </CardContent> </Card>
         }
       </div>
       <div className="w-full lg:w-80 xl:w-96 p-3 border-l bg-background flex-shrink-0 overflow-y-auto space-y-4">
         <Card>
             <CardHeader className="pb-2 pt-4"> <CardTitle className="text-base truncate flex items-center gap-1"> <BookOpen className="h-5 w-5 text-primary"/> {activeDoc?.title || "No Document Loaded"} </CardTitle>
-                {activeDoc && <CardDescription className="text-xs">Type: {activeDoc.type.toUpperCase()}{activeDoc.type === 'pdf' && pdfTotalPages > 0 ? `, Page: ${currentPdfPageNum}/${pdfTotalPages}` : ''}{activeDoc.type === 'epub' && (isLoadingDoc || isEpubLoading) ? ` (Loading EPUB...)`: ''}</CardDescription>}
+                {activeDoc && <CardDescription className="text-xs">Type: {activeDoc.type.toUpperCase()}{activeDoc.type === 'pdf' && pdfTotalPages > 0 ? `, Page: ${currentPdfPageNum}/${pdfTotalPages}` : ''}{activeDoc.type === 'epub' && (isLoadingDoc || isEpubLoading) && !isEpubSectionDisplayed ? ` (Loading EPUB...)`: ''}</CardDescription>}
                 {!activeDoc && !isLoadingDoc && !docErrorMessage && <CardDescription className="text-xs">No document loaded.</CardDescription>}
                 {docErrorMessage && (!activeDoc || (activeDoc && (activeDoc.type === 'epub' || activeDoc.type === 'pdf'))) && <CardDescription className="text-xs text-destructive">{docErrorMessage}</CardDescription>}
             </CardHeader>
@@ -822,7 +862,7 @@ export default function ReaderPage() {
           <Card> <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">PDF Navigation & View</CardTitle></CardHeader> <CardContent className="space-y-2 pt-0"> <div className="flex items-center justify-between"> <Button onClick={() => navigatePdf('prev')} disabled={isLoadingDoc || isRenderingPdfPage || !pdfDocProxy || currentPdfPageNum <= 1} size="sm" variant="outline"><ChevronLeft /> Prev</Button> <span className="text-sm tabular-nums"> {currentPdfPageNum} / {pdfTotalPages}</span> <Button onClick={() => navigatePdf('next')} disabled={isLoadingDoc || isRenderingPdfPage || !pdfDocProxy || currentPdfPageNum >= pdfTotalPages} size="sm" variant="outline">Next <ChevronRight /></Button> </div> <div className="flex items-center gap-2"> <Button onClick={() => handlePdfScaleChange(pdfScale - 0.25)} size="icon" variant="outline" className="h-7 w-7" disabled={isRenderingPdfPage || pdfScale <= 0.5 || isLoadingDoc}><ZoomOut className="h-4 w-4"/></Button> <Slider value={[pdfScale]} min={0.5} max={3} step={0.25} onValueChange={([val]) => handlePdfScaleChange(val)} disabled={isRenderingPdfPage || isLoadingDoc} /> <Button onClick={() => handlePdfScaleChange(pdfScale + 0.25)} size="icon" variant="outline" className="h-7 w-7" disabled={isRenderingPdfPage || pdfScale >=3 || isLoadingDoc}><ZoomIn className="h-4 w-4"/></Button> </div> </CardContent> </Card>
         )}
         {activeDoc?.type === 'epub' && (
-          <Card> <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">EPUB Navigation</CardTitle></CardHeader> <CardContent className="flex items-center justify-between pt-0"> <Button onClick={() => navigateEpub('prev')} size="sm" variant="outline" disabled={isLoadingDoc || isEpubLoading || !epubRenditionRef.current}><ChevronLeft /> Previous</Button> <Button onClick={() => navigateEpub('next')} size="sm" variant="outline" disabled={isLoadingDoc || isEpubLoading || !epubRenditionRef.current}>Next <ChevronRight /></Button> </CardContent> </Card>
+          <Card> <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">EPUB Navigation</CardTitle></CardHeader> <CardContent className="flex items-center justify-between pt-0"> <Button onClick={() => navigateEpub('prev')} size="sm" variant="outline" disabled={isLoadingDoc || isEpubLoading || !epubRenditionRef.current || !isEpubSectionDisplayed}><ChevronLeft /> Previous</Button> <Button onClick={() => navigateEpub('next')} size="sm" variant="outline" disabled={isLoadingDoc || isEpubLoading || !epubRenditionRef.current || !isEpubSectionDisplayed}>Next <ChevronRight /></Button> </CardContent> </Card>
         )}
         <Card>
           <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm flex items-center gap-1"><Settings2 className="h-4 w-4"/> Text-to-Speech</CardTitle></CardHeader>
@@ -835,7 +875,7 @@ export default function ReaderPage() {
             <div className="space-y-1"><Label htmlFor="tts-rate" className="text-xs">Rate: {ttsSettings.rate.toFixed(1)}</Label><Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={(isSpeaking && !isPaused) || isLoadingDoc || isRenderingPdfPage || isPerformingOcr || isEpubLoading}/></div>
             <div className="space-y-1"><Label htmlFor="tts-pitch" className="text-xs">Pitch: {ttsSettings.pitch.toFixed(1)}</Label><Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={(isSpeaking && !isPaused) || isLoadingDoc || isRenderingPdfPage || isPerformingOcr || isEpubLoading}/></div>
             <Button onClick={playPauseSpeech} disabled={buttonState.disabled} variant={isSpeaking && !isPaused ? "outline" : "default"} className="w-full h-9 text-sm">{buttonState.icon} {buttonState.text}</Button>
-            <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full mt-2 text-xs" disabled={!activeDoc || isLoadingDoc || isPerformingOcr || isRenderingPdfPage || docErrorMessage || isEpubLoading}><Star className="mr-2 h-3 w-3" /> Favorite Text/Selection</Button>
+            <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full mt-2 text-xs" disabled={!activeDoc || isLoadingDoc || isPerformingOcr || isRenderingPdfPage || docErrorMessage || (activeDoc?.type === 'epub' && (isEpubLoading || !isEpubSectionDisplayed)) }><Star className="mr-2 h-3 w-3" /> Favorite Text/Selection</Button>
           </CardContent>
         </Card>
       </div>
