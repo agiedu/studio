@@ -104,20 +104,25 @@ export async function getAllDocuments(): Promise<StoredMangaDocument[]> {
 export async function deleteDocumentById(id: string): Promise<void> {
   const db = await getDB();
   return new Promise((resolve, reject) => {
-    if (!id || typeof id !== 'string') {
+    if (!id || typeof id !== 'string' || id.trim() === "") {
       const errorMsg = `[IndexedDBService] deleteDocumentById: Invalid ID provided: ${id}`;
       console.error(errorMsg);
       return reject(new Error('Invalid ID for deletion.'));
     }
+    console.log(`[IndexedDBService] deleteDocumentById: Starting transaction to delete docId: ${id}`);
     const transaction = db.transaction(DOC_STORE_NAME, 'readwrite');
     const store = transaction.objectStore(DOC_STORE_NAME);
     const request = store.delete(id);
 
     request.onsuccess = () => {
-        console.log(`[IndexedDBService] deleteDocumentById: IDBRequest successful for deleting docId: ${id}.`);
+        console.log(`[IndexedDBService] deleteDocumentById: IDBRequest successful for deleting docId: ${id}. Waiting for transaction to complete.`);
     };
     request.onerror = (event) => {
-        console.error(`[IndexedDBService] deleteDocumentById: IDBRequest FAILED for deleting docId ${id}:`, (event.target as IDBRequest).error);
+        const error = (event.target as IDBRequest).error;
+        console.error(`[IndexedDBService] deleteDocumentById: IDBRequest FAILED for deleting docId ${id}:`, error);
+        // Rejecting here might be too early if the transaction could still somehow complete or offer a different error.
+        // However, an error on the request itself is usually fatal for that request.
+        // Let transaction.onerror handle the final rejection to keep it consistent.
     };
 
     transaction.oncomplete = () => {
@@ -151,7 +156,7 @@ export async function saveLastActiveDocId(docId: string | null): Promise<void> {
     }
     
     request.onsuccess = () => {
-        console.log(`[IndexedDBService] saveLastActiveDocId: IDBRequest successful for key: ${LAST_ACTIVE_DOC_KEY}.`);
+        console.log(`[IndexedDBService] saveLastActiveDocId: IDBRequest successful for key: ${LAST_ACTIVE_DOC_KEY}. Operation was ${docId === null ? 'delete' : 'put'}.`);
     };
     request.onerror = (event) => {
         console.error(`[IndexedDBService] saveLastActiveDocId: IDBRequest FAILED for key ${LAST_ACTIVE_DOC_KEY}:`, (event.target as IDBRequest).error);
@@ -211,3 +216,4 @@ export function arrayBufferToBase64DataURL(buffer: ArrayBuffer, type: string): P
     reader.readAsDataURL(blob);
   });
 }
+

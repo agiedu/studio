@@ -128,13 +128,15 @@ export default function LibraryPage() {
       console.log(`[LibraryPage] Attempting to delete document via IndexedDBService.deleteDocumentById: ${docId}`);
       await IndexedDBService.deleteDocumentById(docId);
       console.log(`[LibraryPage] IndexedDBService.deleteDocumentById promise resolved for docId: ${docId}.`);
-      toast({ title: "Document Deleted", description: `"${titleForConfirm}" removed from browser storage.` });
       
+      // Manual UI update for immediate feedback
       setStoredDocuments(prevDocs => {
         const updatedDocs = prevDocs.filter(doc => doc.id !== docId);
         console.log(`[LibraryPage] Manually filtered storedDocuments. Prev count: ${prevDocs.length}, New count: ${updatedDocs.length}`);
         return updatedDocs;
       });
+      
+      toast({ title: "Document Deleted", description: `"${titleForConfirm}" removed from browser storage.` });
       
       const lastActiveId = await IndexedDBService.getLastActiveDocId();
       console.log(`[LibraryPage] Last active docId was: ${lastActiveId}`);
@@ -144,9 +146,9 @@ export default function LibraryPage() {
         console.log(`[LibraryPage] Last active docId cleared (promise resolved).`);
       }
       
-      console.log(`[LibraryPage] Document deletion process for ${docId} completed successfully in try block.`);
-      // Intentionally not calling fetchDocuments() here to test manual filter.
-      // If issues persist, we might re-introduce it or call it after a short delay.
+      console.log(`[LibraryPage] Document deletion process for ${docId} completed successfully in try block. Re-fetching documents for consistency.`);
+      fetchDocuments(); // Re-fetch to ensure full consistency with DB, though manual filter updated UI.
+
     } catch (error:any) {
       console.error(`[LibraryPage] Error during deletion process for document "${docId}":`, error);
       toast({ variant: "destructive", title: "Delete Error", description: `Failed to delete document "${titleForConfirm}". ${error.message}. Please refresh the page.` });
