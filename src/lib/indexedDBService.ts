@@ -3,7 +3,7 @@
 import type { StoredMangaDocument } from '@/types';
 
 const DB_NAME = 'MangaTalkDB';
-const DB_VERSION = 2; // Increment version if schema changes
+const DB_VERSION = 2;
 const DOC_STORE_NAME = 'documents';
 const LAST_ACTIVE_DOC_STORE_NAME = 'appState';
 const LAST_ACTIVE_DOC_KEY = 'lastActiveDocIdRead2';
@@ -23,7 +23,7 @@ function getDB(): Promise<IDBDatabase> {
       request.onerror = () => {
         console.error('[IndexedDBService] DB open error:', request.error);
         reject(new Error(`IndexedDB error: ${request.error?.message}`));
-        dbPromise = null;
+        dbPromise = null; // Reset promise on error so it can be retried
       };
 
       request.onsuccess = () => {
@@ -135,20 +135,20 @@ export async function deleteDocumentById(id: string): Promise<void> {
     const transaction = db.transaction(DOC_STORE_NAME, 'readwrite');
     const store = transaction.objectStore(DOC_STORE_NAME);
     
-    console.log(`[IndexedDBService] deleteDocumentById: Transaction started for docId: "${id}". Attempting store.delete().`);
+    console.log(`[IndexedDBService] deleteDocumentById: Transaction created for docId: "${id}". Attempting store.delete().`);
     const request = store.delete(id);
 
     request.onsuccess = () => {
-        console.log(`[IndexedDBService] deleteDocumentById: IDBRequest successful for deleting docId: "${id}". Waiting for transaction to complete.`);
+        console.log(`[IndexedDBService] deleteDocumentById: IDBRequest for delete() was successful for docId: "${id}". Waiting for transaction to complete.`);
     };
     request.onerror = (event) => {
         const error = (event.target as IDBRequest).error;
-        console.error(`[IndexedDBService] deleteDocumentById: IDBRequest FAILED for deleting docId "${id}":`, error);
-        // Rely on transaction.onerror to reject the promise.
+        console.error(`[IndexedDBService] deleteDocumentById: IDBRequest for delete() FAILED for docId "${id}":`, error);
+        // Transaction.onerror will handle rejection
     };
 
     transaction.oncomplete = () => {
-      console.log(`[IndexedDBService] deleteDocumentById: Transaction COMPLETED for deleting docId: "${id}"`);
+      console.log(`[IndexedDBService] deleteDocumentById: Transaction COMPLETED successfully for deleting docId: "${id}"`);
       resolve();
     };
     transaction.onerror = () => {
@@ -164,11 +164,9 @@ export async function saveLastActiveDocId(docId: string | null): Promise<void> {
   const db = await getDB();
   return new Promise((resolve, reject) => {
     if (!db.objectStoreNames.contains(LAST_ACTIVE_DOC_STORE_NAME)) {
-        const errorMsg = `[IndexedDBService] saveLastActiveDocId: Store ${LAST_ACTIVE_DOC_STORE_NAME} does not exist. Cannot ${operationType} last active doc ID. This might happen if DB version is old or upgrade failed.`;
+        const errorMsg = `[IndexedDBService] saveLastActiveDocId: Store ${LAST_ACTIVE_DOC_STORE_NAME} does not exist. Cannot ${operationType} last active doc ID.`;
         console.error(errorMsg);
-        // Resolving as it's not a critical failure for this specific function's main purpose, but logging the error.
-        // Or reject(new Error(errorMsg)); if strictness is required.
-        resolve(); 
+        resolve(); // Not critical, allow app to continue
         return;
     }
 
@@ -176,7 +174,7 @@ export async function saveLastActiveDocId(docId: string | null): Promise<void> {
     const store = transaction.objectStore(LAST_ACTIVE_DOC_STORE_NAME);
     let request: IDBRequest;
 
-    console.log(`[IndexedDBService] saveLastActiveDocId: Transaction started for key: ${LAST_ACTIVE_DOC_KEY}. Attempting store.${operationType}().`);
+    console.log(`[IndexedDBService] saveLastActiveDocId: Transaction created for key: ${LAST_ACTIVE_DOC_KEY}. Attempting store.${operationType}().`);
     if (docId === null) {
       request = store.delete(LAST_ACTIVE_DOC_KEY);
     } else if (typeof docId === 'string') {
@@ -188,12 +186,11 @@ export async function saveLastActiveDocId(docId: string | null): Promise<void> {
     }
     
     request.onsuccess = () => {
-        console.log(`[IndexedDBService] saveLastActiveDocId: IDBRequest successful for key: ${LAST_ACTIVE_DOC_KEY}. Operation was ${operationType}. Waiting for transaction to complete.`);
+        console.log(`[IndexedDBService] saveLastActiveDocId: IDBRequest for ${operationType}() was successful for key: ${LAST_ACTIVE_DOC_KEY}. Waiting for transaction to complete.`);
     };
     request.onerror = (event) => {
         const error = (event.target as IDBRequest).error;
-        console.error(`[IndexedDBService] saveLastActiveDocId: IDBRequest FAILED for key ${LAST_ACTIVE_DOC_KEY}, operation ${operationType}:`, error);
-         // Rely on transaction.onerror to reject the promise.
+        console.error(`[IndexedDBService] saveLastActiveDocId: IDBRequest for ${operationType}() FAILED for key ${LAST_ACTIVE_DOC_KEY}:`, error);
     };
 
     transaction.oncomplete = () => {
@@ -258,6 +255,4 @@ export function arrayBufferToBase64DataURL(buffer: ArrayBuffer, type: string): P
     reader.readAsDataURL(blob);
   });
 }
-    
-
     
