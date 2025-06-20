@@ -53,19 +53,20 @@ export async function saveDocument(doc: StoredMangaDocument): Promise<void> {
     const store = transaction.objectStore(DOC_STORE_NAME);
     const request = store.put(doc);
 
+    request.onsuccess = () => {
+        console.log(`[IndexedDBService] saveDocument: IDBRequest successful for saving docId: ${doc.id}.`);
+    };
+    request.onerror = (event) => {
+        console.error(`[IndexedDBService] saveDocument: IDBRequest error saving docId ${doc.id}:`, (event.target as IDBRequest).error);
+    };
+
     transaction.oncomplete = () => {
-      console.log(`[IndexedDBService] Transaction completed for saving docId: ${doc.id}`);
+      console.log(`[IndexedDBService] saveDocument: Transaction completed for saving docId: ${doc.id}`);
       resolve();
     };
     transaction.onerror = () => {
-      console.error(`[IndexedDBService] Transaction error saving docId ${doc.id}:`, transaction.error);
+      console.error(`[IndexedDBService] saveDocument: Transaction error saving docId ${doc.id}:`, transaction.error);
       reject(new Error(`Failed to save document (transaction error): ${transaction.error?.message}`));
-    };
-    request.onerror = (event) => {
-        console.error(`[IndexedDBService] IDBRequest error saving docId ${doc.id}:`, (event.target as IDBRequest).error);
-    };
-    request.onsuccess = () => {
-        console.log(`[IndexedDBService] IDBRequest successful for saving docId: ${doc.id}. Waiting for transaction to complete.`);
     };
   });
 }
@@ -79,7 +80,7 @@ export async function getDocumentById(id: string): Promise<StoredMangaDocument |
 
     request.onsuccess = () => resolve(request.result as StoredMangaDocument | undefined);
     request.onerror = () => {
-      console.error(`[IndexedDBService] Error getting document by ID ${id}:`, request.error);
+      console.error(`[IndexedDBService] getDocumentById: Error getting document by ID ${id}:`, request.error);
       reject(new Error(`Failed to get document: ${request.error?.message}`));
     };
   });
@@ -94,7 +95,7 @@ export async function getAllDocuments(): Promise<StoredMangaDocument[]> {
 
     request.onsuccess = () => resolve(request.result as StoredMangaDocument[]);
     request.onerror = () => {
-      console.error('[IndexedDBService] Error getting all documents:', request.error);
+      console.error('[IndexedDBService] getAllDocuments: Error getting all documents:', request.error);
       reject(new Error(`Failed to get all documents: ${request.error?.message}`));
     };
   });
@@ -103,23 +104,29 @@ export async function getAllDocuments(): Promise<StoredMangaDocument[]> {
 export async function deleteDocumentById(id: string): Promise<void> {
   const db = await getDB();
   return new Promise((resolve, reject) => {
+    if (!id || typeof id !== 'string') {
+      const errorMsg = `[IndexedDBService] deleteDocumentById: Invalid ID provided: ${id}`;
+      console.error(errorMsg);
+      return reject(new Error('Invalid ID for deletion.'));
+    }
     const transaction = db.transaction(DOC_STORE_NAME, 'readwrite');
     const store = transaction.objectStore(DOC_STORE_NAME);
     const request = store.delete(id);
 
+    request.onsuccess = () => {
+        console.log(`[IndexedDBService] deleteDocumentById: IDBRequest successful for deleting docId: ${id}.`);
+    };
+    request.onerror = (event) => {
+        console.error(`[IndexedDBService] deleteDocumentById: IDBRequest FAILED for deleting docId ${id}:`, (event.target as IDBRequest).error);
+    };
+
     transaction.oncomplete = () => {
-      console.log(`[IndexedDBService] Transaction COMPLETED for deleting docId: ${id}`);
+      console.log(`[IndexedDBService] deleteDocumentById: Transaction COMPLETED for deleting docId: ${id}`);
       resolve();
     };
     transaction.onerror = () => {
-      console.error(`[IndexedDBService] Transaction FAILED for deleting docId ${id}:`, transaction.error);
+      console.error(`[IndexedDBService] deleteDocumentById: Transaction FAILED for deleting docId ${id}:`, transaction.error);
       reject(new Error(`Failed to delete document (transaction error): ${transaction.error?.message}`));
-    };
-     request.onerror = (event) => {
-        console.error(`[IndexedDBService] IDBRequest FAILED for deleting docId ${id}:`, (event.target as IDBRequest).error);
-    };
-    request.onsuccess = () => {
-        console.log(`[IndexedDBService] IDBRequest successful for deleting docId: ${id}. Waiting for transaction to complete.`);
     };
   });
 }
@@ -130,24 +137,33 @@ export async function saveLastActiveDocId(docId: string | null): Promise<void> {
     const transaction = db.transaction(LAST_ACTIVE_DOC_STORE_NAME, 'readwrite');
     const store = transaction.objectStore(LAST_ACTIVE_DOC_STORE_NAME);
     let request: IDBRequest;
-    if (docId) {
+
+    if (docId === null) {
+      console.log(`[IndexedDBService] saveLastActiveDocId: Attempting to delete last active doc ID (key: ${LAST_ACTIVE_DOC_KEY})`);
+      request = store.delete(LAST_ACTIVE_DOC_KEY);
+    } else if (typeof docId === 'string') {
+      console.log(`[IndexedDBService] saveLastActiveDocId: Attempting to save last active doc ID (key: ${LAST_ACTIVE_DOC_KEY}, value: ${docId})`);
       request = store.put({ key: LAST_ACTIVE_DOC_KEY, value: docId });
     } else {
-      request = store.delete(LAST_ACTIVE_DOC_KEY);
+      const errorMsg = `[IndexedDBService] saveLastActiveDocId: Invalid docId provided: ${docId}`;
+      console.error(errorMsg);
+      return reject(new Error('Invalid docId for saveLastActiveDocId.'));
     }
+    
+    request.onsuccess = () => {
+        console.log(`[IndexedDBService] saveLastActiveDocId: IDBRequest successful for key: ${LAST_ACTIVE_DOC_KEY}.`);
+    };
+    request.onerror = (event) => {
+        console.error(`[IndexedDBService] saveLastActiveDocId: IDBRequest FAILED for key ${LAST_ACTIVE_DOC_KEY}:`, (event.target as IDBRequest).error);
+    };
+
     transaction.oncomplete = () => {
-      console.log(`[IndexedDBService] Transaction COMPLETED for saving/deleting last active doc ID (key: ${LAST_ACTIVE_DOC_KEY}, new value: ${docId})`);
+      console.log(`[IndexedDBService] saveLastActiveDocId: Transaction COMPLETED for key: ${LAST_ACTIVE_DOC_KEY}, new value was: ${docId === null ? '<deleted>' : docId})`);
       resolve();
     };
     transaction.onerror = () => {
-      console.error(`[IndexedDBService] Transaction FAILED for saving/deleting last active doc ID (key: ${LAST_ACTIVE_DOC_KEY}):`, transaction.error);
+      console.error(`[IndexedDBService] saveLastActiveDocId: Transaction FAILED for key ${LAST_ACTIVE_DOC_KEY}:`, transaction.error);
       reject(new Error(`Transaction error for last active doc ID: ${transaction.error?.message}`));
-    };
-    request.onerror = (event) => {
-        console.error(`[IndexedDBService] IDBRequest FAILED for last active doc ID (key: ${LAST_ACTIVE_DOC_KEY}):`, (event.target as IDBRequest).error);
-    };
-    request.onsuccess = () => {
-        console.log(`[IndexedDBService] IDBRequest successful for saving/deleting last active doc ID (key: ${LAST_ACTIVE_DOC_KEY}). Waiting for transaction to complete.`);
     };
   });
 }
@@ -160,10 +176,16 @@ export async function getLastActiveDocId(): Promise<string | null> {
     const request = store.get(LAST_ACTIVE_DOC_KEY);
 
     request.onsuccess = () => {
-      resolve(request.result ? request.result.value : null);
+      if (request.result && request.result.value) {
+        console.log(`[IndexedDBService] getLastActiveDocId: Found last active doc ID: ${request.result.value}`);
+        resolve(request.result.value as string);
+      } else {
+        console.log(`[IndexedDBService] getLastActiveDocId: No last active doc ID found.`);
+        resolve(null);
+      }
     };
     request.onerror = () => {
-      console.error('[IndexedDBService] Error getting last active doc ID:', request.error);
+      console.error(`[IndexedDBService] getLastActiveDocId: Error getting last active doc ID for key ${LAST_ACTIVE_DOC_KEY}:`, request.error);
       reject(new Error(`Failed to get last active doc ID: ${request.error?.message}`));
     };
   });
