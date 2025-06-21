@@ -473,7 +473,16 @@ export default function ReaderPage() {
 
   useEffect(() => {
     const player = new Audio(); audioPlayerRef.current = player;
-    const handleAudioEnded = () => { if (audioPlayerRef.current === player && isSpeaking && ttsSettings.engine === 'cloud' && isMountedRef.current) { stopSpeech(true); } };
+    const handleAudioEnded = () => { 
+        if (audioPlayerRef.current === player && isSpeaking && ttsSettings.engine === 'cloud' && isMountedRef.current) { 
+            if(isRepeatingRef.current && audioPlayerRef.current) {
+                audioPlayerRef.current.currentTime = 0;
+                audioPlayerRef.current.play();
+            } else {
+                stopSpeech(true); 
+            }
+        } 
+    };
     const handleAudioPlaying = () => { if (audioPlayerRef.current === player && ttsSettings.engine === 'cloud' && isSpeaking && isMountedRef.current) { setIsLoadingTTS(false); } };
     const handleAudioError = () => { if (audioPlayerRef.current === player && isSpeaking && ttsSettings.engine === 'cloud' && isMountedRef.current) { toast({variant: "destructive", title: "Audio Error", description: "Failed to play cloud TTS audio."}); stopSpeech(true); } };
     player.addEventListener('ended', handleAudioEnded); player.addEventListener('playing', handleAudioPlaying); player.addEventListener('error', handleAudioError);
@@ -564,15 +573,10 @@ export default function ReaderPage() {
   const playPauseSpeech = async () => {
     if (!isMountedRef.current) return;
   
-    // If in repeat mode, any interaction with the main play/pause button
-    // should just stop the repetition cleanly.
-    if (isRepeating) {
-      stopSpeech(true);
-      return;
-    }
-  
+    // If in repeat mode, or if any other kind of speech is happening,
+    // a click on the main button should just stop everything.
     if (isSpeaking) {
-      if (isPaused) {
+      if (isPaused) { // If paused, resume.
         if (ttsSettings.engine === 'local' && utteranceRef.current && window.speechSynthesis?.paused) {
           window.speechSynthesis.resume();
           if (isMountedRef.current) setIsPaused(false);
@@ -583,7 +587,7 @@ export default function ReaderPage() {
             if (isMountedRef.current) stopSpeech(true);
           });
         }
-      } else {
+      } else { // If speaking (and not paused), pause.
         if (ttsSettings.engine === 'local' && utteranceRef.current && window.speechSynthesis?.speaking) {
           window.speechSynthesis.pause();
           if (isMountedRef.current) setIsPaused(true);
@@ -592,53 +596,64 @@ export default function ReaderPage() {
           if (isMountedRef.current) setIsPaused(true);
         }
       }
-    } else {
-      const selection = typeof window !== 'undefined' ? window.getSelection() : null;
-      const selectedText = selection?.toString().trim();
-      const effectiveTextToRead = selectedText || currentTextForTTS;
-      const options = selectedText ? { bypassMinLengthCheck: true } : {};
-      await startSpeech(effectiveTextToRead, options);
+    } else { // If not speaking, start a new speech.
+      const selection = typeof window !== 'undefined' ? window.getSelection()?.toString().trim() : '';
+      const effectiveTextToRead = selection || currentTextForTTS;
+      await startSpeech(effectiveTextToRead);
     }
   };
   
-
   const handleRepeatSelection = async () => {
     if (!isMountedRef.current) return;
-    
+  
     if (isRepeating) {
-        stopSpeech(true);
+      // If already repeating, stop everything.
+      stopSpeech(true);
     } else {
-        const selection = window.getSelection()?.toString().trim();
-        if (!selection) {
-            toast({ variant: "destructive", title: "No Text Selected", description: "Please select text to repeat." });
-            return;
-        }
-        setIsRepeating(true);
-        await startSpeech(selection, { repeat: true, bypassMinLengthCheck: true });
+      // If not repeating, start a new repeat session.
+      const selection = window.getSelection()?.toString().trim();
+      if (!selection) {
+        toast({ variant: "destructive", title: "No Text Selected", description: "Please select text to repeat." });
+        return;
+      }
+      // Stop any other playback first, then start repeating.
+      stopSpeech(true);
+      // Use a timeout to allow React to process the state reset from stopSpeech
+      // before we set the new state. This prevents race conditions.
+      setTimeout(async () => {
+          if (!isMountedRef.current) return;
+          setIsRepeating(true);
+          await startSpeech(selection, { repeat: true, bypassMinLengthCheck: true });
+      }, 50);
     }
   };
-
+  
   const handlePlayFromSelection = async () => {
     if (!isMountedRef.current) return;
-    
-    const fullText = currentTextForTTS;
+  
     const selection = window.getSelection()?.toString().trim();
-
     if (!selection) {
-        toast({variant: "default", title: "No Text Selected", description: "To use this feature, please select some text first."});
-        return;
+      toast({ variant: "default", title: "No Text Selected", description: "To use this feature, please select some text first." });
+      return;
     }
-    
-    if (isRepeating) setIsRepeating(false);
-
-    const startIndex = fullText.indexOf(selection);
-    if (startIndex !== -1) {
-        const textToPlay = fullText.substring(startIndex);
-        await startSpeech(textToPlay, { bypassMinLengthCheck: true });
-    } else {
-        toast({variant: "default", title: "Selection Not Found", description: "Could not find selection in current text. Playing selection only."})
-        await startSpeech(selection, { bypassMinLengthCheck: true });
-    }
+  
+    // Always stop current speech and reset state before starting a new one.
+    stopSpeech(true);
+  
+    // Use a timeout to let the state update before proceeding.
+    setTimeout(async () => {
+      if (!isMountedRef.current) return;
+  
+      const fullText = currentTextForTTS;
+      const startIndex = fullText.indexOf(selection);
+      const textToPlay = startIndex !== -1 ? fullText.substring(startIndex) : selection;
+  
+      if (startIndex === -1) {
+        toast({ variant: "default", title: "Selection Not Found", description: "Could not find selection in current text. Playing selection only." })
+      }
+  
+      await startSpeech(textToPlay, { bypassMinLengthCheck: true });
+    }, 50);
   };
 
   const handleSettingChange = <K extends keyof TTSSettings>(key: K, value: TTSSettings[K]) => {
@@ -721,23 +736,23 @@ export default function ReaderPage() {
 
   const getButtonState = () => {
     const selectedText = typeof window !== 'undefined' ? window.getSelection()?.toString().trim() : '';
-    const effectiveText = selectedText || currentTextForTTS;
-    const invalidMessages = [ "error:", "failed to load", "loading", "mobi files", "image loaded", "no text content", "no selectable text", "ocr completed, no text found", "no document selected", "graphical or empty", "could not load epub", "waiting for page", "preparing epub" ];
-    
-    let canPlay = false;
-    if (selectedText) {
+    let canPlay = !!selectedText;
+
+    if (!canPlay) {
+      const effectiveText = currentTextForTTS;
+      const invalidMessages = [ "error:", "failed to load", "loading", "mobi files", "image loaded", "no text content", "no selectable text", "ocr completed, no text found", "no document selected", "graphical or empty", "could not load epub", "waiting for page", "preparing epub" ];
+      if (effectiveText && !invalidMessages.some(msg => effectiveText.toLowerCase().includes(msg))) {
         canPlay = true;
-    } else if (effectiveText && !invalidMessages.some(msg => effectiveText.toLowerCase().includes(msg))) {
-        canPlay = true;
+      }
     }
     
     if (activeDoc) {
-        if (activeDoc.type === 'pdf' && (isLoadingDoc || isRenderingPdfPage)) canPlay = false;
-        else if (activeDoc.type === 'epub' && (isLoadingDoc || isEpubLoading)) canPlay = false;
-        else if (activeDoc.type === 'image' && isLoadingDoc) canPlay = false; 
-        else if (activeDoc.type === 'txt' && isLoadingDoc) canPlay = false;
-    } else if (isLoadingDoc) { // Scratchpad mode, but initial load might still be happening
-        canPlay = false;
+      if (activeDoc.type === 'pdf' && (isLoadingDoc || isRenderingPdfPage)) canPlay = false;
+      else if (activeDoc.type === 'epub' && (isLoadingDoc || isEpubLoading)) canPlay = false;
+      else if (activeDoc.type === 'image' && isLoadingDoc) canPlay = false;
+      else if (activeDoc.type === 'txt' && isLoadingDoc) canPlay = false;
+    } else if (isLoadingDoc) {
+      canPlay = false;
     }
 
     if (isPerformingOcr || docErrorMessage) canPlay = false;
@@ -952,13 +967,13 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                     variant={isRepeating ? "destructive" : "outline"}
                     size="sm"
                     className="w-full text-xs"
-                    disabled={isLoadingTTS || (isSpeaking && !isRepeating)}
+                    disabled={isLoadingTTS}
                   >
                     {isRepeating ? <X className="mr-2 h-3 w-3" /> : <Repeat className="mr-2 h-3 w-3" />}
                     {isRepeating ? "Stop Repeat" : "Repeat Sel."}
                   </Button>
                 </div>
-                <Button onClick={handlePlayFromSelection} variant="outline" size="sm" className="w-full mt-2 text-xs" disabled={isLoadingTTS || isSpeaking}> <TextSelect className="mr-2 h-3 w-3" /> Play from Sel. </Button>
+                <Button onClick={handlePlayFromSelection} variant="outline" size="sm" className="w-full mt-2 text-xs" disabled={isLoadingTTS}> <TextSelect className="mr-2 h-3 w-3" /> Play from Sel. </Button>
               </CardContent>
             </Card>
         </div>
