@@ -585,7 +585,9 @@ export default function ReaderPage() {
       const selection = typeof window !== 'undefined' ? window.getSelection() : null; 
       const selectedTextFromSelection = selection?.toString().trim();
       const effectiveTextToRead = selectedTextFromSelection || currentTextForTTS;
-      await startSpeech(effectiveTextToRead);
+      // If there was a selection, we should bypass the length check.
+      const options = selectedTextFromSelection ? { bypassMinLengthCheck: true } : {};
+      await startSpeech(effectiveTextToRead, options);
     }
   };
 
@@ -607,20 +609,16 @@ export default function ReaderPage() {
     const selection = window.getSelection()?.toString().trim();
 
     if (!selection) {
-        // If no selection, play the whole text. This is the same as the main play button.
-        await startSpeech(fullText);
+        toast({variant: "destructive", title: "No Text Selected", description: "Please select text to play from."});
         return;
     }
 
     const startIndex = fullText.indexOf(selection);
     if (startIndex !== -1) {
-        // Found it, play from the selection onwards.
         const textToPlay = fullText.substring(startIndex);
-        await startSpeech(textToPlay);
+        await startSpeech(textToPlay, { bypassMinLengthCheck: true });
     } else {
-        // Didn't find it, likely due to normalization differences.
-        // Play just the selection, and bypass the length check to ensure it always plays.
-        toast({variant: "default", title: "Selection Not Found", description: "Could not find selection in the current text. Playing selection only."})
+        toast({variant: "default", title: "Selection Not Found", description: "Could not find selection in current text. Playing selection only."})
         await startSpeech(selection, { bypassMinLengthCheck: true });
     }
   };
@@ -703,9 +701,18 @@ export default function ReaderPage() {
   };
 
   const getButtonState = () => {
-    const selectedText = typeof window !== 'undefined' ? window.getSelection()?.toString().trim() : ''; const effectiveText = selectedText || currentTextForTTS;
+    const selectedText = typeof window !== 'undefined' ? window.getSelection()?.toString().trim() : '';
+    const effectiveText = selectedText || currentTextForTTS;
     const invalidMessages = [ "error:", "failed to load", "loading", "mobi files", "image loaded", "no text content", "no selectable text", "ocr completed, no text found", "no document selected", "graphical or empty", "could not load epub", "waiting for page", "preparing epub" ];
-    let canPlay = !!(effectiveText && !invalidMessages.some(msg => effectiveText.toLowerCase().includes(msg)) && effectiveText.length >= MIN_TTS_TEXT_LENGTH && !isPerformingOcr && !docErrorMessage );
+    
+    let canPlay = false;
+    if (effectiveText && !invalidMessages.some(msg => effectiveText.toLowerCase().includes(msg)) && !isPerformingOcr && !docErrorMessage) {
+      if (selectedText) { // If text is selected, length doesn't matter.
+        canPlay = true;
+      } else { // Otherwise, check min length for the whole text.
+        canPlay = effectiveText.length >= MIN_TTS_TEXT_LENGTH;
+      }
+    }
     
     if (activeDoc) {
         if (activeDoc.type === 'pdf' && (isLoadingDoc || isRenderingPdfPage)) canPlay = false;
@@ -931,7 +938,3 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
     </div>
   );
 }
-
-    
-
-    
