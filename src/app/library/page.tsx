@@ -115,20 +115,23 @@ export default function LibraryPage() {
     }
     
     try {
+      // 1. Delete from the source of truth (IndexedDB)
       await IndexedDBService.deleteDocumentById(docId);
       
-      setStoredDocuments(prevDocs => prevDocs.filter(d => d.id !== docId));
-      
+      // 2. Clear last active doc if it was the one deleted
       const lastActiveId = await IndexedDBService.getLastActiveDocId();
       if (lastActiveId === docId) {
         await IndexedDBService.saveLastActiveDocId(null);
       }
       
       toast({ title: "Document Deleted", description: `"${titleForConfirm}" removed from browser storage.` });
+      
+      // 3. **Crucially**, re-fetch the list from the source of truth to update the UI
+      await fetchDocuments("Re-fetching documents after deletion");
 
     } catch (error:any) {
-      toast({ variant: "destructive", title: "Delete Failed", description: `Failed to delete "${titleForConfirm}". ${error.message || 'Unknown error'}. Please refresh.` });
-      // If deletion fails, it's good practice to re-fetch to ensure UI matches the actual DB state.
+      toast({ variant: "destructive", title: "Delete Failed", description: `Failed to delete "${titleForConfirm}". ${error.message || 'Unknown error'}.` });
+      // On failure, also re-fetch to ensure UI is in sync with DB state
       await fetchDocuments(`Error recovery fetch after failed delete of "${docId}"`);
     }
   };
