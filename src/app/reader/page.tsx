@@ -583,7 +583,7 @@ export default function ReaderPage() {
             
             <div className="w-full h-full flex-grow relative">
                 {activeDoc?.type === 'pdf' && (
-                  <div className="w-full h-full flex items-center justify-center overflow-auto p-2">
+                  <div className="w-full h-full flex items-center justify-center overflow-auto p-2 pb-40">
                     {pdfPageImage && <NextImage src={pdfPageImage} alt={`Page ${currentPdfPageNum}`} width={0} height={0} sizes="100vw" style={{ width: 'auto', height: 'auto', maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} className="shadow-lg border rounded-md" />}
                     {showOcrButtonForPdfPage && (<Button onClick={handlePerformOcr} disabled={isPerformingOcr} className="absolute bottom-4"> {isPerformingOcr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />} Perform OCR on PDF Page </Button> )}
                   </div>
@@ -597,10 +597,10 @@ export default function ReaderPage() {
                     className={cn("w-full h-full", activeDoc?.type !== 'epub' && "hidden")}
                 />
 
-                {activeDoc?.type === 'txt' && ( <pre className="whitespace-pre-wrap p-4 bg-background rounded-md shadow-inner text-sm font-mono h-full w-full overflow-y-auto select-text">{txtContent}</pre> )}
+                {activeDoc?.type === 'txt' && ( <pre className="whitespace-pre-wrap p-4 bg-background rounded-md shadow-inner text-sm font-mono h-full w-full overflow-y-auto select-text pb-40">{txtContent}</pre> )}
                 
                 {activeDoc?.type === 'image' && displayedImageSrc && (
-                    <div className="w-full h-full flex flex-col items-center justify-center p-2">
+                    <div className="w-full h-full flex flex-col items-center justify-center overflow-auto p-2 pb-40">
                         <NextImage src={displayedImageSrc} alt={activeDoc.title || 'Uploaded Image'} width={800} height={600} style={{objectFit: 'contain'}} className="max-w-full max-h-[calc(100%-4rem)] shadow-lg border rounded-md" data-ai-hint="illustration abstract" />
                         {showOcrButtonForImage && <Button onClick={handlePerformOcr} disabled={isPerformingOcr} className="mt-3"> {isPerformingOcr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />} Perform OCR on Image </Button> }
                     </div>
