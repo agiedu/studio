@@ -73,7 +73,7 @@ export default function ReaderPage() {
   const currentImageObjectUrlRef = useRef<string | null>(null);
   
   // Scratchpad state
-  const [scratchpadText, setScratchpadText] = useState<string>("");
+  const [scratchpadText, setScratchpadText] = useState<string>(LocalStorageService.loadScratchpadText());
 
   // OCR and TTS states
   const [isPerformingOcr, setIsPerformingOcr] = useState(false);
@@ -97,6 +97,15 @@ export default function ReaderPage() {
       isMountedRef.current = false;
     };
   }, []);
+
+  // Effect to persist scratchpad text
+  useEffect(() => {
+    // Only save when in scratchpad mode and not loading.
+    if (!activeDoc && !isLoadingDoc) {
+      LocalStorageService.saveScratchpadText(scratchpadText);
+    }
+  }, [scratchpadText, activeDoc, isLoadingDoc]);
+
 
   const stopSpeech = useCallback((resetUIState = true) => {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
@@ -163,7 +172,9 @@ export default function ReaderPage() {
             // No docId and no last active doc, so enter Scratchpad mode.
             setActiveDoc(null);
             setIsLoadingDoc(false);
-            setCurrentTextForTTS(scratchpadText);
+            const savedText = LocalStorageService.loadScratchpadText();
+            setScratchpadText(savedText);
+            setCurrentTextForTTS(savedText);
         }
         return;
       }
@@ -570,6 +581,15 @@ export default function ReaderPage() {
     router.push('/reader');
   };
 
+  const handleClearScratchpad = () => {
+    if (!isMountedRef.current || activeDoc) return;
+    stopSpeech(true);
+    setScratchpadText('');
+    setCurrentTextForTTS('');
+    LocalStorageService.saveScratchpadText('');
+    toast({ title: "Scratchpad Cleared" });
+  };
+
   const getButtonState = () => {
     const selectedText = typeof window !== 'undefined' ? window.getSelection()?.toString().trim() : ''; const effectiveText = selectedText || currentTextForTTS;
     const invalidMessages = [ "error:", "failed to load", "loading", "mobi files", "image loaded", "no text content", "no selectable text", "ocr completed, no text found", "no document selected", "graphical or empty", "could not load epub", "waiting for page", "preparing epub" ];
@@ -711,10 +731,23 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="pt-2">
-                  <Button variant="outline" size="sm" className="w-full" onClick={handleSwitchToScratchpad} disabled={isLoadingDoc}>
-                      <Edit className="mr-2 h-4 w-4" />
-                      Switch to Scratchpad
-                  </Button>
+                  <div className="flex w-full items-center gap-2">
+                    <Button variant="outline" size="sm" className="flex-grow" onClick={handleSwitchToScratchpad} disabled={isLoadingDoc}>
+                        <Edit className="mr-2 h-4 w-4" />
+                        Switch to Scratchpad
+                    </Button>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 flex-shrink-0"
+                        onClick={handleClearScratchpad}
+                        disabled={isLoadingDoc || !!activeDoc}
+                        aria-label="Clear scratchpad text"
+                        title="Clear scratchpad text"
+                    >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
                 </CardContent>
             </Card>
 

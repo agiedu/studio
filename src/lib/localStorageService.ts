@@ -6,6 +6,7 @@ import type { TTSSettings, FavoriteItem } from '@/types';
 const TTS_SETTINGS_KEY = 'mangaTalk_ttsSettings_v2';
 const NIGHT_MODE_KEY = 'mangaTalk_nightMode_v2';
 const FAVORITE_ITEMS_KEY = 'mangaTalk_favoriteItems_v1';
+const SCRATCHPAD_TEXT_KEY = 'mangaTalk_scratchpadText_v1';
 
 
 // Helper to safely access localStorage
@@ -89,4 +90,13 @@ export const deleteFavoriteItem = (itemId: string): boolean => {
     let items = loadFavoriteItems();
     items = items.filter(item => item.id !== itemId);
     return saveFavoriteItems(items);
+};
+
+// Scratchpad Text
+export const loadScratchpadText = (): string => {
+  return safeLocalStorageGet<string>(SCRATCHPAD_TEXT_KEY, '');
+};
+
+export const saveScratchpadText = (text: string): boolean => {
+  return safeLocalStorageSet(SCRATCHPAD_TEXT_KEY, text);
 };
