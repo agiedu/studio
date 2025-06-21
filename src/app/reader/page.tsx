@@ -120,11 +120,12 @@ export default function ReaderPage() {
             renditionToDestroy.destroy();
             console.log("[EPUB Cleanup/rAF] rendition.destroy() completed.");
           } catch (e: any) {
-            // Use console.warn to avoid Next.js error overlay for handled exceptions
-            console.warn("[EPUB Cleanup/rAF] Error during rendition.destroy() (caught):", e.message || e);
+            // This error is expected if React has already removed the DOM nodes.
+            // We catch it to prevent an app crash, logging it for debugging but not as a warning/error.
+            console.log("[EPUB Cleanup/rAF] Non-critical error during rendition.destroy() was caught and ignored:", e.message || e);
           }
         } else {
-            console.warn("[EPUB Cleanup/rAF] Rendition manager was undefined or destroy method missing. Skipping rendition.destroy().");
+            console.log("[EPUB Cleanup/rAF] Rendition manager was undefined or destroy method missing. Skipping rendition.destroy().");
         }
       });
     }
@@ -135,10 +136,10 @@ export default function ReaderPage() {
           bookToDestroy.destroy();
           console.log("[EPUB Cleanup] Book instance destroyed.");
         } catch (e: any) {
-          console.warn("[EPUB Cleanup] Error destroying book instance (caught):", e.message || e);
+          console.log("[EPUB Cleanup] Non-critical error destroying book instance (caught):", e.message || e);
         }
       } else {
-        console.warn("[EPUB Cleanup] Book instance did not have a .destroy() method.");
+        console.log("[EPUB Cleanup] Book instance did not have a .destroy() method.");
       }
     }
   }, [stopSpeech]);
@@ -655,13 +656,13 @@ export default function ReaderPage() {
         {docErrorMessage && (
             <div className="absolute inset-x-0 top-4 mx-auto w-fit max-w-md bg-destructive/10 border border-destructive text-destructive p-3 rounded-md shadow-lg z-20 flex items-start gap-2">
                 <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
-                <div> <p className="font-medium text-sm">Document Display Issue</p> <p className="text-xs">{docErrorMessage}</p> <Button variant="ghost" size="sm" className="text-xs h-auto p-1 mt-1 text-destructive hover:bg-destructive/20" onClick={() => {if(isMountedRef.current) setDocErrorMessage(null);}}>Dismiss</Button> d</div>
+                <div> <p className="font-medium text-sm">Document Display Issue</p> <p className="text-xs">{docErrorMessage}</p> <Button variant="ghost" size="sm" className="text-xs h-auto p-1 mt-1 text-destructive hover:bg-destructive/20" onClick={() => {if(isMountedRef.current) setDocErrorMessage(null);}}>Dismiss</Button> </div>
             </div>
         )}
         
         {/* Main Content Area */}
         <div className="flex-grow relative flex flex-col items-center justify-center rounded-lg bg-background shadow-inner overflow-hidden">
-            {isLoadingDoc && <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10"> <Loader2 className="h-10 w-10 animate-spin text-primary" /><p className="ml-3">Loading content...</p></div> }
+            {(isLoadingDoc || isEpubLoading) && <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10"> <Loader2 className="h-10 w-10 animate-spin text-primary" /><p className="ml-3">Loading content...</p></div> }
             
             <div className="w-full h-full flex-grow relative">
                 {!isLoadingDoc && activeDoc?.type === 'pdf' && (
@@ -676,7 +677,7 @@ export default function ReaderPage() {
                     key={activeDoc?.id || 'no-epub-doc'}
                     ref={epubViewerRef}
                     id="epub-viewer"
-                    className={cn("w-full h-full", (activeDoc?.type !== 'epub' || isLoadingDoc) && "hidden")}
+                    className={cn("w-full h-full", (activeDoc?.type !== 'epub' || isLoadingDoc || isEpubLoading) && "hidden")}
                 />
 
                 {!isLoadingDoc && activeDoc?.type === 'txt' && ( <pre className="whitespace-pre-wrap p-4 bg-background rounded-md shadow-inner text-sm font-mono h-full w-full overflow-y-auto select-text">{txtContent}</pre> )}
@@ -692,7 +693,7 @@ export default function ReaderPage() {
             
             {/* TTS Box - now positioned at the bottom of the flex container */}
             { activeDoc && !isLoadingDoc && !isRenderingPdfPage && !isPerformingOcr &&
-                <div className="w-full max-w-3xl mx-auto p-2 flex-shrink-0">
+                <div className="absolute bottom-0 left-0 right-0 w-full max-w-3xl mx-auto p-2 flex-shrink-0 z-10">
                     <Card className="bg-background/90 backdrop-blur-sm shadow-md">
                         <CardHeader className="pb-1 pt-3">
                             <CardTitle className="text-sm flex items-center"><FileText className="mr-2 h-4 w-4"/> Current Text for TTS</CardTitle>
@@ -778,5 +779,3 @@ export default function ReaderPage() {
     </div>
   );
 }
-
-    
