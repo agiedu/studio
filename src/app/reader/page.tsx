@@ -18,7 +18,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
-import { Loader2, Play, Pause, Smartphone, Cloud as CloudIcon, Star, AlertTriangle, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, BookOpen, Settings2, FileText, ScanText, Trash2 } from 'lucide-react';
+import { Loader2, Play, Pause, Smartphone, Cloud as CloudIcon, Star, AlertTriangle, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, BookOpen, Settings2, FileText, ScanText, Trash2, Edit } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -564,6 +564,12 @@ export default function ReaderPage() {
     }
   };
 
+  const handleSwitchToScratchpad = async () => {
+    stopSpeech(true);
+    await IndexedDBService.saveLastActiveDocId(null);
+    router.push('/reader');
+  };
+
   const getButtonState = () => {
     const selectedText = typeof window !== 'undefined' ? window.getSelection()?.toString().trim() : ''; const effectiveText = selectedText || currentTextForTTS;
     const invalidMessages = [ "error:", "failed to load", "loading", "mobi files", "image loaded", "no text content", "no selectable text", "ocr completed, no text found", "no document selected", "graphical or empty", "could not load epub", "waiting for page", "preparing epub" ];
@@ -702,6 +708,12 @@ export default function ReaderPage() {
                         : 'Custom text input'}
                     </CardDescription>
                 </CardHeader>
+                <CardContent className="pt-2">
+                  <Button variant="outline" size="sm" className="w-full" onClick={handleSwitchToScratchpad} disabled={isLoadingDoc}>
+                      <Edit className="mr-2 h-4 w-4" />
+                      Switch to Scratchpad
+                  </Button>
+                </CardContent>
             </Card>
 
             {(activeDoc?.type === 'pdf' && pdfTotalPages > 0) && (
@@ -768,3 +780,5 @@ export default function ReaderPage() {
     </div>
   );
 }
+
+    
