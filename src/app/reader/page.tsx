@@ -625,73 +625,75 @@ export default function ReaderPage() {
       </div>
 
       {/* Controls Sidebar */}
-      <aside className="w-full lg:w-80 xl:w-96 p-3 border-l bg-background flex-shrink-0 overflow-y-auto space-y-4">
-        <Card>
-            <CardHeader className="pb-2 pt-4">
-                <CardTitle className="text-base truncate flex items-center gap-1"> <BookOpen className="h-5 w-5 text-primary"/> {activeDoc?.title || "No Document Loaded"} </CardTitle>
-                <CardDescription className="text-xs">Type: {activeDoc?.type?.toUpperCase()}{activeDoc?.type === 'pdf' && pdfTotalPages > 0 ? `, Page: ${currentPdfPageNum}/${pdfTotalPages}` : ''}</CardDescription>
-            </CardHeader>
-        </Card>
+      <aside className="w-full lg:w-80 xl:w-96 border-l bg-background flex-shrink-0 flex flex-col">
+        <div className="overflow-y-auto p-3 space-y-4">
+            <Card>
+                <CardHeader className="pb-2 pt-4">
+                    <CardTitle className="text-base truncate flex items-center gap-1"> <BookOpen className="h-5 w-5 text-primary"/> {activeDoc?.title || "No Document Loaded"} </CardTitle>
+                    <CardDescription className="text-xs">Type: {activeDoc?.type?.toUpperCase()}{activeDoc?.type === 'pdf' && pdfTotalPages > 0 ? `, Page: ${currentPdfPageNum}/${pdfTotalPages}` : ''}</CardDescription>
+                </CardHeader>
+            </Card>
 
-        {(activeDoc?.type === 'pdf' && pdfTotalPages > 0) && (
-          <Card>
-            <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">PDF Navigation & View</CardTitle></CardHeader>
-            <CardContent className="space-y-2 pt-0">
-              <div className="flex items-center justify-between">
-                <Button onClick={() => navigatePdf('prev')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum <= 1} size="sm" variant="outline"><ChevronLeft /> Prev</Button>
-                <span className="text-sm tabular-nums"> {currentPdfPageNum} / {pdfTotalPages}</span>
-                <Button onClick={() => navigatePdf('next')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum >= pdfTotalPages} size="sm" variant="outline">Next <ChevronRight /></Button>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button onClick={() => handlePdfScaleChange(pdfScale - 0.25)} size="icon" variant="outline" className="h-7 w-7" disabled={isRenderingPdfPage || pdfScale <= 0.5}><ZoomOut className="h-4 w-4"/></Button>
-                <Slider value={[pdfScale]} min={0.5} max={3} step={0.25} onValueChange={([val]) => handlePdfScaleChange(val)} disabled={isRenderingPdfPage} />
-                <Button onClick={() => handlePdfScaleChange(pdfScale + 0.25)} size="icon" variant="outline" className="h-7 w-7" disabled={isRenderingPdfPage || pdfScale >=3}><ZoomIn className="h-4 w-4"/></Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {activeDoc?.type === 'epub' && (
-          <Card>
-            <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">EPUB Navigation</CardTitle></CardHeader>
-            <CardContent className="flex items-center justify-between pt-0">
-                <Button onClick={() => navigateEpub('prev')} size="sm" variant="outline" disabled={isEpubLoading || isLoadingDoc}> <ChevronLeft /> Previous </Button>
-                <Button onClick={() => navigateEpub('next')} size="sm" variant="outline" disabled={isEpubLoading || isLoadingDoc}> Next <ChevronRight /> </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        <Card>
-          <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm flex items-center gap-1"><Settings2 className="h-4 w-4"/> Text-to-Speech</CardTitle></CardHeader>
-          <CardContent className="space-y-2 pt-0">
-            <div>
-              <Label htmlFor="tts-engine" className="text-xs">Engine</Label>
-              <Select value={ttsSettings.engine} onValueChange={(v) => handleSettingChange('engine', v as 'local' | 'cloud')} disabled={isSpeaking && !isPaused}>
-                <SelectTrigger id="tts-engine" className="h-9 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="local"><div className="flex items-center gap-1 text-xs"><Smartphone className="h-3 w-3"/>Local</div></SelectItem><SelectItem value="cloud"><div className="flex items-center gap-1 text-xs"><CloudIcon className="h-3 w-3"/>Cloud</div></SelectItem></SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="tts-language" className="text-xs">Language</Label>
-              <Input id="tts-language" className="h-9 text-xs" value={ttsSettings.language} onChange={(e) => handleSettingChange('language', e.target.value)} disabled={isSpeaking && !isPaused} />
-            </div>
-            {ttsSettings.engine === 'local' && (
-              <div>
-                <Label htmlFor="tts-voice" className="text-xs">Voice (Local)</Label>
-                <Select value={ttsSettings.voiceURI || ""} onValueChange={(v) => handleSettingChange('voiceURI', v)} disabled={isSpeaking && !isPaused || availableVoices.length === 0}>
-                  <SelectTrigger id="tts-voice" className="h-9 text-xs"><SelectValue placeholder="Select voice" /></SelectTrigger>
-                  <SelectContent className="max-h-48">
-                    {availableVoices.map(v => (<SelectItem key={v.voiceURI || v.name} value={v.voiceURI || ""} className="text-xs">{v.name} ({v.lang})</SelectItem>))}
-                  </SelectContent>
-                </Select>
-              </div>
+            {(activeDoc?.type === 'pdf' && pdfTotalPages > 0) && (
+              <Card>
+                <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">PDF Navigation & View</CardTitle></CardHeader>
+                <CardContent className="space-y-2 pt-0">
+                  <div className="flex items-center justify-between">
+                    <Button onClick={() => navigatePdf('prev')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum <= 1} size="sm" variant="outline"><ChevronLeft /> Prev</Button>
+                    <span className="text-sm tabular-nums"> {currentPdfPageNum} / {pdfTotalPages}</span>
+                    <Button onClick={() => navigatePdf('next')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum >= pdfTotalPages} size="sm" variant="outline">Next <ChevronRight /></Button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button onClick={() => handlePdfScaleChange(pdfScale - 0.25)} size="icon" variant="outline" className="h-7 w-7" disabled={isRenderingPdfPage || pdfScale <= 0.5}><ZoomOut className="h-4 w-4"/></Button>
+                    <Slider value={[pdfScale]} min={0.5} max={3} step={0.25} onValueChange={([val]) => handlePdfScaleChange(val)} disabled={isRenderingPdfPage} />
+                    <Button onClick={() => handlePdfScaleChange(pdfScale + 0.25)} size="icon" variant="outline" className="h-7 w-7" disabled={isRenderingPdfPage || pdfScale >=3}><ZoomIn className="h-4 w-4"/></Button>
+                  </div>
+                </CardContent>
+              </Card>
             )}
-            <div className="space-y-1"><Label htmlFor="tts-rate" className="text-xs">Rate: {ttsSettings.rate.toFixed(1)}</Label><Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isSpeaking && !isPaused}/></div>
-            <div className="space-y-1"><Label htmlFor="tts-pitch" className="text-xs">Pitch: {ttsSettings.pitch.toFixed(1)}</Label><Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isSpeaking && !isPaused}/></div>
-            <Button onClick={playPauseSpeech} disabled={buttonState.disabled} variant={isSpeaking && !isPaused ? "outline" : "default"} className="w-full h-9 text-sm">{buttonState.icon} {buttonState.text}</Button>
-            <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full mt-2 text-xs" disabled={!activeDoc}> <Star className="mr-2 h-3 w-3" /> Favorite Text/Selection </Button>
-          </CardContent>
-        </Card>
+
+            {activeDoc?.type === 'epub' && (
+              <Card>
+                <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">EPUB Navigation</CardTitle></CardHeader>
+                <CardContent className="flex items-center justify-between pt-0">
+                    <Button onClick={() => navigateEpub('prev')} size="sm" variant="outline" disabled={isEpubLoading || isLoadingDoc}> <ChevronLeft /> Previous </Button>
+                    <Button onClick={() => navigateEpub('next')} size="sm" variant="outline" disabled={isEpubLoading || isLoadingDoc}> Next <ChevronRight /> </Button>
+                </CardContent>
+              </Card>
+            )}
+
+            <Card>
+              <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm flex items-center gap-1"><Settings2 className="h-4 w-4"/> Text-to-Speech</CardTitle></CardHeader>
+              <CardContent className="space-y-2 pt-0">
+                <div>
+                  <Label htmlFor="tts-engine" className="text-xs">Engine</Label>
+                  <Select value={ttsSettings.engine} onValueChange={(v) => handleSettingChange('engine', v as 'local' | 'cloud')} disabled={isSpeaking && !isPaused}>
+                    <SelectTrigger id="tts-engine" className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="local"><div className="flex items-center gap-1 text-xs"><Smartphone className="h-3 w-3"/>Local</div></SelectItem><SelectItem value="cloud"><div className="flex items-center gap-1 text-xs"><CloudIcon className="h-3 w-3"/>Cloud</div></SelectItem></SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="tts-language" className="text-xs">Language</Label>
+                  <Input id="tts-language" className="h-9 text-xs" value={ttsSettings.language} onChange={(e) => handleSettingChange('language', e.target.value)} disabled={isSpeaking && !isPaused} />
+                </div>
+                {ttsSettings.engine === 'local' && (
+                  <div>
+                    <Label htmlFor="tts-voice" className="text-xs">Voice (Local)</Label>
+                    <Select value={ttsSettings.voiceURI || ""} onValueChange={(v) => handleSettingChange('voiceURI', v)} disabled={isSpeaking && !isPaused || availableVoices.length === 0}>
+                      <SelectTrigger id="tts-voice" className="h-9 text-xs"><SelectValue placeholder="Select voice" /></SelectTrigger>
+                      <SelectContent className="max-h-48">
+                        {availableVoices.map(v => (<SelectItem key={v.voiceURI || v.name} value={v.voiceURI || ""} className="text-xs">{v.name} ({v.lang})</SelectItem>))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                <div className="space-y-1"><Label htmlFor="tts-rate" className="text-xs">Rate: {ttsSettings.rate.toFixed(1)}</Label><Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isSpeaking && !isPaused}/></div>
+                <div className="space-y-1"><Label htmlFor="tts-pitch" className="text-xs">Pitch: {ttsSettings.pitch.toFixed(1)}</Label><Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isSpeaking && !isPaused}/></div>
+                <Button onClick={playPauseSpeech} disabled={buttonState.disabled} variant={isSpeaking && !isPaused ? "outline" : "default"} className="w-full h-9 text-sm">{buttonState.icon} {buttonState.text}</Button>
+                <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full mt-2 text-xs" disabled={!activeDoc}> <Star className="mr-2 h-3 w-3" /> Favorite Text/Selection </Button>
+              </CardContent>
+            </Card>
+        </div>
       </aside>
     </div>
   );
