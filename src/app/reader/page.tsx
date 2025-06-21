@@ -485,13 +485,13 @@ export default function ReaderPage() {
   }, [ttsSettings.engine, isSpeaking, stopSpeech, toast]);
 
 
-  const startSpeech = async (textToPlay: string, options: { repeat?: boolean } = {}) => {
-    const { repeat = false } = options;
+  const startSpeech = async (textToPlay: string, options: { repeat?: boolean; bypassMinLengthCheck?: boolean } = {}) => {
+    const { repeat = false, bypassMinLengthCheck = false } = options;
 
     if (!isMountedRef.current) return;
     
     const invalidMessages = [ "error:", "failed to load", "loading", "mobi files", "image loaded", "no text content", "no selectable text", "ocr completed, no text found", "no document selected", "graphical or empty", "could not load epub", "waiting for page", "preparing epub" ];
-    if (!textToPlay || invalidMessages.some(msg => textToPlay.toLowerCase().includes(msg)) || textToPlay.length < MIN_TTS_TEXT_LENGTH) { 
+    if (!bypassMinLengthCheck && (!textToPlay || invalidMessages.some(msg => textToPlay.toLowerCase().includes(msg)) || textToPlay.length < MIN_TTS_TEXT_LENGTH)) { 
       toast({ variant: "destructive", title: "No Valid Text", description: `No valid text to read (min ${MIN_TTS_TEXT_LENGTH} chars). Text was: "${textToPlay.substring(0,50)}..."` }); 
       return; 
     }
@@ -592,11 +592,12 @@ export default function ReaderPage() {
   const handleRepeatSelection = async () => {
     if (!isMountedRef.current) return;
     const selection = window.getSelection()?.toString().trim();
-    if (!selection || selection.length < MIN_TTS_TEXT_LENGTH) {
-        toast({ variant: "destructive", title: "No Text Selected", description: `Please select at least ${MIN_TTS_TEXT_LENGTH} characters to repeat.` });
+    if (!selection) {
+        toast({ variant: "destructive", title: "No Text Selected", description: "Please select text to repeat." });
         return;
     }
-    await startSpeech(selection, { repeat: true });
+    // Repeat should work even for short phrases.
+    await startSpeech(selection, { repeat: true, bypassMinLengthCheck: true });
   };
 
   const handlePlayFromSelection = async () => {
@@ -605,18 +606,23 @@ export default function ReaderPage() {
     const fullText = currentTextForTTS;
     const selection = window.getSelection()?.toString().trim();
 
-    let textToPlay = fullText;
-    if (selection) {
-        const startIndex = fullText.indexOf(selection);
-        if (startIndex !== -1) {
-            textToPlay = fullText.substring(startIndex);
-        } else {
-            toast({variant: "default", title: "Selection Not Found", description: "Could not find selection in the current text. Playing selection only."})
-            textToPlay = selection;
-        }
+    if (!selection) {
+        // If no selection, play the whole text. This is the same as the main play button.
+        await startSpeech(fullText);
+        return;
     }
-    
-    await startSpeech(textToPlay);
+
+    const startIndex = fullText.indexOf(selection);
+    if (startIndex !== -1) {
+        // Found it, play from the selection onwards.
+        const textToPlay = fullText.substring(startIndex);
+        await startSpeech(textToPlay);
+    } else {
+        // Didn't find it, likely due to normalization differences.
+        // Play just the selection, and bypass the length check to ensure it always plays.
+        toast({variant: "default", title: "Selection Not Found", description: "Could not find selection in the current text. Playing selection only."})
+        await startSpeech(selection, { bypassMinLengthCheck: true });
+    }
   };
 
   const handleSettingChange = <K extends keyof TTSSettings>(key: K, value: TTSSettings[K]) => {
@@ -925,5 +931,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
     </div>
   );
 }
+
+    
 
     
