@@ -39,7 +39,6 @@ import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 
 const PDF_DEFAULT_SCALE = 1.5;
-const MIN_PDF_TEXT_LENGTH_FOR_DIRECT_READ = 20;
 
 
 export default function ReaderPage() {
@@ -84,11 +83,7 @@ export default function ReaderPage() {
   const [isPaused, setIsPaused] = useState(false);
   const [isRepeating, setIsRepeating] = useState(false);
 
-  const isSpeakingRef = useRef(isSpeaking);
   const isRepeatingRef = useRef(isRepeating);
-  useEffect(() => {
-    isSpeakingRef.current = isSpeaking;
-  }, [isSpeaking]);
   useEffect(() => {
     isRepeatingRef.current = isRepeating;
   }, [isRepeating]);
@@ -334,7 +329,7 @@ export default function ReaderPage() {
             } else {
                 const textContent = await page.getTextContent();
                 const pageText = textContent.items.map(item => ('str' in item ? item.str : '')).join(' ').replace(/\s+/g, ' ').trim();
-                if (pageText.length >= MIN_PDF_TEXT_LENGTH_FOR_DIRECT_READ) {
+                if (pageText) {
                     setCurrentTextForTTS(pageText); 
                     setPdfPageIsTextBased(true);
                 } else {
@@ -495,13 +490,12 @@ export default function ReaderPage() {
 
     if (!isMountedRef.current) return;
     
-    const invalidMessages = [ "error:", "failed to load", "loading", "mobi files", "image loaded", "no text content", "no selectable text", "ocr completed, no text found", "no document selected", "graphical or empty", "could not load epub", "waiting for page", "preparing epub" ];
-    if (!bypassMinLengthCheck && (!textToPlay || invalidMessages.some(msg => textToPlay.toLowerCase().includes(msg)))) { 
-      const selectedText = window.getSelection()?.toString().trim();
-      if (!selectedText) {
-        toast({ variant: "destructive", title: "No Valid Text", description: `No valid text to read. Text was: "${textToPlay.substring(0,50)}..."` }); 
-        return; 
-      }
+    if (!bypassMinLengthCheck) {
+        const invalidMessages = [ "error:", "failed to load", "loading", "mobi files", "image loaded", "no text content", "no selectable text", "ocr completed, no text found", "no document selected", "graphical or empty", "could not load epub", "waiting for page", "preparing epub" ];
+        if (!textToPlay || invalidMessages.some(msg => textToPlay.toLowerCase().includes(msg))) {
+            toast({ variant: "destructive", title: "No Valid Text", description: `No valid text to read. Text was: "${textToPlay.substring(0,50)}..."` }); 
+            return; 
+        }
     }
     
     stopSpeech(false);
@@ -568,42 +562,50 @@ export default function ReaderPage() {
   };
 
   const playPauseSpeech = async () => {
-    if(!isMountedRef.current) return;
-    
-    // Any action with the main play/pause button should cancel repeat mode.
-    if (isRepeating) setIsRepeating(false);
-
+    if (!isMountedRef.current) return;
+  
+    // If in repeat mode, any interaction with the main play/pause button
+    // should just stop the repetition cleanly.
+    if (isRepeating) {
+      stopSpeech(true);
+      return;
+    }
+  
     if (isSpeaking) {
       if (isPaused) {
-        if (ttsSettings.engine === 'local' && utteranceRef.current && window.speechSynthesis?.paused) { 
-          window.speechSynthesis.resume(); 
-          if(isMountedRef.current) setIsPaused(false);
-        } else if (ttsSettings.engine === 'cloud' && audioPlayerRef.current?.paused) { 
-          audioPlayerRef.current.play().then(() => {if(isMountedRef.current) setIsPaused(false);}).catch(() => {if(isMountedRef.current) stopSpeech(true);}); 
+        if (ttsSettings.engine === 'local' && utteranceRef.current && window.speechSynthesis?.paused) {
+          window.speechSynthesis.resume();
+          if (isMountedRef.current) setIsPaused(false);
+        } else if (ttsSettings.engine === 'cloud' && audioPlayerRef.current?.paused) {
+          audioPlayerRef.current.play().then(() => {
+            if (isMountedRef.current) setIsPaused(false);
+          }).catch(() => {
+            if (isMountedRef.current) stopSpeech(true);
+          });
         }
       } else {
-        if (ttsSettings.engine === 'local' && utteranceRef.current && window.speechSynthesis?.speaking) { 
-          window.speechSynthesis.pause(); 
-          if(isMountedRef.current) setIsPaused(true);
-        } else if (ttsSettings.engine === 'cloud' && audioPlayerRef.current && !audioPlayerRef.current.paused) { 
-          audioPlayerRef.current.pause(); 
-          if(isMountedRef.current) setIsPaused(true); 
+        if (ttsSettings.engine === 'local' && utteranceRef.current && window.speechSynthesis?.speaking) {
+          window.speechSynthesis.pause();
+          if (isMountedRef.current) setIsPaused(true);
+        } else if (ttsSettings.engine === 'cloud' && audioPlayerRef.current && !audioPlayerRef.current.paused) {
+          audioPlayerRef.current.pause();
+          if (isMountedRef.current) setIsPaused(true);
         }
       }
     } else {
-      const selection = typeof window !== 'undefined' ? window.getSelection() : null; 
-      const selectedTextFromSelection = selection?.toString().trim();
-      const effectiveTextToRead = selectedTextFromSelection || currentTextForTTS;
-      const options = selectedTextFromSelection ? { bypassMinLengthCheck: true } : {};
+      const selection = typeof window !== 'undefined' ? window.getSelection() : null;
+      const selectedText = selection?.toString().trim();
+      const effectiveTextToRead = selectedText || currentTextForTTS;
+      const options = selectedText ? { bypassMinLengthCheck: true } : {};
       await startSpeech(effectiveTextToRead, options);
     }
   };
+  
 
   const handleRepeatSelection = async () => {
     if (!isMountedRef.current) return;
     
     if (isRepeating) {
-        setIsRepeating(false);
         stopSpeech(true);
     } else {
         const selection = window.getSelection()?.toString().trim();
@@ -623,7 +625,7 @@ export default function ReaderPage() {
     const selection = window.getSelection()?.toString().trim();
 
     if (!selection) {
-        toast({variant: "default", title: "No Text Selected", description: "Please select text to play from. Without a selection, this button does nothing."});
+        toast({variant: "default", title: "No Text Selected", description: "To use this feature, please select some text first."});
         return;
     }
     
@@ -656,7 +658,7 @@ export default function ReaderPage() {
     const textToFavorite = selectionFromWindow || currentTextForTTS;
     const invalidMessages = [ "Error:", "Failed to load", "Loading PDF page...", "MOBI files cannot", "Loading EPUB...", "Loading EPUB content...", "Preparing EPUB reader...", "Loading text file...", "Loading image...", "Image loaded. Perform OCR", "No text content found", "Could not extract text", "EPUB viewer element not ready", "This PDF page has no selectable text", "Performing OCR...", "No document ID provided", "Document with ID", "EPUB viewer became unavailable.", "OCR completed, no text found.", "No document selected.", "EPUB section loaded. Text may be graphical or empty.", "Could not load EPUB section content.", "EPUB viewer element failed to initialize.", "EPUB content could not be displayed."];
     
-    if (textToFavorite && !invalidMessages.some(msg => textToFavorite.toLowerCase().startsWith(msg.toLowerCase()))) {
+    if (textToFavorite && !invalidMessages.some(msg => textToFavorite.toLowerCase().includes(msg.toLowerCase()))) {
       const sourceName = activeDoc ? activeDoc.title : 'Scratchpad';
       const sourceId = activeDoc ? activeDoc.id : 'scratchpad';
       LocalStorageService.addFavoriteItem({
