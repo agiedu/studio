@@ -244,7 +244,7 @@ export default function LibraryPage() {
                       </div>
                     </div>
                     <div className="flex gap-2 mt-2 sm:mt-0 sm:items-center flex-shrink-0">
-                      <Button size="sm" variant="outline" asChild>
+                      <Button size="sm" variant="outline" asChild disabled={!!deletingDocId}>
                         <Link href={`/reader?docId=${doc.id}`}>
                           <BookOpen className="mr-1.5 h-4 w-4" /> Open in Reader
                         </Link>
@@ -300,4 +300,5 @@ export default function LibraryPage() {
       </Card>
     </div>
   );
-}
+
+    
