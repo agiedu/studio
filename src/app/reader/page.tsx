@@ -584,7 +584,7 @@ export default function ReaderPage() {
             <div className="w-full h-full flex-grow relative">
                 {activeDoc?.type === 'pdf' && (
                   <div className="w-full h-full flex items-center justify-center overflow-auto p-2 scroll-pb-36">
-                    {pdfPageImage && <NextImage src={pdfPageImage} alt={`Page ${currentPdfPageNum}`} width={0} height={0} sizes="100vw" style={{ width: 'auto', height: 'auto', maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} className="shadow-lg border rounded-md" />}
+                    {pdfPageImage && <NextImage src={pdfPageImage} alt={`Page ${currentPdfPageNum}`} width={0} height={0} style={{ width: 'auto', height: 'auto', maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} className="shadow-lg border rounded-md" />}
                     {showOcrButtonForPdfPage && (<Button onClick={handlePerformOcr} disabled={isPerformingOcr} className="absolute bottom-4"> {isPerformingOcr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />} Perform OCR on PDF Page </Button> )}
                   </div>
                 )}
@@ -625,8 +625,8 @@ export default function ReaderPage() {
       </div>
 
       {/* Controls Sidebar */}
-      <aside className="w-full lg:w-80 xl:w-96 border-l bg-background flex-shrink-0 flex flex-col">
-        <div className="overflow-y-auto p-3 space-y-4">
+      <aside className="w-full lg:w-80 xl:w-96 border-l bg-background flex-shrink-0 flex flex-col overflow-y-auto">
+        <div className="p-3 pb-6 space-y-4">
             <Card>
                 <CardHeader className="pb-2 pt-4">
                     <CardTitle className="text-base truncate flex items-center gap-1"> <BookOpen className="h-5 w-5 text-primary"/> {activeDoc?.title || "No Document Loaded"} </CardTitle>
