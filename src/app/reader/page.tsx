@@ -493,37 +493,39 @@ export default function ReaderPage() {
     };
   }, [ttsSettings.engine, isSpeaking, stopSpeech, toast]);
 
-
-  const startSpeech = async (textToPlay: string, options: { repeat?: boolean; bypassMinLengthCheck?: boolean } = {}) => {
+  // Private function to initiate speech; assumes a clean state.
+  const _startSpeech = async (textToPlay: string, options: { repeat?: boolean; bypassMinLengthCheck?: boolean } = {}) => {
     const { repeat = false, bypassMinLengthCheck = false } = options;
 
     if (!isMountedRef.current) return;
-    
+
     if (!bypassMinLengthCheck) {
         const invalidMessages = [ "error:", "failed to load", "loading", "mobi files", "image loaded", "no text content", "no selectable text", "ocr completed, no text found", "no document selected", "graphical or empty", "could not load epub", "waiting for page", "preparing epub" ];
         if (!textToPlay || invalidMessages.some(msg => textToPlay.toLowerCase().includes(msg))) {
-            toast({ variant: "destructive", title: "No Valid Text", description: `No valid text to read. Text was: "${textToPlay.substring(0,50)}..."` }); 
-            return; 
+            toast({variant: "destructive", title: "No Valid Text", description: `No valid text to read. Text was: "${textToPlay.substring(0,50)}..."`});
+            // Reset state if we bail early
+            if (isMountedRef.current) {
+              setIsSpeaking(false);
+              setIsRepeating(false);
+            }
+            return;
         }
     }
-    
-    stopSpeech(false);
-    if (!isMountedRef.current) return;
-    
+
     setIsLoadingTTS(true);
     setIsSpeaking(true);
     setIsPaused(false);
     setIsRepeating(repeat);
-    
+
     if (audioPlayerRef.current) {
       audioPlayerRef.current.loop = repeat;
     }
-    
+
     if (ttsSettings.engine === 'local') {
-      if (typeof window === 'undefined' || !window.speechSynthesis) { 
-        toast({ variant: "destructive", title: "TTS Error", description: "Browser Speech Synthesis not supported." }); 
-        stopSpeech(true); 
-        return; 
+      if (typeof window === 'undefined' || !window.speechSynthesis) {
+        toast({ variant: "destructive", title: "TTS Error", description: "Browser Speech Synthesis not supported." });
+        stopSpeech(true);
+        return;
       }
       const utterance = new SpeechSynthesisUtterance(textToPlay);
       utterance.lang = ttsSettings.language;
@@ -535,43 +537,54 @@ export default function ReaderPage() {
 
       utterance.onend = () => {
         if (utteranceRef.current === utterance && isMountedRef.current) {
-          if (isRepeatingRef.current) { 
+          if (isRepeatingRef.current) {
             window.speechSynthesis.speak(utterance);
           } else {
             stopSpeech(true);
           }
         }
       };
-      utterance.onerror = (event) => { 
-        if(utteranceRef.current === utterance && isMountedRef.current) { 
-          toast({ variant: "destructive", title: "TTS Error", description: event.error || "Speech failed." }); 
-          stopSpeech(true); 
+      utterance.onerror = (event) => {
+        if(utteranceRef.current === utterance && isMountedRef.current) {
+          toast({ variant: "destructive", title: "TTS Error", description: event.error || "Speech failed." });
+          stopSpeech(true);
         }
       };
       utteranceRef.current = utterance;
       window.speechSynthesis.speak(utterance);
-      if(isMountedRef.current) setIsLoadingTTS(false); 
-    } else { 
+      if(isMountedRef.current) setIsLoadingTTS(false);
+    } else {
       try {
         const result = await getCloudSpeech(textToPlay, ttsSettings.language);
-        if(!isMountedRef.current) return; 
+        if(!isMountedRef.current) return;
         if ('audioUrl' in result && audioPlayerRef.current) {
           audioPlayerRef.current.src = result.audioUrl;
-          await audioPlayerRef.current.play(); 
+          await audioPlayerRef.current.play();
         } else if ('error' in result) {
-          toast({ variant: "destructive", title: "Cloud TTS Error", description: result.error }); 
-          if(isMountedRef.current) stopSpeech(true); 
+          toast({ variant: "destructive", title: "Cloud TTS Error", description: result.error });
+          if(isMountedRef.current) stopSpeech(true);
         }
-      } catch (e: any) { 
-        if(isMountedRef.current) { 
-          toast({ variant: "destructive", title: "Cloud TTS Failed", description: e.message }); 
-          if(isMountedRef.current) stopSpeech(true); 
+      } catch (e: any) {
+        if(isMountedRef.current) {
+          toast({ variant: "destructive", title: "Cloud TTS Failed", description: e.message });
+          if(isMountedRef.current) stopSpeech(true);
         }
       }
     }
   };
 
-  const playPauseSpeech = async () => {
+  // Public controller to start speech. It always resets state first.
+  const startSpeech = (textToPlay: string, options: { repeat?: boolean; bypassMinLengthCheck?: boolean } = {}) => {
+      stopSpeech(true);
+      setTimeout(() => {
+          if (isMountedRef.current) {
+              _startSpeech(textToPlay, options);
+          }
+      }, 100);
+  };
+
+
+  const playPauseSpeech = () => {
     if (!isMountedRef.current) return;
   
     // If speaking, handle pause/resume
@@ -599,7 +612,7 @@ export default function ReaderPage() {
     } else { // If not speaking, start a new speech.
       const selection = typeof window !== 'undefined' ? window.getSelection()?.toString().trim() : '';
       const effectiveTextToRead = selection || currentTextForTTS;
-      await startSpeech(effectiveTextToRead, { bypassMinLengthCheck: !!selection });
+      startSpeech(effectiveTextToRead, { bypassMinLengthCheck: !!selection });
     }
   };
   
@@ -620,14 +633,7 @@ export default function ReaderPage() {
         });
         return;
     }
-
-    stopSpeech(true);
-
-    setTimeout(() => {
-        if (isMountedRef.current) {
-            startSpeech(selection, { repeat: true, bypassMinLengthCheck: true });
-        }
-    }, 100);
+    startSpeech(selection, { repeat: true, bypassMinLengthCheck: true });
   };
   
   const handlePlayFromSelection = () => {
@@ -655,13 +661,7 @@ export default function ReaderPage() {
       });
     }
 
-    stopSpeech(true);
-
-    setTimeout(() => {
-        if (isMountedRef.current) {
-            startSpeech(textToPlay, { bypassMinLengthCheck: true });
-        }
-    }, 100);
+    startSpeech(textToPlay, { bypassMinLengthCheck: true });
   };
 
   const handleSettingChange = <K extends keyof TTSSettings>(key: K, value: TTSSettings[K]) => {
@@ -989,3 +989,5 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
     </div>
   );
 }
+
+    
