@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,6 +12,16 @@ import { UploadCloud, Info, Trash2, BookOpen, FileText, Image as ImageIcon, Refr
 import * as IndexedDBService from '@/lib/indexedDBService';
 import type { StoredMangaDocument } from '@/types';
 import { getDocument, GlobalWorkerOptions, version as pdfjsVersion } from 'pdfjs-dist';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 
 function arrayBufferToBlob(buffer: ArrayBuffer, type: string): Blob {
@@ -25,9 +35,10 @@ export default function LibraryPage() {
   const [isSavingToDevice, setIsSavingToDevice] = useState<string | null>(null);
   const [storedDocuments, setStoredDocuments] = useState<StoredMangaDocument[]>([]);
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
+  const [docToDelete, setDocToDelete] = useState<StoredMangaDocument | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const fetchDocuments = async (operationLabel: string = "Fetching documents") => {
+  const fetchDocuments = useCallback(async (operationLabel: string = "Fetching documents") => {
     setIsLoading(true);
     try {
       const docs = await IndexedDBService.getAllDocuments();
@@ -37,14 +48,14 @@ export default function LibraryPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [toast]);
 
   useEffect(() => {
     fetchDocuments("Initial document fetch");
      if (typeof window !== 'undefined' && !GlobalWorkerOptions.workerSrc) {
         GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsVersion}/pdf.worker.mjs`;
     }
-  }, []);
+  }, [fetchDocuments]);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -103,30 +114,22 @@ export default function LibraryPage() {
     }
   };
 
-  const handleDeleteDocument = async (docIdToDelete: string, docTitle: string) => {
-    if (!docIdToDelete) {
-        toast({ variant: "destructive", title: "Internal Error", description: "Document ID is missing." });
-        return;
-    }
-    
-    const isConfirmed = window.confirm(`Are you sure you want to permanently delete "${docTitle}"? This cannot be undone.`);
-    if (!isConfirmed) {
-        return;
-    }
+  const performDelete = async () => {
+    if (!docToDelete) return;
 
-    setDeletingDocId(docIdToDelete);
+    setDeletingDocId(docToDelete.id);
+    const title = docToDelete.title;
+    const id = docToDelete.id;
+    setDocToDelete(null);
 
     try {
-        await IndexedDBService.deleteDocumentById(docIdToDelete);
-
+        await IndexedDBService.deleteDocumentById(id);
         const lastActiveId = await IndexedDBService.getLastActiveDocId();
-        if (lastActiveId === docIdToDelete) {
+        if (lastActiveId === id) {
             await IndexedDBService.saveLastActiveDocId(null);
         }
-
-        toast({ title: "Success", description: `"${docTitle}" has been deleted.` });
         await fetchDocuments("Data refresh after deletion");
-
+        toast({ title: "Success", description: `"${title}" has been deleted.` });
     } catch (error: any) {
         console.error("Deletion failed:", error);
         toast({ variant: "destructive", title: "Deletion Failed", description: error.message || "An unknown error occurred." });
@@ -262,7 +265,7 @@ export default function LibraryPage() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => handleDeleteDocument(doc.id, doc.title)}
+                        onClick={() => setDocToDelete(doc)}
                         disabled={isLoading || isUploading || !!deletingDocId}
                         aria-label="Delete Document">
                         {deletingDocId === doc.id ? (
@@ -298,7 +301,24 @@ export default function LibraryPage() {
             </p>
         </CardContent>
       </Card>
+      
+      <AlertDialog open={!!docToDelete} onOpenChange={(isOpen) => !isOpen && setDocToDelete(null)}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+                This action cannot be undone. This will permanently delete the document
+                <span className="font-bold"> &quot;{docToDelete?.title}&quot;</span>.
+            </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={performDelete}>
+                Continue
+            </AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+    </AlertDialog>
     </div>
   );
-
-    
+}
