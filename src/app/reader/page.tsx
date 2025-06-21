@@ -18,7 +18,18 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
-import { Loader2, Play, Pause, Smartphone, Cloud as CloudIcon, Star, AlertTriangle, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, BookOpen, Settings2, FileText, ScanText } from 'lucide-react';
+import { Loader2, Play, Pause, Smartphone, Cloud as CloudIcon, Star, AlertTriangle, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, BookOpen, Settings2, FileText, ScanText, Trash2 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
 
 import { getCloudSpeech, performOCR } from '@/app/actions';
 import * as LocalStorageService from '@/lib/localStorageService';
@@ -133,6 +144,9 @@ export default function ReaderPage() {
         try { epubRenditionRef.current.destroy(); } catch (e) { console.log("Non-critical error destroying EPUB rendition", e); }
         epubRenditionRef.current = null;
       }
+       if (epubViewerRef.current) {
+        epubViewerRef.current.innerHTML = '';
+      }
     };
 
     const loadDocument = async () => {
@@ -184,7 +198,7 @@ export default function ReaderPage() {
               throw new Error("EPUB viewer element not ready.");
             }
 
-            const rendition = book.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "auto" });
+            const rendition = book.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
             epubRenditionRef.current = rendition;
 
             rendition.on('displayed', async (sectionResult: any) => {
@@ -569,63 +583,61 @@ export default function ReaderPage() {
     <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)]">
       {/* Reader Content Pane */}
       <div className="flex-grow flex flex-col bg-muted/20 p-2 md:p-4 min-w-0">
-
-        {/* Scrollable Content Area */}
-        <div className="flex-grow overflow-y-auto rounded-lg bg-background shadow-inner relative flex flex-col">
-            <div className="relative flex-grow flex flex-col items-center justify-start">
-                {(isLoadingDoc || isEpubLoading || isRenderingPdfPage) && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
-                        <Loader2 className="h-10 w-10 animate-spin text-primary" />
-                        <p className="ml-3">Loading content...</p>
+        
+        {/* Top part: Scrollable Content Area */}
+        <div className="flex-grow overflow-y-auto rounded-lg bg-background shadow-inner relative flex flex-col items-center justify-start">
+            {(isLoadingDoc || isEpubLoading || isRenderingPdfPage) && (
+                <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
+                    <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                    <p className="ml-3">Loading content...</p>
+                </div>
+            )}
+            {docErrorMessage && !activeDoc && (
+                <div className="absolute inset-x-0 top-4 mx-auto w-fit max-w-md bg-destructive/10 border border-destructive text-destructive p-3 rounded-md shadow-lg z-20 flex items-start gap-2">
+                    <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                    <div>
+                        <p className="font-medium text-sm">Document Display Issue</p>
+                        <p className="text-xs">{docErrorMessage}</p>
+                        <Button variant="ghost" size="sm" className="text-xs h-auto p-1 mt-1 text-destructive hover:bg-destructive/20" onClick={() => setDocErrorMessage(null)}>Dismiss</Button>
                     </div>
+                </div>
+            )}
+            
+            {/* PDF Content */}
+            {activeDoc?.type === 'pdf' && (
+                <div className="w-full text-center p-4 space-y-4">
+                    {pdfPageImage && <NextImage src={pdfPageImage} alt={`Page ${currentPdfPageNum}`} width={0} height={0} style={{ width: 'auto', height: 'auto', maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} className="shadow-lg border rounded-md inline-block" />}
+                    {showOcrButtonForPdfPage && (<Button onClick={handlePerformOcr} disabled={isPerformingOcr} className="mt-4"> {isPerformingOcr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />} Perform OCR on PDF Page </Button> )}
+                </div>
+            )}
+            
+            {/* EPUB Content */}
+            <div
+                key={activeDoc?.id || 'epub-placeholder'}
+                id="epub-viewer"
+                ref={epubViewerRef}
+                className={cn(
+                    "w-full flex-grow", // Let it grow to fill the space
+                    activeDoc?.type !== 'epub' && "hidden"
                 )}
-                {docErrorMessage && !activeDoc && (
-                    <div className="absolute inset-x-0 top-4 mx-auto w-fit max-w-md bg-destructive/10 border border-destructive text-destructive p-3 rounded-md shadow-lg z-20 flex items-start gap-2">
-                        <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
-                        <div>
-                            <p className="font-medium text-sm">Document Display Issue</p>
-                            <p className="text-xs">{docErrorMessage}</p>
-                            <Button variant="ghost" size="sm" className="text-xs h-auto p-1 mt-1 text-destructive hover:bg-destructive/20" onClick={() => setDocErrorMessage(null)}>Dismiss</Button>
-                        </div>
-                    </div>
-                )}
-                
-                {/* PDF Content */}
-                {activeDoc?.type === 'pdf' && (
-                    <div className="w-full text-center p-4 space-y-4">
-                        {pdfPageImage && <NextImage src={pdfPageImage} alt={`Page ${currentPdfPageNum}`} width={0} height={0} style={{ width: 'auto', height: 'auto', maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} className="shadow-lg border rounded-md inline-block" />}
-                        {showOcrButtonForPdfPage && (<Button onClick={handlePerformOcr} disabled={isPerformingOcr}> {isPerformingOcr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />} Perform OCR on PDF Page </Button> )}
-                    </div>
-                )}
-                
-                {/* EPUB Content */}
-                <div
-                    key={activeDoc?.id || 'epub-placeholder'}
-                    id="epub-viewer"
-                    ref={epubViewerRef}
-                    className={cn(
-                        "w-full flex-grow", // Let it grow to fill the space
-                        activeDoc?.type !== 'epub' && "hidden"
-                    )}
-                />
+            />
 
-                {/* TXT Content */}
-                {activeDoc?.type === 'txt' && ( <pre className="whitespace-pre-wrap p-4 bg-background rounded-md text-sm font-mono w-full select-text">{txtContent}</pre> )}
+            {/* TXT Content */}
+            {activeDoc?.type === 'txt' && ( <pre className="whitespace-pre-wrap p-4 bg-background rounded-md text-sm font-mono w-full select-text">{txtContent}</pre> )}
 
-                {/* Image Content */}
-                {activeDoc?.type === 'image' && displayedImageSrc && (
-                    <div className="w-full text-center p-4 space-y-4">
-                        <NextImage src={displayedImageSrc} alt={activeDoc.title || 'Uploaded Image'} width={800} height={600} style={{objectFit: 'contain'}} className="max-w-full max-h-[calc(100%-4rem)] shadow-lg border rounded-md inline-block" data-ai-hint="illustration abstract" />
-                        {showOcrButtonForImage && <Button onClick={handlePerformOcr} disabled={isPerformingOcr}> {isPerformingOcr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />} Perform OCR on Image </Button> }
-                    </div>
-                )}
+            {/* Image Content */}
+            {activeDoc?.type === 'image' && displayedImageSrc && (
+                <div className="w-full text-center p-4 space-y-4">
+                    <NextImage src={displayedImageSrc} alt={activeDoc.title || 'Uploaded Image'} width={800} height={600} style={{objectFit: 'contain'}} className="max-w-full max-h-[calc(100%-4rem)] shadow-lg border rounded-md inline-block" data-ai-hint="illustration abstract" />
+                    {showOcrButtonForImage && <Button onClick={handlePerformOcr} disabled={isPerformingOcr} className="mt-4"> {isPerformingOcr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />} Perform OCR on Image </Button> }
+                </div>
+            )}
 
-                {/* Mobi Not Supported Message */}
-                {activeDoc?.type === 'mobi' && ( <div className="p-4 bg-background rounded-md shadow-inner text-center h-full flex flex-col justify-center items-center"> <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-2"/> <p className="font-semibold">MOBI Not Supported</p> <p className="text-sm text-muted-foreground">Please convert to EPUB or PDF.</p> </div> )}
-            </div>
+            {/* Mobi Not Supported Message */}
+            {activeDoc?.type === 'mobi' && ( <div className="p-4 bg-background rounded-md shadow-inner text-center h-full flex flex-col justify-center items-center"> <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-2"/> <p className="font-semibold">MOBI Not Supported</p> <p className="text-sm text-muted-foreground">Please convert to EPUB or PDF.</p> </div> )}
         </div>
 
-        {/* TTS Box - Fixed at the bottom of the content pane */}
+        {/* Bottom part: TTS Box - Fixed at the bottom of the content pane */}
         {activeDoc && !isLoadingDoc && (
             <div className="flex-shrink-0 pt-2">
                 <Card className="shadow-md">
