@@ -618,13 +618,13 @@ export default function ReaderPage() {
   
   const handleRepeatSelection = () => {
     if (!isMountedRef.current) return;
+    const selection = window.getSelection()?.toString().trim();
 
     if (isRepeating) {
         stopSpeech(true);
         return;
     }
 
-    const selection = window.getSelection()?.toString().trim();
     if (!selection) {
         toast({
             variant: "destructive",
@@ -638,7 +638,6 @@ export default function ReaderPage() {
   
   const handlePlayFromSelection = () => {
     if (!isMountedRef.current) return;
-
     const selection = window.getSelection()?.toString().trim();
     if (!selection) {
       toast({
@@ -679,9 +678,8 @@ export default function ReaderPage() {
     if (!isMountedRef.current) return;
     const selectionFromWindow = typeof window !== 'undefined' ? window.getSelection()?.toString().trim() : '';
     const textToFavorite = selectionFromWindow || currentTextForTTS;
-    const invalidMessages = [ "Error:", "Failed to load", "Loading PDF page...", "MOBI files cannot", "Loading EPUB...", "Loading EPUB content...", "Preparing EPUB reader...", "Loading text file...", "Loading image...", "Image loaded. Perform OCR", "No text content found", "Could not extract text", "EPUB viewer element not ready", "This PDF page has no selectable text", "Performing OCR...", "No document ID provided", "Document with ID", "EPUB viewer became unavailable.", "OCR completed, no text found.", "No document selected.", "EPUB section loaded. Text may be graphical or empty.", "Could not load EPUB section content.", "EPUB viewer element failed to initialize.", "EPUB content could not be displayed."];
     
-    if (textToFavorite && !invalidMessages.some(msg => textToFavorite.toLowerCase().includes(msg.toLowerCase()))) {
+    if (textToFavorite) {
       const sourceName = activeDoc ? activeDoc.title : 'Scratchpad';
       const sourceId = activeDoc ? activeDoc.id : 'scratchpad';
       LocalStorageService.addFavoriteItem({
