@@ -24,6 +24,7 @@ export default function LibraryPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [isSavingToDevice, setIsSavingToDevice] = useState<string | null>(null);
   const [storedDocuments, setStoredDocuments] = useState<StoredMangaDocument[]>([]);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const fetchDocuments = async (operationLabel: string = "Fetching documents") => {
@@ -43,7 +44,6 @@ export default function LibraryPage() {
      if (typeof window !== 'undefined' && !GlobalWorkerOptions.workerSrc) {
         GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsVersion}/pdf.worker.mjs`;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -115,6 +115,7 @@ export default function LibraryPage() {
       return;
     }
     
+    setIsDeleting(docId);
     try {
       await IndexedDBService.deleteDocumentById(docId);
       
@@ -130,6 +131,8 @@ export default function LibraryPage() {
     } catch (error:any) {
       toast({ variant: "destructive", title: "Delete Failed", description: `Failed to delete "${titleForConfirm}". ${error.message || 'Unknown error'}.` });
       await fetchDocuments(`Error recovery fetch after failed delete of "${docId}"`);
+    } finally {
+        setIsDeleting(null);
     }
   };
 
@@ -219,7 +222,7 @@ export default function LibraryPage() {
           <CardDescription>
             List of documents in this browser. Click &quot;Open in Reader&quot; to view.
           </CardDescription>
-          <Button variant="outline" size="sm" onClick={() => fetchDocuments("Manual refresh of document list")} disabled={isLoading || isUploading} className="mt-2 w-fit">
+          <Button variant="outline" size="sm" onClick={() => fetchDocuments("Manual refresh of document list")} disabled={isLoading || isUploading || !!isDeleting} className="mt-2 w-fit">
             <RefreshCw className={`mr-2 h-4 w-4 ${isLoading && !isUploading ? 'animate-spin' : ''}`} /> Refresh List
           </Button>
         </CardHeader>
@@ -252,7 +255,7 @@ export default function LibraryPage() {
                           size="sm"
                           variant="outline"
                           onClick={() => handleSaveToDevice(doc)}
-                          disabled={isSavingToDevice === doc.id || isUploading || isLoading}
+                          disabled={isSavingToDevice === doc.id || isUploading || isLoading || !!isDeleting}
                           className="w-[150px]"
                           title="Save a copy to your computer's file system."
                       >
@@ -262,9 +265,13 @@ export default function LibraryPage() {
                         size="sm"
                         variant="ghost"
                         onClick={() => handleDeleteDocument(doc.id, doc.title)}
-                        disabled={isLoading || isUploading}
+                        disabled={isLoading || isUploading || !!isDeleting}
                         aria-label="Delete Document">
-                        <Trash2 className="h-4 w-4 text-destructive" />
+                        {isDeleting === doc.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin text-destructive" />
+                        ) : (
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        )}
                       </Button>
                     </div>
                   </li>
