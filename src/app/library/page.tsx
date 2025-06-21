@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -26,7 +26,7 @@ export default function LibraryPage() {
   const [storedDocuments, setStoredDocuments] = useState<StoredMangaDocument[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const fetchDocuments = useCallback(async (operationLabel: string = "Fetching documents") => {
+  const fetchDocuments = async (operationLabel: string = "Fetching documents") => {
     setIsLoading(true);
     try {
       const docs = await IndexedDBService.getAllDocuments();
@@ -36,16 +36,17 @@ export default function LibraryPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [toast]);
+  };
 
   useEffect(() => {
     fetchDocuments("Initial document fetch");
      if (typeof window !== 'undefined' && !GlobalWorkerOptions.workerSrc) {
         GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsVersion}/pdf.worker.mjs`;
     }
-  }, [fetchDocuments]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -100,7 +101,7 @@ export default function LibraryPage() {
         fileInputRef.current.value = ""; // Reset file input
       }
     }
-  }, [fetchDocuments, toast]);
+  };
 
 
   const handleDeleteDocument = async (docId: string, docTitle?: string) => {
@@ -115,10 +116,8 @@ export default function LibraryPage() {
     }
     
     try {
-      // 1. Delete from the source of truth (IndexedDB)
       await IndexedDBService.deleteDocumentById(docId);
       
-      // 2. Clear last active doc if it was the one deleted
       const lastActiveId = await IndexedDBService.getLastActiveDocId();
       if (lastActiveId === docId) {
         await IndexedDBService.saveLastActiveDocId(null);
@@ -126,18 +125,16 @@ export default function LibraryPage() {
       
       toast({ title: "Document Deleted", description: `"${titleForConfirm}" removed from browser storage.` });
       
-      // 3. **Crucially**, re-fetch the list from the source of truth to update the UI
       await fetchDocuments("Re-fetching documents after deletion");
 
     } catch (error:any) {
       toast({ variant: "destructive", title: "Delete Failed", description: `Failed to delete "${titleForConfirm}". ${error.message || 'Unknown error'}.` });
-      // On failure, also re-fetch to ensure UI is in sync with DB state
       await fetchDocuments(`Error recovery fetch after failed delete of "${docId}"`);
     }
   };
 
 
-  const handleSaveToDevice = useCallback(async (doc: StoredMangaDocument) => {
+  const handleSaveToDevice = async (doc: StoredMangaDocument) => {
     if (!doc.fileData || !doc.title || !doc.originalType) {
         toast({variant: "destructive", title: "Save Error", description: "Document data is incomplete for saving."});
         return;
@@ -177,7 +174,7 @@ export default function LibraryPage() {
     } finally {
         setIsSavingToDevice(null);
     }
-  }, [toast]);
+  };
   
   const getDocumentIcon = (docType: StoredMangaDocument['type']) => {
     switch (docType) {
