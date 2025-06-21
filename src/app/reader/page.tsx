@@ -18,7 +18,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
-import { Loader2, Play, Pause, Smartphone, Cloud as CloudIcon, Star, AlertTriangle, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, BookOpen, Settings2, FileText, ScanText, Trash2, Edit } from 'lucide-react';
+import { Loader2, Play, Pause, Smartphone, Cloud as CloudIcon, Star, AlertTriangle, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, BookOpen, Settings2, FileText, ScanText, Trash2, Edit, Repeat, TextSelect } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -83,6 +83,12 @@ export default function ReaderPage() {
   const [isLoadingTTS, setIsLoadingTTS] = useState<boolean>(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+
+  const isSpeakingRef = useRef(isSpeaking);
+  useEffect(() => {
+    isSpeakingRef.current = isSpeaking;
+  }, [isSpeaking]);
+
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
@@ -113,6 +119,7 @@ export default function ReaderPage() {
     }
     if (audioPlayerRef.current) {
       audioPlayerRef.current.pause();
+      audioPlayerRef.current.loop = false; // Important for cloud repeat
       if (audioPlayerRef.current.src && audioPlayerRef.current.readyState >= HTMLMediaElement.HAVE_METADATA) {
         try { audioPlayerRef.current.currentTime = 0; } catch (e) { /* ignore */ }
       }
@@ -478,39 +485,138 @@ export default function ReaderPage() {
   }, [ttsSettings.engine, isSpeaking, stopSpeech, toast]);
 
 
-  const playPauseSpeech = async () => {
-    if(!isMountedRef.current) return;
-    const selection = typeof window !== 'undefined' ? window.getSelection() : null; const selectedTextFromSelection = selection?.toString().trim();
-    const effectiveTextToRead = selectedTextFromSelection || currentTextForTTS;
+  const startSpeech = async (textToPlay: string, options: { repeat?: boolean } = {}) => {
+    const { repeat = false } = options;
+
+    if (!isMountedRef.current) return;
+    
     const invalidMessages = [ "error:", "failed to load", "loading", "mobi files", "image loaded", "no text content", "no selectable text", "ocr completed, no text found", "no document selected", "graphical or empty", "could not load epub", "waiting for page", "preparing epub" ];
-    if (!effectiveTextToRead || invalidMessages.some(msg => effectiveTextToRead.toLowerCase().includes(msg)) || effectiveTextToRead.length < MIN_TTS_TEXT_LENGTH) { toast({ variant: "destructive", title: "No Valid Text", description: `No valid text to read (min ${MIN_TTS_TEXT_LENGTH} chars). Text was: "${effectiveTextToRead.substring(0,50)}..."` }); return; }
-    if (isSpeaking) {
-      if (isPaused) {
-        if (ttsSettings.engine === 'local' && utteranceRef.current && window.speechSynthesis?.paused) { window.speechSynthesis.resume(); if(isMountedRef.current) setIsPaused(false);
-        } else if (ttsSettings.engine === 'cloud' && audioPlayerRef.current?.paused) { audioPlayerRef.current.play().then(() => {if(isMountedRef.current) setIsPaused(false);}).catch(() => {if(isMountedRef.current) stopSpeech(true);}); }
-      } else {
-        if (ttsSettings.engine === 'local' && utteranceRef.current && window.speechSynthesis?.speaking) { window.speechSynthesis.pause(); if(isMountedRef.current) setIsPaused(true);
-        } else if (ttsSettings.engine === 'cloud' && audioPlayerRef.current && !audioPlayerRef.current.paused) { audioPlayerRef.current.pause(); if(isMountedRef.current) setIsPaused(true); }
+    if (!textToPlay || invalidMessages.some(msg => textToPlay.toLowerCase().includes(msg)) || textToPlay.length < MIN_TTS_TEXT_LENGTH) { 
+      toast({ variant: "destructive", title: "No Valid Text", description: `No valid text to read (min ${MIN_TTS_TEXT_LENGTH} chars). Text was: "${textToPlay.substring(0,50)}..."` }); 
+      return; 
+    }
+    
+    stopSpeech(false);
+    if (!isMountedRef.current) return;
+    
+    setIsLoadingTTS(true);
+    setIsSpeaking(true);
+    setIsPaused(false);
+    
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.loop = repeat;
+    }
+    
+    if (ttsSettings.engine === 'local') {
+      if (typeof window === 'undefined' || !window.speechSynthesis) { 
+        toast({ variant: "destructive", title: "TTS Error", description: "Browser Speech Synthesis not supported." }); 
+        stopSpeech(true); 
+        return; 
       }
-    } else {
-      stopSpeech(false); if(isMountedRef.current) { setIsLoadingTTS(true); setIsSpeaking(true); setIsPaused(false); }
-      if (ttsSettings.engine === 'local') {
-        if (typeof window === 'undefined' || !window.speechSynthesis) { toast({ variant: "destructive", title: "TTS Error", description: "Browser Speech Synthesis not supported." }); stopSpeech(true); return; }
-        const utterance = new SpeechSynthesisUtterance(effectiveTextToRead); utterance.lang = ttsSettings.language; utterance.pitch = ttsSettings.pitch; utterance.rate = ttsSettings.rate;
-        const systemVoices = window.speechSynthesis.getVoices(); let voiceToUse: SpeechSynthesisVoice | undefined = systemVoices.find(v => v.voiceURI === ttsSettings.voiceURI);
-        if (voiceToUse) utterance.voice = voiceToUse;
-        utterance.onend = () => { if(utteranceRef.current === utterance && isMountedRef.current) stopSpeech(true); };
-        utterance.onerror = (event) => { if(utteranceRef.current === utterance && isMountedRef.current) { toast({ variant: "destructive", title: "TTS Error", description: event.error || "Speech failed." }); stopSpeech(true); }};
-        utteranceRef.current = utterance; window.speechSynthesis.speak(utterance); if(isMountedRef.current) setIsLoadingTTS(false); 
-      } else { 
-        try {
-          const result = await getCloudSpeech(effectiveTextToRead, ttsSettings.language);
-          if(!isMountedRef.current) return; 
-          if ('audioUrl' in result && audioPlayerRef.current) { audioPlayerRef.current.src = result.audioUrl; await audioPlayerRef.current.play(); } 
-          else if ('error' in result) { toast({ variant: "destructive", title: "Cloud TTS Error", description: result.error }); if(isMountedRef.current) stopSpeech(true); }
-        } catch (e: any) { if(isMountedRef.current) { toast({ variant: "destructive", title: "Cloud TTS Failed", description: e.message }); if(isMountedRef.current) stopSpeech(true); } }
+      const utterance = new SpeechSynthesisUtterance(textToPlay);
+      utterance.lang = ttsSettings.language;
+      utterance.pitch = ttsSettings.pitch;
+      utterance.rate = ttsSettings.rate;
+      const systemVoices = window.speechSynthesis.getVoices();
+      let voiceToUse: SpeechSynthesisVoice | undefined = systemVoices.find(v => v.voiceURI === ttsSettings.voiceURI);
+      if (voiceToUse) utterance.voice = voiceToUse;
+
+      utterance.onend = () => {
+        if (utteranceRef.current === utterance && isMountedRef.current) {
+          if (repeat) {
+            if (isSpeakingRef.current) { 
+              window.speechSynthesis.speak(utterance);
+            }
+          } else {
+            stopSpeech(true);
+          }
+        }
+      };
+      utterance.onerror = (event) => { 
+        if(utteranceRef.current === utterance && isMountedRef.current) { 
+          toast({ variant: "destructive", title: "TTS Error", description: event.error || "Speech failed." }); 
+          stopSpeech(true); 
+        }
+      };
+      utteranceRef.current = utterance;
+      window.speechSynthesis.speak(utterance);
+      if(isMountedRef.current) setIsLoadingTTS(false); 
+    } else { 
+      try {
+        const result = await getCloudSpeech(textToPlay, ttsSettings.language);
+        if(!isMountedRef.current) return; 
+        if ('audioUrl' in result && audioPlayerRef.current) {
+          audioPlayerRef.current.src = result.audioUrl;
+          await audioPlayerRef.current.play(); 
+        } else if ('error' in result) {
+          toast({ variant: "destructive", title: "Cloud TTS Error", description: result.error }); 
+          if(isMountedRef.current) stopSpeech(true); 
+        }
+      } catch (e: any) { 
+        if(isMountedRef.current) { 
+          toast({ variant: "destructive", title: "Cloud TTS Failed", description: e.message }); 
+          if(isMountedRef.current) stopSpeech(true); 
+        }
       }
     }
+  };
+
+  const playPauseSpeech = async () => {
+    if(!isMountedRef.current) return;
+    
+    if (isSpeaking) {
+      if (isPaused) {
+        if (ttsSettings.engine === 'local' && utteranceRef.current && window.speechSynthesis?.paused) { 
+          window.speechSynthesis.resume(); 
+          if(isMountedRef.current) setIsPaused(false);
+        } else if (ttsSettings.engine === 'cloud' && audioPlayerRef.current?.paused) { 
+          audioPlayerRef.current.play().then(() => {if(isMountedRef.current) setIsPaused(false);}).catch(() => {if(isMountedRef.current) stopSpeech(true);}); 
+        }
+      } else {
+        if (ttsSettings.engine === 'local' && utteranceRef.current && window.speechSynthesis?.speaking) { 
+          window.speechSynthesis.pause(); 
+          if(isMountedRef.current) setIsPaused(true);
+        } else if (ttsSettings.engine === 'cloud' && audioPlayerRef.current && !audioPlayerRef.current.paused) { 
+          audioPlayerRef.current.pause(); 
+          if(isMountedRef.current) setIsPaused(true); 
+        }
+      }
+    } else {
+      const selection = typeof window !== 'undefined' ? window.getSelection() : null; 
+      const selectedTextFromSelection = selection?.toString().trim();
+      const effectiveTextToRead = selectedTextFromSelection || currentTextForTTS;
+      await startSpeech(effectiveTextToRead);
+    }
+  };
+
+  const handleRepeatSelection = async () => {
+    if (!isMountedRef.current) return;
+    const selection = window.getSelection()?.toString().trim();
+    if (!selection || selection.length < MIN_TTS_TEXT_LENGTH) {
+        toast({ variant: "destructive", title: "No Text Selected", description: `Please select at least ${MIN_TTS_TEXT_LENGTH} characters to repeat.` });
+        return;
+    }
+    await startSpeech(selection, { repeat: true });
+  };
+
+  const handlePlayFromSelection = async () => {
+    if (!isMountedRef.current) return;
+    
+    const fullText = currentTextForTTS;
+    const selection = window.getSelection()?.toString().trim();
+
+    let textToPlay = fullText;
+    if (selection) {
+        const startIndex = fullText.indexOf(selection);
+        if (startIndex !== -1) {
+            textToPlay = fullText.substring(startIndex);
+        } else {
+            toast({variant: "default", title: "Selection Not Found", description: "Could not find selection in the current text. Playing selection only."})
+            textToPlay = selection;
+        }
+    }
+    
+    await startSpeech(textToPlay);
   };
 
   const handleSettingChange = <K extends keyof TTSSettings>(key: K, value: TTSSettings[K]) => {
@@ -807,7 +913,11 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                 <div className="space-y-1"><Label htmlFor="tts-rate" className="text-xs">Rate: {ttsSettings.rate.toFixed(1)}</Label><Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isSpeaking && !isPaused}/></div>
                 <div className="space-y-1"><Label htmlFor="tts-pitch" className="text-xs">Pitch: {ttsSettings.pitch.toFixed(1)}</Label><Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isSpeaking && !isPaused}/></div>
                 <Button onClick={playPauseSpeech} disabled={buttonState.disabled} variant={isSpeaking && !isPaused ? "outline" : "default"} className="w-full h-9 text-sm">{buttonState.icon} {buttonState.text}</Button>
-                <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full mt-2 text-xs"> <Star className="mr-2 h-3 w-3" /> Favorite Text/Selection </Button>
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full text-xs"> <Star className="mr-2 h-3 w-3" /> Favorite </Button>
+                  <Button onClick={handleRepeatSelection} variant="outline" size="sm" className="w-full text-xs"> <Repeat className="mr-2 h-3 w-3" /> Repeat Sel. </Button>
+                </div>
+                <Button onClick={handlePlayFromSelection} variant="outline" size="sm" className="w-full mt-2 text-xs"> <TextSelect className="mr-2 h-3 w-3" /> Play from Sel. </Button>
               </CardContent>
             </Card>
         </div>
@@ -815,3 +925,5 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
     </div>
   );
 }
+
+    
