@@ -570,18 +570,18 @@ export default function ReaderPage() {
     <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)]"> 
       {/* Reader Pane */}
       <div className="flex-grow flex flex-col bg-muted/20 p-2 md:p-4 min-w-0">
-        {docErrorMessage && !activeDoc && ( // Show general error only if no doc is active
-            <div className="absolute inset-x-0 top-4 mx-auto w-fit max-w-md bg-destructive/10 border border-destructive text-destructive p-3 rounded-md shadow-lg z-20 flex items-start gap-2">
-                <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
-                <div> <p className="font-medium text-sm">Document Display Issue</p> <p className="text-xs">{docErrorMessage}</p> <Button variant="ghost" size="sm" className="text-xs h-auto p-1 mt-1 text-destructive hover:bg-destructive/20" onClick={() => setDocErrorMessage(null)}>Dismiss</Button> </div>
-            </div>
-        )}
-        
-        {/* Main Content Area */}
         <div className="flex-grow relative flex flex-col items-center justify-center rounded-lg bg-background shadow-inner overflow-hidden">
-            {showContentLoader && <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10"> <Loader2 className="h-10 w-10 animate-spin text-primary" /><p className="ml-3">Loading content...</p></div> }
+            {docErrorMessage && !activeDoc && ( // Show general error only if no doc is active
+                <div className="absolute inset-x-0 top-4 mx-auto w-fit max-w-md bg-destructive/10 border border-destructive text-destructive p-3 rounded-md shadow-lg z-20 flex items-start gap-2">
+                    <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                    <div> <p className="font-medium text-sm">Document Display Issue</p> <p className="text-xs">{docErrorMessage}</p> <Button variant="ghost" size="sm" className="text-xs h-auto p-1 mt-1 text-destructive hover:bg-destructive/20" onClick={() => setDocErrorMessage(null)}>Dismiss</Button> </div>
+                </div>
+            )}
             
-            <div className="w-full h-full flex-grow relative">
+            {/* Main Content Area */}
+            <div className="w-full flex-grow relative min-h-0">
+                {showContentLoader && <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10"> <Loader2 className="h-10 w-10 animate-spin text-primary" /><p className="ml-3">Loading content...</p></div> }
+                
                 {activeDoc?.type === 'pdf' && (
                   <div className="w-full h-full flex items-center justify-center overflow-auto p-2 scroll-pb-36">
                     {pdfPageImage && <NextImage src={pdfPageImage} alt={`Page ${currentPdfPageNum}`} width={0} height={0} style={{ width: 'auto', height: 'auto', maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} className="shadow-lg border rounded-md" />}
@@ -625,8 +625,8 @@ export default function ReaderPage() {
       </div>
 
       {/* Controls Sidebar */}
-      <aside className="w-full lg:w-80 xl:w-96 border-l bg-background flex-shrink-0 flex flex-col overflow-y-auto">
-        <div className="p-3 pb-6 space-y-4">
+      <aside className="w-full lg:w-80 xl:w-96 border-l bg-background flex-shrink-0">
+        <div className="h-full overflow-y-auto p-3 pb-6 space-y-4">
             <Card>
                 <CardHeader className="pb-2 pt-4">
                     <CardTitle className="text-base truncate flex items-center gap-1"> <BookOpen className="h-5 w-5 text-primary"/> {activeDoc?.title || "No Document Loaded"} </CardTitle>
