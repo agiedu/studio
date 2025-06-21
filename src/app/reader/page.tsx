@@ -36,6 +36,7 @@ import * as LocalStorageService from '@/lib/localStorageService';
 import * as IndexedDBService from '@/lib/indexedDBService';
 import type { TTSSettings, TTSVoice, StoredMangaDocument, ActiveMangaDocument, StoredPdfDocument, StoredImageDocument, StoredEpubDocument, StoredTxtDocument, StoredMobiDocument } from '@/types';
 import { cn } from '@/lib/utils';
+import { Textarea } from '@/components/ui/textarea';
 
 const PDF_DEFAULT_SCALE = 1.5;
 const MIN_PDF_TEXT_LENGTH_FOR_DIRECT_READ = 20;
@@ -70,6 +71,9 @@ export default function ReaderPage() {
   const [txtContent, setTxtContent] = useState<string>("");
   const [displayedImageSrc, setDisplayedImageSrc] = useState<string | null>(null);
   const currentImageObjectUrlRef = useRef<string | null>(null);
+  
+  // Scratchpad state
+  const [scratchpadText, setScratchpadText] = useState<string>("Welcome to the Scratchpad!\n\nType or paste any text here to have it read aloud or to save snippets to your favorites.");
 
   // OCR and TTS states
   const [isPerformingOcr, setIsPerformingOcr] = useState(false);
@@ -156,8 +160,10 @@ export default function ReaderPage() {
         if (lastActiveId) {
             router.replace(`/reader?docId=${lastActiveId}`, { scroll: false }); 
         } else {
-            setDocErrorMessage("No document selected. Please choose one from the Library.");
+            // No docId and no last active doc, so enter Scratchpad mode.
+            setActiveDoc(null);
             setIsLoadingDoc(false);
+            setCurrentTextForTTS(scratchpadText);
         }
         return;
       }
@@ -491,7 +497,7 @@ export default function ReaderPage() {
           if(!isMountedRef.current) return; 
           if ('audioUrl' in result && audioPlayerRef.current) { audioPlayerRef.current.src = result.audioUrl; await audioPlayerRef.current.play(); } 
           else if ('error' in result) { toast({ variant: "destructive", title: "Cloud TTS Error", description: result.error }); if(isMountedRef.current) stopSpeech(true); }
-        } catch (e: any) { if(isMountedRef.current) { toast({ variant: "destructive", title: "Cloud TTS Failed", description: e.message }); stopSpeech(true); } }
+        } catch (e: any) { if(isMountedRef.current) { toast({ variant: "destructive", title: "Cloud TTS Failed", description: e.message }); if(isMountedRef.current) stopSpeech(true); } }
       }
     }
   };
@@ -508,14 +514,24 @@ export default function ReaderPage() {
   };
 
   const handleFavoriteSelection = () => {
-    if(!isMountedRef.current || !activeDoc) return;
+    if (!isMountedRef.current) return;
     const selectionFromWindow = typeof window !== 'undefined' ? window.getSelection()?.toString().trim() : '';
     const textToFavorite = selectionFromWindow || currentTextForTTS;
     const invalidMessages = [ "Error:", "Failed to load", "Loading PDF page...", "MOBI files cannot", "Loading EPUB...", "Loading EPUB content...", "Preparing EPUB reader...", "Loading text file...", "Loading image...", "Image loaded. Perform OCR", "No text content found", "Could not extract text", "EPUB viewer element not ready", "This PDF page has no selectable text", "Performing OCR...", "No document ID provided", "Document with ID", "EPUB viewer became unavailable.", "OCR completed, no text found.", "No document selected.", "EPUB section loaded. Text may be graphical or empty.", "Could not load EPUB section content.", "EPUB viewer element failed to initialize.", "EPUB content could not be displayed."];
     if (textToFavorite && !invalidMessages.some(msg => textToFavorite.toLowerCase().startsWith(msg.toLowerCase())) && textToFavorite.length >= MIN_TTS_TEXT_LENGTH) {
-      LocalStorageService.addFavoriteItem({ id: Date.now().toString(), text: textToFavorite, sourceDocumentId: activeDoc.id, sourceDocumentName: activeDoc.title, createdAt: Date.now() });
-      toast({ title: "Favorited!", description: `"${textToFavorite.substring(0,50)}..." added.`});
-    } else { toast({ variant: "destructive", title: "No Valid Text to Favorite", description: `Ensure valid text (min ${MIN_TTS_TEXT_LENGTH} chars) is available or selected.` }); }
+      const sourceName = activeDoc ? activeDoc.title : 'Scratchpad';
+      const sourceId = activeDoc ? activeDoc.id : 'scratchpad';
+      LocalStorageService.addFavoriteItem({
+        id: Date.now().toString(),
+        text: textToFavorite,
+        sourceDocumentId: sourceId,
+        sourceDocumentName: sourceName,
+        createdAt: Date.now()
+      });
+      toast({ title: "Favorited!", description: `"${textToFavorite.substring(0, 50)}..." added.` });
+    } else {
+      toast({ variant: "destructive", title: "No Valid Text to Favorite", description: `Ensure valid text (min ${MIN_TTS_TEXT_LENGTH} chars) is available or selected.` });
+    }
   };
 
   const navigatePdf = (direction: 'prev' | 'next') => {
@@ -551,13 +567,16 @@ export default function ReaderPage() {
   const getButtonState = () => {
     const selectedText = typeof window !== 'undefined' ? window.getSelection()?.toString().trim() : ''; const effectiveText = selectedText || currentTextForTTS;
     const invalidMessages = [ "error:", "failed to load", "loading", "mobi files", "image loaded", "no text content", "no selectable text", "ocr completed, no text found", "no document selected", "graphical or empty", "could not load epub", "waiting for page", "preparing epub" ];
-    let canPlay = !!(effectiveText && !invalidMessages.some(msg => effectiveText.toLowerCase().includes(msg)) && effectiveText.length >= MIN_TTS_TEXT_LENGTH && activeDoc && !isPerformingOcr && !docErrorMessage );
+    let canPlay = !!(effectiveText && !invalidMessages.some(msg => effectiveText.toLowerCase().includes(msg)) && effectiveText.length >= MIN_TTS_TEXT_LENGTH && !isPerformingOcr && !docErrorMessage );
     
-    if (activeDoc?.type === 'pdf' && (isLoadingDoc || isRenderingPdfPage)) canPlay = false;
-    else if (activeDoc?.type === 'epub' && (isLoadingDoc || isEpubLoading)) canPlay = false;
-    else if (activeDoc?.type === 'image' && isLoadingDoc) canPlay = false; 
-    else if (activeDoc?.type === 'txt' && isLoadingDoc) canPlay = false;
-    else if (!activeDoc) canPlay = false;
+    if (activeDoc) {
+        if (activeDoc.type === 'pdf' && (isLoadingDoc || isRenderingPdfPage)) canPlay = false;
+        else if (activeDoc.type === 'epub' && (isLoadingDoc || isEpubLoading)) canPlay = false;
+        else if (activeDoc.type === 'image' && isLoadingDoc) canPlay = false; 
+        else if (activeDoc.type === 'txt' && isLoadingDoc) canPlay = false;
+    } else if (isLoadingDoc) { // Scratchpad mode, but initial load might still be happening
+        canPlay = false;
+    }
 
     if (isLoadingTTS) return { text: "Loading...", icon: <Loader2 className="mr-1 h-4 w-4 animate-spin" />, disabled: true };
     if (isSpeaking && !isPaused) return { text: "Pause", icon: <Pause className="mr-1 h-4 w-4" />, disabled: false };
@@ -603,6 +622,23 @@ export default function ReaderPage() {
                 </div>
             )}
             
+            {/* Scratchpad View */}
+            {!activeDoc && !isLoadingDoc && !docErrorMessage && (
+              <div className="w-full h-full p-2 md:p-4 flex flex-col">
+                  <Textarea
+                      id="scratchpad-input"
+                      placeholder="Type or paste text here..."
+                      className="w-full flex-grow text-base resize-none" // Use flex-grow to fill space
+                      value={scratchpadText}
+                      onChange={(e) => {
+                          setScratchpadText(e.target.value);
+                          setCurrentTextForTTS(e.target.value);
+                      }}
+                      aria-label="Scratchpad for custom text input"
+                  />
+              </div>
+            )}
+
             {/* PDF Content */}
             {activeDoc?.type === 'pdf' && (
                 <div className="w-full text-center p-4 space-y-4">
@@ -617,7 +653,7 @@ export default function ReaderPage() {
                 id="epub-viewer"
                 ref={epubViewerRef}
                 className={cn(
-                    "w-full flex-grow", // Let it grow to fill the space
+                    "w-full flex-grow", 
                     activeDoc?.type !== 'epub' && "hidden"
                 )}
             />
@@ -657,8 +693,14 @@ export default function ReaderPage() {
         <div className="h-full p-3 pb-6 space-y-4">
             <Card>
                 <CardHeader className="pb-2 pt-4">
-                    <CardTitle className="text-base truncate flex items-center gap-1"> <BookOpen className="h-5 w-5 text-primary"/> {activeDoc?.title || "No Document Loaded"} </CardTitle>
-                    <CardDescription className="text-xs">Type: {activeDoc?.type?.toUpperCase()}{activeDoc?.type === 'pdf' && pdfTotalPages > 0 ? `, Page: ${currentPdfPageNum}/${pdfTotalPages}` : ''}</CardDescription>
+                    <CardTitle className="text-base truncate flex items-center gap-1">
+                        <BookOpen className="h-5 w-5 text-primary"/> {activeDoc?.title || "Scratchpad"}
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      {activeDoc
+                        ? `Type: ${activeDoc.type?.toUpperCase()}${activeDoc?.type === 'pdf' && pdfTotalPages > 0 ? `, Page: ${currentPdfPageNum}/${pdfTotalPages}` : ''}`
+                        : 'Custom text input'}
+                    </CardDescription>
                 </CardHeader>
             </Card>
 
@@ -718,7 +760,7 @@ export default function ReaderPage() {
                 <div className="space-y-1"><Label htmlFor="tts-rate" className="text-xs">Rate: {ttsSettings.rate.toFixed(1)}</Label><Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isSpeaking && !isPaused}/></div>
                 <div className="space-y-1"><Label htmlFor="tts-pitch" className="text-xs">Pitch: {ttsSettings.pitch.toFixed(1)}</Label><Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isSpeaking && !isPaused}/></div>
                 <Button onClick={playPauseSpeech} disabled={buttonState.disabled} variant={isSpeaking && !isPaused ? "outline" : "default"} className="w-full h-9 text-sm">{buttonState.icon} {buttonState.text}</Button>
-                <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full mt-2 text-xs" disabled={!activeDoc}> <Star className="mr-2 h-3 w-3" /> Favorite Text/Selection </Button>
+                <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full mt-2 text-xs"> <Star className="mr-2 h-3 w-3" /> Favorite Text/Selection </Button>
               </CardContent>
             </Card>
         </div>
