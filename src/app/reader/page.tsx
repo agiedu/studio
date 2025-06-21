@@ -513,6 +513,7 @@ export default function ReaderPage() {
     setIsLoadingTTS(true);
     setIsSpeaking(true);
     setIsPaused(false);
+    setIsRepeating(repeat);
     
     if (audioPlayerRef.current) {
       audioPlayerRef.current.loop = repeat;
@@ -534,7 +535,7 @@ export default function ReaderPage() {
 
       utterance.onend = () => {
         if (utteranceRef.current === utterance && isMountedRef.current) {
-          if (repeat && isRepeatingRef.current) { 
+          if (isRepeatingRef.current) { 
             window.speechSynthesis.speak(utterance);
           } else {
             stopSpeech(true);
@@ -573,8 +574,7 @@ export default function ReaderPage() {
   const playPauseSpeech = async () => {
     if (!isMountedRef.current) return;
   
-    // If in repeat mode, or if any other kind of speech is happening,
-    // a click on the main button should just stop everything.
+    // If speaking, handle pause/resume
     if (isSpeaking) {
       if (isPaused) { // If paused, resume.
         if (ttsSettings.engine === 'local' && utteranceRef.current && window.speechSynthesis?.paused) {
@@ -599,27 +599,26 @@ export default function ReaderPage() {
     } else { // If not speaking, start a new speech.
       const selection = typeof window !== 'undefined' ? window.getSelection()?.toString().trim() : '';
       const effectiveTextToRead = selection || currentTextForTTS;
-      await startSpeech(effectiveTextToRead);
+      await startSpeech(effectiveTextToRead, { bypassMinLengthCheck: !!selection });
     }
   };
   
   const handleRepeatSelection = async () => {
     if (!isMountedRef.current) return;
   
+    // Capture selection BEFORE any state changes
+    const selection = window.getSelection()?.toString().trim();
+  
     if (isRepeating) {
-      // If already repeating, stop everything.
       stopSpeech(true);
     } else {
-      // If not repeating, start a new repeat session.
-      const selection = window.getSelection()?.toString().trim();
       if (!selection) {
         toast({ variant: "destructive", title: "No Text Selected", description: "Please select text to repeat." });
         return;
       }
-      // Stop any other playback first, then start repeating.
+      
       stopSpeech(true);
-      // Use a timeout to allow React to process the state reset from stopSpeech
-      // before we set the new state. This prevents race conditions.
+      
       setTimeout(async () => {
           if (!isMountedRef.current) return;
           setIsRepeating(true);
@@ -631,9 +630,14 @@ export default function ReaderPage() {
   const handlePlayFromSelection = async () => {
     if (!isMountedRef.current) return;
   
+    // Capture selection BEFORE any state changes
     const selection = window.getSelection()?.toString().trim();
     if (!selection) {
-      toast({ variant: "default", title: "No Text Selected", description: "To use this feature, please select some text first." });
+      toast({
+        variant: 'default',
+        title: 'No Text Selected',
+        description: 'To use this feature, please select some text first.',
+      });
       return;
     }
   
@@ -646,10 +650,15 @@ export default function ReaderPage() {
   
       const fullText = currentTextForTTS;
       const startIndex = fullText.indexOf(selection);
-      const textToPlay = startIndex !== -1 ? fullText.substring(startIndex) : selection;
+      const textToPlay =
+        startIndex !== -1 ? fullText.substring(startIndex) : selection;
   
       if (startIndex === -1) {
-        toast({ variant: "default", title: "Selection Not Found", description: "Could not find selection in current text. Playing selection only." })
+        toast({
+          variant: 'default',
+          title: 'Selection Not Found',
+          description: 'Could not find selection in current text. Playing selection only.',
+        });
       }
   
       await startSpeech(textToPlay, { bypassMinLengthCheck: true });
@@ -967,7 +976,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                     variant={isRepeating ? "destructive" : "outline"}
                     size="sm"
                     className="w-full text-xs"
-                    disabled={isLoadingTTS}
+                    disabled={isLoadingTTS && !isRepeating}
                   >
                     {isRepeating ? <X className="mr-2 h-3 w-3" /> : <Repeat className="mr-2 h-3 w-3" />}
                     {isRepeating ? "Stop Repeat" : "Repeat Sel."}
@@ -981,3 +990,5 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
     </div>
   );
 }
+
+    
