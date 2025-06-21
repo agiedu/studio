@@ -603,34 +603,36 @@ export default function ReaderPage() {
     }
   };
   
-  const handleRepeatSelection = async () => {
+  const handleRepeatSelection = () => {
     if (!isMountedRef.current) return;
-  
-    // Capture selection BEFORE any state changes
-    const selection = window.getSelection()?.toString().trim();
-  
+
     if (isRepeating) {
-      stopSpeech(true);
-    } else {
-      if (!selection) {
-        toast({ variant: "destructive", title: "No Text Selected", description: "Please select text to repeat." });
+        stopSpeech(true);
         return;
-      }
-      
-      stopSpeech(true);
-      
-      setTimeout(async () => {
-          if (!isMountedRef.current) return;
-          setIsRepeating(true);
-          await startSpeech(selection, { repeat: true, bypassMinLengthCheck: true });
-      }, 50);
     }
+
+    const selection = window.getSelection()?.toString().trim();
+    if (!selection) {
+        toast({
+            variant: "destructive",
+            title: "No Text Selected",
+            description: "Please select text to repeat.",
+        });
+        return;
+    }
+
+    stopSpeech(true);
+
+    setTimeout(() => {
+        if (isMountedRef.current) {
+            startSpeech(selection, { repeat: true, bypassMinLengthCheck: true });
+        }
+    }, 100);
   };
   
-  const handlePlayFromSelection = async () => {
+  const handlePlayFromSelection = () => {
     if (!isMountedRef.current) return;
-  
-    // Capture selection BEFORE any state changes
+
     const selection = window.getSelection()?.toString().trim();
     if (!selection) {
       toast({
@@ -640,29 +642,26 @@ export default function ReaderPage() {
       });
       return;
     }
-  
-    // Always stop current speech and reset state before starting a new one.
+
+    const fullText = currentTextForTTS;
+    const startIndex = fullText.indexOf(selection);
+    const textToPlay = startIndex !== -1 ? fullText.substring(startIndex) : selection;
+
+    if (startIndex === -1) {
+      toast({
+        variant: 'default',
+        title: 'Selection Not Found',
+        description: 'Could not find selection in current text. Playing selection only.',
+      });
+    }
+
     stopSpeech(true);
-  
-    // Use a timeout to let the state update before proceeding.
-    setTimeout(async () => {
-      if (!isMountedRef.current) return;
-  
-      const fullText = currentTextForTTS;
-      const startIndex = fullText.indexOf(selection);
-      const textToPlay =
-        startIndex !== -1 ? fullText.substring(startIndex) : selection;
-  
-      if (startIndex === -1) {
-        toast({
-          variant: 'default',
-          title: 'Selection Not Found',
-          description: 'Could not find selection in current text. Playing selection only.',
-        });
-      }
-  
-      await startSpeech(textToPlay, { bypassMinLengthCheck: true });
-    }, 50);
+
+    setTimeout(() => {
+        if (isMountedRef.current) {
+            startSpeech(textToPlay, { bypassMinLengthCheck: true });
+        }
+    }, 100);
   };
 
   const handleSettingChange = <K extends keyof TTSSettings>(key: K, value: TTSSettings[K]) => {
@@ -990,5 +989,3 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
     </div>
   );
 }
-
-    
