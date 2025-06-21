@@ -177,7 +177,7 @@ export default function ReaderPage() {
           case 'epub':
             setIsEpubLoading(true);
             const ePubModule = await import('epubjs');
-            const book = ePubModule.default(doc.fileData);
+            const book = ePubModule.default(doc.fileData.slice(0));
             epubBookRef.current = book;
             
             if (!epubViewerRef.current) {
@@ -569,7 +569,8 @@ export default function ReaderPage() {
     <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)]"> 
       {/* Reader Pane */}
       <div className="flex-grow flex flex-col bg-muted/20 p-2 md:p-4 min-w-0">
-        <div className="flex-grow flex flex-col items-center justify-start rounded-lg bg-background shadow-inner overflow-y-auto">
+        {/* Scrollable Content Area */}
+        <div className="flex-grow flex flex-col items-center justify-start rounded-lg bg-background shadow-inner overflow-y-auto" >
             <div className="w-full relative flex-grow flex flex-col items-center">
                 {docErrorMessage && !activeDoc && (
                     <div className="absolute inset-x-0 top-4 mx-auto w-fit max-w-md bg-destructive/10 border border-destructive text-destructive p-3 rounded-md shadow-lg z-20 flex items-start gap-2">
