@@ -554,7 +554,6 @@ export default function ReaderPage() {
 
   const showInitialLoader = isLoadingDoc && !activeDoc && !docErrorMessage;
   const showDocumentError = docErrorMessage && !activeDoc;
-  const showContentLoader = isLoadingDoc || isEpubLoading || isRenderingPdfPage;
   
   if (showInitialLoader) { 
     return <div className="flex items-center justify-center h-full flex-grow"><Loader2 className="h-12 w-12 animate-spin text-primary" /><p className="ml-4 text-lg">Loading document...</p></div>; 
@@ -570,38 +569,39 @@ export default function ReaderPage() {
     <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)]"> 
       {/* Reader Pane */}
       <div className="flex-grow flex flex-col bg-muted/20 p-2 md:p-4 min-w-0">
-        <div className="flex-grow relative flex flex-col items-center justify-center rounded-lg bg-background shadow-inner overflow-y-auto">
-            {docErrorMessage && !activeDoc && ( // Show general error only if no doc is active
-                <div className="absolute inset-x-0 top-4 mx-auto w-fit max-w-md bg-destructive/10 border border-destructive text-destructive p-3 rounded-md shadow-lg z-20 flex items-start gap-2">
-                    <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
-                    <div> <p className="font-medium text-sm">Document Display Issue</p> <p className="text-xs">{docErrorMessage}</p> <Button variant="ghost" size="sm" className="text-xs h-auto p-1 mt-1 text-destructive hover:bg-destructive/20" onClick={() => setDocErrorMessage(null)}>Dismiss</Button> </div>
-                </div>
-            )}
-            
-            {/* Main Content Area */}
-            <div className="w-full relative">
-                {showContentLoader && <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10"> <Loader2 className="h-10 w-10 animate-spin text-primary" /><p className="ml-3">Loading content...</p></div> }
+        <div className="flex-grow flex flex-col items-center justify-start rounded-lg bg-background shadow-inner overflow-y-auto">
+            <div className="w-full relative flex-grow flex flex-col items-center">
+                {docErrorMessage && !activeDoc && (
+                    <div className="absolute inset-x-0 top-4 mx-auto w-fit max-w-md bg-destructive/10 border border-destructive text-destructive p-3 rounded-md shadow-lg z-20 flex items-start gap-2">
+                        <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                        <div> <p className="font-medium text-sm">Document Display Issue</p> <p className="text-xs">{docErrorMessage}</p> <Button variant="ghost" size="sm" className="text-xs h-auto p-1 mt-1 text-destructive hover:bg-destructive/20" onClick={() => setDocErrorMessage(null)}>Dismiss</Button> </div>
+                    </div>
+                )}
+                
+                {(isLoadingDoc || isEpubLoading || isRenderingPdfPage) && <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10"> <Loader2 className="h-10 w-10 animate-spin text-primary" /><p className="ml-3">Loading content...</p></div> }
                 
                 {activeDoc?.type === 'pdf' && (
-                  <div className="w-full h-full flex flex-col items-center justify-center p-4 gap-4">
-                    {pdfPageImage && <NextImage src={pdfPageImage} alt={`Page ${currentPdfPageNum}`} width={0} height={0} style={{ width: 'auto', height: 'auto', maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} className="shadow-lg border rounded-md" />}
+                  <div className="w-full text-center p-4 space-y-4">
+                    {pdfPageImage && <NextImage src={pdfPageImage} alt={`Page ${currentPdfPageNum}`} width={0} height={0} style={{ width: 'auto', height: 'auto', maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} className="shadow-lg border rounded-md inline-block" />}
                     {showOcrButtonForPdfPage && (<Button onClick={handlePerformOcr} disabled={isPerformingOcr}> {isPerformingOcr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />} Perform OCR on PDF Page </Button> )}
                   </div>
                 )}
                 
-                {/* Always render the div, but control visibility with cn. The key forces a fresh instance for each book. */}
                 <div
                     key={activeDoc?.id || 'epub-placeholder'}
                     id="epub-viewer"
                     ref={epubViewerRef}
-                    className={cn("w-full h-full", activeDoc?.type !== 'epub' && "hidden")}
+                    className={cn(
+                        "w-full flex-grow",
+                        activeDoc?.type !== 'epub' && "hidden"
+                    )}
                 />
 
-                {activeDoc?.type === 'txt' && ( <pre className="whitespace-pre-wrap p-4 bg-background rounded-md shadow-inner text-sm font-mono w-full select-text">{txtContent}</pre> )}
+                {activeDoc?.type === 'txt' && ( <pre className="whitespace-pre-wrap p-4 bg-background rounded-md text-sm font-mono w-full select-text">{txtContent}</pre> )}
                 
                 {activeDoc?.type === 'image' && displayedImageSrc && (
-                    <div className="w-full h-full flex flex-col items-center justify-center p-4 gap-4">
-                        <NextImage src={displayedImageSrc} alt={activeDoc.title || 'Uploaded Image'} width={800} height={600} style={{objectFit: 'contain'}} className="max-w-full max-h-[calc(100%-4rem)] shadow-lg border rounded-md" data-ai-hint="illustration abstract" />
+                    <div className="w-full text-center p-4 space-y-4">
+                        <NextImage src={displayedImageSrc} alt={activeDoc.title || 'Uploaded Image'} width={800} height={600} style={{objectFit: 'contain'}} className="max-w-full max-h-[calc(100%-4rem)] shadow-lg border rounded-md inline-block" data-ai-hint="illustration abstract" />
                         {showOcrButtonForImage && <Button onClick={handlePerformOcr} disabled={isPerformingOcr}> {isPerformingOcr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />} Perform OCR on Image </Button> }
                     </div>
                 )}
@@ -624,8 +624,8 @@ export default function ReaderPage() {
       </div>
 
       {/* Controls Sidebar */}
-      <aside className="w-full lg:w-80 xl:w-96 border-l bg-background flex-shrink-0">
-        <div className="h-full overflow-y-auto p-3 pb-6 space-y-4">
+      <aside className="w-full lg:w-80 xl:w-96 border-l bg-background flex-shrink-0 overflow-y-auto">
+        <div className="h-full p-3 pb-6 space-y-4">
             <Card>
                 <CardHeader className="pb-2 pt-4">
                     <CardTitle className="text-base truncate flex items-center gap-1"> <BookOpen className="h-5 w-5 text-primary"/> {activeDoc?.title || "No Document Loaded"} </CardTitle>
