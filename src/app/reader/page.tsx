@@ -570,7 +570,7 @@ export default function ReaderPage() {
     <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)]"> 
       {/* Reader Pane */}
       <div className="flex-grow flex flex-col bg-muted/20 p-2 md:p-4 min-w-0">
-        <div className="flex-grow relative flex flex-col items-center justify-center rounded-lg bg-background shadow-inner overflow-y-auto scroll-pb-36">
+        <div className="flex-grow relative flex flex-col items-center justify-center rounded-lg bg-background shadow-inner overflow-y-auto">
             {docErrorMessage && !activeDoc && ( // Show general error only if no doc is active
                 <div className="absolute inset-x-0 top-4 mx-auto w-fit max-w-md bg-destructive/10 border border-destructive text-destructive p-3 rounded-md shadow-lg z-20 flex items-start gap-2">
                     <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
@@ -583,9 +583,9 @@ export default function ReaderPage() {
                 {showContentLoader && <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10"> <Loader2 className="h-10 w-10 animate-spin text-primary" /><p className="ml-3">Loading content...</p></div> }
                 
                 {activeDoc?.type === 'pdf' && (
-                  <div className="w-full h-full flex items-center justify-center p-2">
+                  <div className="w-full h-full flex flex-col items-center justify-center p-4 gap-4">
                     {pdfPageImage && <NextImage src={pdfPageImage} alt={`Page ${currentPdfPageNum}`} width={0} height={0} style={{ width: 'auto', height: 'auto', maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} className="shadow-lg border rounded-md" />}
-                    {showOcrButtonForPdfPage && (<Button onClick={handlePerformOcr} disabled={isPerformingOcr} className="absolute bottom-4"> {isPerformingOcr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />} Perform OCR on PDF Page </Button> )}
+                    {showOcrButtonForPdfPage && (<Button onClick={handlePerformOcr} disabled={isPerformingOcr}> {isPerformingOcr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />} Perform OCR on PDF Page </Button> )}
                   </div>
                 )}
                 
@@ -600,28 +600,27 @@ export default function ReaderPage() {
                 {activeDoc?.type === 'txt' && ( <pre className="whitespace-pre-wrap p-4 bg-background rounded-md shadow-inner text-sm font-mono w-full select-text">{txtContent}</pre> )}
                 
                 {activeDoc?.type === 'image' && displayedImageSrc && (
-                    <div className="w-full h-full flex flex-col items-center justify-center p-2">
+                    <div className="w-full h-full flex flex-col items-center justify-center p-4 gap-4">
                         <NextImage src={displayedImageSrc} alt={activeDoc.title || 'Uploaded Image'} width={800} height={600} style={{objectFit: 'contain'}} className="max-w-full max-h-[calc(100%-4rem)] shadow-lg border rounded-md" data-ai-hint="illustration abstract" />
-                        {showOcrButtonForImage && <Button onClick={handlePerformOcr} disabled={isPerformingOcr} className="mt-3"> {isPerformingOcr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />} Perform OCR on Image </Button> }
+                        {showOcrButtonForImage && <Button onClick={handlePerformOcr} disabled={isPerformingOcr}> {isPerformingOcr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />} Perform OCR on Image </Button> }
                     </div>
                 )}
                  {activeDoc?.type === 'mobi' && ( <div className="p-4 bg-background rounded-md shadow-inner text-center h-full flex flex-col justify-center items-center"> <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-2"/> <p className="font-semibold">MOBI Not Supported</p> <p className="text-sm text-muted-foreground">Please convert to EPUB or PDF.</p> </div> )}
             </div>
-            
-            {/* TTS Box - positioned absolutely at the bottom of the flex container */}
-            { activeDoc && !isLoadingDoc &&
-                <div className="absolute bottom-0 left-0 right-0 w-full max-w-3xl mx-auto p-2 flex-shrink-0 z-10">
-                    <Card className="bg-background/90 backdrop-blur-sm shadow-md">
-                        <CardHeader className="pb-1 pt-3">
-                            <CardTitle className="text-sm flex items-center"><FileText className="mr-2 h-4 w-4"/> Current Text for TTS</CardTitle>
-                        </CardHeader>
-                        <CardContent className="pt-0">
-                            <textarea readOnly value={currentTextForTTS} className="w-full h-20 p-2 border rounded-md bg-muted/30 text-xs select-text" placeholder="Text for TTS..." />
-                        </CardContent>
-                    </Card>
-                </div>
-            }
         </div>
+        {/* TTS Box - now statically positioned at the bottom of the reader pane */}
+        {activeDoc && !isLoadingDoc && (
+          <div className="flex-shrink-0 pt-2">
+            <Card className="shadow-md">
+              <CardHeader className="pb-1 pt-3">
+                <CardTitle className="text-sm flex items-center"><FileText className="mr-2 h-4 w-4"/> Current Text for TTS</CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <textarea readOnly value={currentTextForTTS} className="w-full h-20 p-2 border rounded-md bg-muted/30 text-xs select-text" placeholder="Text for TTS..." />
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
 
       {/* Controls Sidebar */}
