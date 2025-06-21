@@ -24,7 +24,7 @@ export default function LibraryPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [isSavingToDevice, setIsSavingToDevice] = useState<string | null>(null);
   const [storedDocuments, setStoredDocuments] = useState<StoredMangaDocument[]>([]);
-  const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const fetchDocuments = async (operationLabel: string = "Fetching documents") => {
@@ -103,39 +103,37 @@ export default function LibraryPage() {
     }
   };
 
-
-  const handleDeleteDocument = async (docId: string, docTitle?: string) => {
-    if (!docId) {
-      toast({ variant: "destructive", title: "Delete Error", description: "Cannot delete: Document ID is missing." });
-      return;
-    }
-
-    const titleForConfirm = docTitle || `document with ID ${docId}`;
-    if (!window.confirm(`Are you sure you want to delete "${titleForConfirm}" from your browser storage? This action cannot be undone.`)) {
-      return;
+  const handleDeleteDocument = async (docIdToDelete: string, docTitle: string) => {
+    if (!docIdToDelete) {
+        toast({ variant: "destructive", title: "Internal Error", description: "Document ID is missing." });
+        return;
     }
     
-    setIsDeleting(docId);
-    try {
-      await IndexedDBService.deleteDocumentById(docId);
-      
-      const lastActiveId = await IndexedDBService.getLastActiveDocId();
-      if (lastActiveId === docId) {
-        await IndexedDBService.saveLastActiveDocId(null);
-      }
-      
-      toast({ title: "Document Deleted", description: `"${titleForConfirm}" removed from browser storage.` });
-      
-      await fetchDocuments("Re-fetching documents after deletion");
+    const isConfirmed = window.confirm(`Are you sure you want to permanently delete "${docTitle}"? This cannot be undone.`);
+    if (!isConfirmed) {
+        return;
+    }
 
-    } catch (error:any) {
-      toast({ variant: "destructive", title: "Delete Failed", description: `Failed to delete "${titleForConfirm}". ${error.message || 'Unknown error'}.` });
-      await fetchDocuments(`Error recovery fetch after failed delete of "${docId}"`);
+    setDeletingDocId(docIdToDelete);
+
+    try {
+        await IndexedDBService.deleteDocumentById(docIdToDelete);
+
+        const lastActiveId = await IndexedDBService.getLastActiveDocId();
+        if (lastActiveId === docIdToDelete) {
+            await IndexedDBService.saveLastActiveDocId(null);
+        }
+
+        toast({ title: "Success", description: `"${docTitle}" has been deleted.` });
+        await fetchDocuments("Data refresh after deletion");
+
+    } catch (error: any) {
+        console.error("Deletion failed:", error);
+        toast({ variant: "destructive", title: "Deletion Failed", description: error.message || "An unknown error occurred." });
     } finally {
-        setIsDeleting(null);
+        setDeletingDocId(null);
     }
   };
-
 
   const handleSaveToDevice = async (doc: StoredMangaDocument) => {
     if (!doc.fileData || !doc.title || !doc.originalType) {
@@ -209,7 +207,7 @@ export default function LibraryPage() {
               type="file"
               accept="application/epub+zip,application/x-mobipocket-ebook,application/pdf,text/plain,image/*"
               onChange={handleFileUpload}
-              disabled={isUploading || isLoading}
+              disabled={isUploading || isLoading || !!deletingDocId}
             />
           </div>
           {isUploading && <p className="mt-2 text-sm text-muted-foreground flex items-center"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Processing and saving to browser...</p>}
@@ -222,7 +220,7 @@ export default function LibraryPage() {
           <CardDescription>
             List of documents in this browser. Click &quot;Open in Reader&quot; to view.
           </CardDescription>
-          <Button variant="outline" size="sm" onClick={() => fetchDocuments("Manual refresh of document list")} disabled={isLoading || isUploading || !!isDeleting} className="mt-2 w-fit">
+          <Button variant="outline" size="sm" onClick={() => fetchDocuments("Manual refresh of document list")} disabled={isLoading || isUploading || !!deletingDocId} className="mt-2 w-fit">
             <RefreshCw className={`mr-2 h-4 w-4 ${isLoading && !isUploading ? 'animate-spin' : ''}`} /> Refresh List
           </Button>
         </CardHeader>
@@ -255,7 +253,7 @@ export default function LibraryPage() {
                           size="sm"
                           variant="outline"
                           onClick={() => handleSaveToDevice(doc)}
-                          disabled={isSavingToDevice === doc.id || isUploading || isLoading || !!isDeleting}
+                          disabled={isSavingToDevice === doc.id || isUploading || isLoading || !!deletingDocId}
                           className="w-[150px]"
                           title="Save a copy to your computer's file system."
                       >
@@ -265,9 +263,9 @@ export default function LibraryPage() {
                         size="sm"
                         variant="ghost"
                         onClick={() => handleDeleteDocument(doc.id, doc.title)}
-                        disabled={isLoading || isUploading || !!isDeleting}
+                        disabled={isLoading || isUploading || !!deletingDocId}
                         aria-label="Delete Document">
-                        {isDeleting === doc.id ? (
+                        {deletingDocId === doc.id ? (
                           <Loader2 className="h-4 w-4 animate-spin text-destructive" />
                         ) : (
                           <Trash2 className="h-4 w-4 text-destructive" />
