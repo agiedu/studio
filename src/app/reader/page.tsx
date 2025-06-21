@@ -605,7 +605,7 @@ export default function ReaderPage() {
     let canPlay = !!(effectiveText && !invalidMessages.some(msg => effectiveText.toLowerCase().includes(msg)) && effectiveText.length >= MIN_TTS_TEXT_LENGTH && activeDoc && !isPerformingOcr && !docErrorMessage );
     
     if (activeDoc?.type === 'pdf' && (isLoadingDoc || isRenderingPdfPage)) canPlay = false;
-    else if (activeDoc?.type === 'epub' && (isLoadingDoc || isEpubLoading || !isEpunbSectionDisplayed)) canPlay = false;
+    else if (activeDoc?.type === 'epub' && (isLoadingDoc || isEpubLoading || !isEpubSectionDisplayed)) canPlay = false;
     else if (activeDoc?.type === 'image' && isLoadingDoc) canPlay = false; 
     else if (activeDoc?.type === 'txt' && isLoadingDoc) canPlay = false;
     else if (!activeDoc) canPlay = false;
@@ -738,7 +738,7 @@ export default function ReaderPage() {
             )}
             <div className="space-y-1"><Label htmlFor="tts-rate" className="text-xs">Rate: {ttsSettings.rate.toFixed(1)}</Label><Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isSpeaking && !isPaused}/></div>
             <div className="space-y-1"><Label htmlFor="tts-pitch" className="text-xs">Pitch: {ttsSettings.pitch.toFixed(1)}</Label><Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isSpeaking && !isPaused}/></div>
-            <Button onClick={playPauseSpeech} disabled={false} variant={isSpeaking && !isPaused ? "outline" : "default"} className="w-full h-9 text-sm"><Play className="mr-1 h-4 w-4"/> Play Text</Button>
+            <Button onClick={playPauseSpeech} disabled={buttonState.disabled} variant={isSpeaking && !isPaused ? "outline" : "default"} className="w-full h-9 text-sm">{buttonState.icon} {buttonState.text}</Button>
             <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full mt-2 text-xs" disabled={!activeDoc}> <Star className="mr-2 h-3 w-3" /> Favorite Text/Selection </Button>
           </CardContent>
         </Card>
@@ -746,5 +746,3 @@ export default function ReaderPage() {
     </div>
   );
 }
-
-    
