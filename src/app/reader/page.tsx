@@ -73,7 +73,7 @@ export default function ReaderPage() {
   const currentImageObjectUrlRef = useRef<string | null>(null);
   
   // Scratchpad state
-  const [scratchpadText, setScratchpadText] = useState<string>("Welcome to the Scratchpad!\n\nType or paste any text here to have it read aloud or to save snippets to your favorites.");
+  const [scratchpadText, setScratchpadText] = useState<string>("");
 
   // OCR and TTS states
   const [isPerformingOcr, setIsPerformingOcr] = useState(false);
@@ -633,8 +633,10 @@ export default function ReaderPage() {
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
                   <Textarea
                       id="scratchpad-input"
-                      placeholder="Type or paste text here..."
-                      className="w-full flex-grow text-base resize-none" // Use flex-grow to fill space
+                      placeholder="Welcome to the Scratchpad!
+
+Type or paste any text here to have it read aloud or to save snippets to your favorites."
+                      className="w-full flex-grow text-base resize-none"
                       value={scratchpadText}
                       onChange={(e) => {
                           setScratchpadText(e.target.value);
@@ -780,5 +782,3 @@ export default function ReaderPage() {
     </div>
   );
 }
-
-    
