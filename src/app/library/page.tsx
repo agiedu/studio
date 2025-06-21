@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -34,11 +34,10 @@ export default function LibraryPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [isSavingToDevice, setIsSavingToDevice] = useState<string | null>(null);
   const [storedDocuments, setStoredDocuments] = useState<StoredMangaDocument[]>([]);
-  const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
   const [docToDelete, setDocToDelete] = useState<StoredMangaDocument | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const fetchDocuments = useCallback(async (operationLabel: string = "Fetching documents") => {
+  const fetchDocuments = async (operationLabel: string = "Fetching documents") => {
     setIsLoading(true);
     try {
       const docs = await IndexedDBService.getAllDocuments();
@@ -48,14 +47,14 @@ export default function LibraryPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [toast]);
+  };
 
   useEffect(() => {
     fetchDocuments("Initial document fetch");
      if (typeof window !== 'undefined' && !GlobalWorkerOptions.workerSrc) {
         GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsVersion}/pdf.worker.mjs`;
     }
-  }, [fetchDocuments]);
+  }, []);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -117,24 +116,21 @@ export default function LibraryPage() {
   const performDelete = async () => {
     if (!docToDelete) return;
 
-    setDeletingDocId(docToDelete.id);
-    const title = docToDelete.title;
-    const id = docToDelete.id;
+    const docIdToDelete = docToDelete.id;
+    const docTitleToDelete = docToDelete.title;
     setDocToDelete(null);
 
     try {
-        await IndexedDBService.deleteDocumentById(id);
+        await IndexedDBService.deleteDocumentById(docIdToDelete);
         const lastActiveId = await IndexedDBService.getLastActiveDocId();
-        if (lastActiveId === id) {
+        if (lastActiveId === docIdToDelete) {
             await IndexedDBService.saveLastActiveDocId(null);
         }
         await fetchDocuments("Data refresh after deletion");
-        toast({ title: "Success", description: `"${title}" has been deleted.` });
+        toast({ title: "Success", description: `"${docTitleToDelete}" has been deleted.` });
     } catch (error: any) {
         console.error("Deletion failed:", error);
         toast({ variant: "destructive", title: "Deletion Failed", description: error.message || "An unknown error occurred." });
-    } finally {
-        setDeletingDocId(null);
     }
   };
 
@@ -210,7 +206,7 @@ export default function LibraryPage() {
               type="file"
               accept="application/epub+zip,application/x-mobipocket-ebook,application/pdf,text/plain,image/*"
               onChange={handleFileUpload}
-              disabled={isUploading || isLoading || !!deletingDocId}
+              disabled={isUploading || isLoading}
             />
           </div>
           {isUploading && <p className="mt-2 text-sm text-muted-foreground flex items-center"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Processing and saving to browser...</p>}
@@ -223,7 +219,7 @@ export default function LibraryPage() {
           <CardDescription>
             List of documents in this browser. Click &quot;Open in Reader&quot; to view.
           </CardDescription>
-          <Button variant="outline" size="sm" onClick={() => fetchDocuments("Manual refresh of document list")} disabled={isLoading || isUploading || !!deletingDocId} className="mt-2 w-fit">
+          <Button variant="outline" size="sm" onClick={() => fetchDocuments("Manual refresh of document list")} disabled={isLoading || isUploading} className="mt-2 w-fit">
             <RefreshCw className={`mr-2 h-4 w-4 ${isLoading && !isUploading ? 'animate-spin' : ''}`} /> Refresh List
           </Button>
         </CardHeader>
@@ -247,7 +243,7 @@ export default function LibraryPage() {
                       </div>
                     </div>
                     <div className="flex gap-2 mt-2 sm:mt-0 sm:items-center flex-shrink-0">
-                      <Button size="sm" variant="outline" asChild disabled={!!deletingDocId}>
+                      <Button size="sm" variant="outline" asChild disabled={isUploading || isLoading}>
                         <Link href={`/reader?docId=${doc.id}`}>
                           <BookOpen className="mr-1.5 h-4 w-4" /> Open in Reader
                         </Link>
@@ -256,7 +252,7 @@ export default function LibraryPage() {
                           size="sm"
                           variant="outline"
                           onClick={() => handleSaveToDevice(doc)}
-                          disabled={isSavingToDevice === doc.id || isUploading || isLoading || !!deletingDocId}
+                          disabled={isSavingToDevice === doc.id || isUploading || isLoading}
                           className="w-[150px]"
                           title="Save a copy to your computer's file system."
                       >
@@ -266,13 +262,9 @@ export default function LibraryPage() {
                         size="sm"
                         variant="ghost"
                         onClick={() => setDocToDelete(doc)}
-                        disabled={isLoading || isUploading || !!deletingDocId}
+                        disabled={isUploading || isLoading}
                         aria-label="Delete Document">
-                        {deletingDocId === doc.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin text-destructive" />
-                        ) : (
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        )}
+                        <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </div>
                   </li>
