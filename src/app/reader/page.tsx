@@ -570,7 +570,7 @@ export default function ReaderPage() {
     <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)]"> 
       {/* Reader Pane */}
       <div className="flex-grow flex flex-col bg-muted/20 p-2 md:p-4 min-w-0">
-        <div className="flex-grow relative flex flex-col items-center justify-center rounded-lg bg-background shadow-inner overflow-hidden">
+        <div className="flex-grow relative flex flex-col items-center justify-center rounded-lg bg-background shadow-inner overflow-y-auto scroll-pb-36">
             {docErrorMessage && !activeDoc && ( // Show general error only if no doc is active
                 <div className="absolute inset-x-0 top-4 mx-auto w-fit max-w-md bg-destructive/10 border border-destructive text-destructive p-3 rounded-md shadow-lg z-20 flex items-start gap-2">
                     <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
@@ -579,11 +579,11 @@ export default function ReaderPage() {
             )}
             
             {/* Main Content Area */}
-            <div className="w-full flex-grow relative min-h-0">
+            <div className="w-full relative">
                 {showContentLoader && <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10"> <Loader2 className="h-10 w-10 animate-spin text-primary" /><p className="ml-3">Loading content...</p></div> }
                 
                 {activeDoc?.type === 'pdf' && (
-                  <div className="w-full h-full flex items-center justify-center overflow-auto p-2 scroll-pb-36">
+                  <div className="w-full h-full flex items-center justify-center p-2">
                     {pdfPageImage && <NextImage src={pdfPageImage} alt={`Page ${currentPdfPageNum}`} width={0} height={0} style={{ width: 'auto', height: 'auto', maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} className="shadow-lg border rounded-md" />}
                     {showOcrButtonForPdfPage && (<Button onClick={handlePerformOcr} disabled={isPerformingOcr} className="absolute bottom-4"> {isPerformingOcr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />} Perform OCR on PDF Page </Button> )}
                   </div>
@@ -597,10 +597,10 @@ export default function ReaderPage() {
                     className={cn("w-full h-full", activeDoc?.type !== 'epub' && "hidden")}
                 />
 
-                {activeDoc?.type === 'txt' && ( <pre className="whitespace-pre-wrap p-4 bg-background rounded-md shadow-inner text-sm font-mono h-full w-full overflow-y-auto select-text scroll-pb-36">{txtContent}</pre> )}
+                {activeDoc?.type === 'txt' && ( <pre className="whitespace-pre-wrap p-4 bg-background rounded-md shadow-inner text-sm font-mono w-full select-text">{txtContent}</pre> )}
                 
                 {activeDoc?.type === 'image' && displayedImageSrc && (
-                    <div className="w-full h-full flex flex-col items-center justify-center overflow-auto p-2 scroll-pb-36">
+                    <div className="w-full h-full flex flex-col items-center justify-center p-2">
                         <NextImage src={displayedImageSrc} alt={activeDoc.title || 'Uploaded Image'} width={800} height={600} style={{objectFit: 'contain'}} className="max-w-full max-h-[calc(100%-4rem)] shadow-lg border rounded-md" data-ai-hint="illustration abstract" />
                         {showOcrButtonForImage && <Button onClick={handlePerformOcr} disabled={isPerformingOcr} className="mt-3"> {isPerformingOcr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />} Perform OCR on Image </Button> }
                     </div>
