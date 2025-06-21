@@ -609,7 +609,7 @@ export default function ReaderPage() {
     const selection = window.getSelection()?.toString().trim();
 
     if (!selection) {
-        toast({variant: "destructive", title: "No Text Selected", description: "Please select text to play from."});
+        toast({variant: "default", title: "No Text Selected", description: "Please select text to play from. Without a selection, this button does nothing."});
         return;
     }
 
@@ -639,7 +639,7 @@ export default function ReaderPage() {
     const selectionFromWindow = typeof window !== 'undefined' ? window.getSelection()?.toString().trim() : '';
     const textToFavorite = selectionFromWindow || currentTextForTTS;
     const invalidMessages = [ "Error:", "Failed to load", "Loading PDF page...", "MOBI files cannot", "Loading EPUB...", "Loading EPUB content...", "Preparing EPUB reader...", "Loading text file...", "Loading image...", "Image loaded. Perform OCR", "No text content found", "Could not extract text", "EPUB viewer element not ready", "This PDF page has no selectable text", "Performing OCR...", "No document ID provided", "Document with ID", "EPUB viewer became unavailable.", "OCR completed, no text found.", "No document selected.", "EPUB section loaded. Text may be graphical or empty.", "Could not load EPUB section content.", "EPUB viewer element failed to initialize.", "EPUB content could not be displayed."];
-    if (textToFavorite && !invalidMessages.some(msg => textToFavorite.toLowerCase().startsWith(msg.toLowerCase())) && textToFavorite.length >= MIN_TTS_TEXT_LENGTH) {
+    if (textToFavorite && !invalidMessages.some(msg => textToFavorite.toLowerCase().startsWith(msg.toLowerCase()))) {
       const sourceName = activeDoc ? activeDoc.title : 'Scratchpad';
       const sourceId = activeDoc ? activeDoc.id : 'scratchpad';
       LocalStorageService.addFavoriteItem({
@@ -651,7 +651,7 @@ export default function ReaderPage() {
       });
       toast({ title: "Favorited!", description: `"${textToFavorite.substring(0, 50)}..." added.` });
     } else {
-      toast({ variant: "destructive", title: "No Valid Text to Favorite", description: `Ensure valid text (min ${MIN_TTS_TEXT_LENGTH} chars) is available or selected.` });
+      toast({ variant: "destructive", title: "No Valid Text to Favorite", description: "Ensure valid text is available or selected." });
     }
   };
 
@@ -706,12 +706,11 @@ export default function ReaderPage() {
     const invalidMessages = [ "error:", "failed to load", "loading", "mobi files", "image loaded", "no text content", "no selectable text", "ocr completed, no text found", "no document selected", "graphical or empty", "could not load epub", "waiting for page", "preparing epub" ];
     
     let canPlay = false;
-    if (effectiveText && !invalidMessages.some(msg => effectiveText.toLowerCase().includes(msg)) && !isPerformingOcr && !docErrorMessage) {
-      if (selectedText) { // If text is selected, length doesn't matter.
+    // For play button, if text is selected, we can always play. Otherwise, check whole text against invalid messages and min length.
+    if (selectedText) {
         canPlay = true;
-      } else { // Otherwise, check min length for the whole text.
-        canPlay = effectiveText.length >= MIN_TTS_TEXT_LENGTH;
-      }
+    } else if (effectiveText && !invalidMessages.some(msg => effectiveText.toLowerCase().includes(msg)) && effectiveText.length >= MIN_TTS_TEXT_LENGTH) {
+        canPlay = true;
     }
     
     if (activeDoc) {
@@ -722,6 +721,8 @@ export default function ReaderPage() {
     } else if (isLoadingDoc) { // Scratchpad mode, but initial load might still be happening
         canPlay = false;
     }
+
+    if (isPerformingOcr || docErrorMessage) canPlay = false;
 
     if (isLoadingTTS) return { text: "Loading...", icon: <Loader2 className="mr-1 h-4 w-4 animate-spin" />, disabled: true };
     if (isSpeaking && !isPaused) return { text: "Pause", icon: <Pause className="mr-1 h-4 w-4" />, disabled: false };
