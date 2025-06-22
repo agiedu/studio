@@ -39,7 +39,7 @@ import { Textarea } from '@/components/ui/textarea';
 
 const PDF_DEFAULT_SCALE = 1.5;
 
-type SpeechOrigin = 'main' | null;
+type SpeechOrigin = 'main' | 'repeat' | null;
 
 export default function ReaderPage() {
   const { toast } = useToast();
@@ -638,13 +638,43 @@ export default function ReaderPage() {
     }
     
     // Otherwise (no speech, or speech from another origin), start a new main speech.
-    // Check for selected text first.
     const selectionInfo = getSelectedText();
-    const textToPlay = selectionInfo.text || currentTextForTTS;
+    let textToPlay = currentTextForTTS; // Default to full text
+
+    if (selectionInfo.text) {
+        let startIndex: number | null = selectionInfo.startIndex;
+        
+        if (startIndex === null) {
+            // Fallback for when startIndex isn't directly available (e.g., EPUB)
+            const index = currentTextForTTS.indexOf(selectionInfo.text);
+            if (index !== -1) {
+                startIndex = index;
+            }
+        }
+    
+        if (startIndex !== null) {
+            textToPlay = currentTextForTTS.substring(startIndex);
+        }
+    }
     
     _startSpeech(textToPlay, 'main');
   };
   
+  const handleRepeatSelection = () => {
+    if (!isMountedRef.current) return;
+    const selectionInfo = getSelectedText();
+    const textToPlay = selectionInfo.text;
+    if (textToPlay) {
+      _startSpeech(textToPlay, 'repeat');
+    } else {
+      toast({
+        variant: 'destructive',
+        title: 'No Text Selected',
+        description: 'Please select some text to repeat.',
+      });
+    }
+  };
+
   const handleSettingChange = <K extends keyof TTSSettings>(key: K, value: TTSSettings[K]) => {
     if(!isMountedRef.current) return; stopSpeech(true); 
     setTtsSettings(prevSettings => {
@@ -725,6 +755,9 @@ export default function ReaderPage() {
   const getMainButtonState = () => {
     if (isLoadingTTS && speechOrigin === 'main') {
       return { text: "Loading...", icon: <Loader2 className="mr-1 h-4 w-4 animate-spin" />, disabled: true };
+    }
+    if (isSpeaking && speechOrigin === 'repeat') {
+      return { text: "Play Text", icon: <Play className="mr-1 h-4 w-4" />, disabled: true, variant: "default" };
     }
     if (isSpeaking && speechOrigin === 'main') {
       return isPaused 
@@ -947,8 +980,17 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                 
                 <Button onClick={playPauseSpeech} disabled={mainButtonState.disabled} variant={mainButtonState.variant as "default" | "outline"} className="w-full h-9 text-sm">{mainButtonState.icon} {mainButtonState.text}</Button>
                 
-                <div className="mt-2">
-                  <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full text-xs"> <Star className="mr-2 h-3 w-3" /> Favorite Text </Button>
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                    <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full text-xs"> <Star className="mr-2 h-3 w-3" /> Favorite Text </Button>
+                    <Button 
+                        onClick={handleRepeatSelection} 
+                        variant="outline" 
+                        size="sm" 
+                        className="w-full text-xs" 
+                        disabled={isSpeaking && speechOrigin === 'main'}> 
+                        <Repeat className="mr-2 h-3 w-3" /> 
+                        {isSpeaking && speechOrigin === 'repeat' ? 'Playing...' : 'Repeat Sel.'} 
+                    </Button>
                 </div>
               </CardContent>
             </Card>
