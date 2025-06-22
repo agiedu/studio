@@ -627,34 +627,42 @@ export default function ReaderPage() {
 
   const playPauseSpeech = () => {
     if (!isMountedRef.current) return;
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
 
-    // This button exclusively controls playback of the ENTIRE text from the start.
-    if (isSpeaking && speechOrigin === 'main') {
-      // If the main player is already active, this button toggles pause/resume.
-      if (isPaused) {
-        // RESUME
-        if (ttsSettings.engine === 'local' && utteranceRef.current && window.speechSynthesis?.paused) {
-          window.speechSynthesis.resume();
-          if (isMountedRef.current) setIsPaused(false);
-        } else if (ttsSettings.engine === 'cloud' && audioPlayerRef.current?.paused) {
-          audioPlayerRef.current.play().catch(() => { if (isMountedRef.current) stopSpeech(true); });
-          if (isMountedRef.current) setIsPaused(false);
+    if (ttsSettings.engine === 'local') {
+        // RESUME if the browser is in a paused state AND the last command was from this button
+        if (window.speechSynthesis.paused && speechOrigin === 'main') {
+            window.speechSynthesis.resume();
+            setIsPaused(false);
+            return;
         }
-      } else {
-        // PAUSE
-        if (ttsSettings.engine === 'local' && utteranceRef.current && window.speechSynthesis?.speaking) {
-          window.speechSynthesis.pause();
-          if (isMountedRef.current) setIsPaused(true);
-        } else if (ttsSettings.engine === 'cloud' && audioPlayerRef.current && !audioPlayerRef.current.paused) {
-          audioPlayerRef.current.pause();
-          if (isMountedRef.current) setIsPaused(true);
+        
+        // PAUSE if the browser is actively speaking AND the command was from this button
+        if (window.speechSynthesis.speaking && speechOrigin === 'main') {
+            window.speechSynthesis.pause();
+            setIsPaused(true);
+            return;
         }
-      }
-    } else {
-      // If nothing is playing, OR if another source is playing (e.g. 'selection'),
-      // this button STOPS the other source and starts playback of the full text.
-      startSpeech(currentTextForTTS, 'main');
+    } else { // Cloud TTS
+        if (audioPlayerRef.current) {
+            // isSpeaking helps differentiate between a freshly loaded player (paused) and one that the user explicitly paused.
+            if (audioPlayerRef.current.paused && isSpeaking && speechOrigin === 'main') {
+                // RESUME
+                audioPlayerRef.current.play().catch(() => stopSpeech(true));
+                setIsPaused(false);
+                return;
+            } else if (!audioPlayerRef.current.paused && isSpeaking && speechOrigin === 'main') {
+                // PAUSE
+                audioPlayerRef.current.pause();
+                setIsPaused(true);
+                return;
+            }
+        }
     }
+    
+    // If none of the above conditions were met, it means we need to START a new speech.
+    // This will handle cases where nothing is playing, or another source was playing.
+    startSpeech(currentTextForTTS, 'main');
   };
   
   const handleRepeatSelection = () => {
