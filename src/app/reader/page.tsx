@@ -100,7 +100,6 @@ export default function ReaderPage() {
 
   // The smart selection function
   const getSelectedText = useCallback((): string => {
-    // This function can only run on the client, so we check for window
     if (typeof window === 'undefined') {
       return '';
     }
@@ -110,7 +109,7 @@ export default function ReaderPage() {
       try {
         const epubWindow = epubRenditionRef.current.getContents()?.[0]?.window;
         if (epubWindow) {
-          const selection = epubWindow.getSelection()?.toString().trim();
+          const selection = epubWindow.getSelection()?.toString();
           if (selection) return selection;
         }
       } catch (e) {
@@ -122,7 +121,7 @@ export default function ReaderPage() {
     if ((!activeDoc || activeDoc.type === 'txt') && mainTextAreaRef.current) {
       const textarea = mainTextAreaRef.current;
       if (textarea.selectionStart !== textarea.selectionEnd) {
-        return textarea.value.substring(textarea.selectionStart, textarea.selectionEnd).trim();
+        return textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
       }
     }
     
@@ -130,12 +129,12 @@ export default function ReaderPage() {
     if (ttsBoxTextAreaRef.current) {
         const textarea = ttsBoxTextAreaRef.current;
         if (textarea.selectionStart !== textarea.selectionEnd) {
-            return textarea.value.substring(textarea.selectionStart, textarea.selectionEnd).trim();
+            return textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
         }
     }
 
     // Fallback for any other scenario
-    return window.getSelection()?.toString().trim() || '';
+    return window.getSelection()?.toString() || '';
   }, [activeDoc]);
 
   useEffect(() => {
@@ -273,9 +272,9 @@ export default function ReaderPage() {
               if (isMountedRef.current && epubRenditionRef.current === rendition) {
                 try {
                   const displayedContents = await rendition.getContents();
-                  // Use textContent to preserve whitespace and get a more accurate representation of the text.
-                  const extractedText = displayedContents?.[0]?.document?.body?.textContent ?? "";
-                  setCurrentTextForTTS(extractedText.trim() || "EPUB section loaded. Text may be graphical or empty.");
+                  // Use innerText which is more aware of rendered text and whitespace, to better match user selection.
+                  const extractedText = displayedContents?.[0]?.document?.body?.innerText ?? "";
+                  setCurrentTextForTTS(extractedText || "EPUB section loaded. Text may be graphical or empty.");
                 } catch (textExtractError) {
                   setCurrentTextForTTS("EPUB section loaded, but text could not be extracted.");
                 }
@@ -539,22 +538,18 @@ export default function ReaderPage() {
   }, [ttsSettings.engine, isSpeaking, stopSpeech, toast]);
 
   // Private function to initiate speech; assumes a clean state.
-  const _startSpeech = async (textToPlay: string, options: { repeat?: boolean; bypassMinLengthCheck?: boolean } = {}) => {
-    const { repeat = false, bypassMinLengthCheck = false } = options;
-
+  const _startSpeech = async (textToPlay: string, options: { repeat?: boolean } = {}) => {
+    const { repeat = false } = options;
     if (!isMountedRef.current) return;
-
-    if (!bypassMinLengthCheck) {
-        const invalidMessages = [ "error:", "failed to load", "loading", "mobi files", "image loaded", "no text content", "no selectable text", "ocr completed, no text found", "no document selected", "graphical or empty", "could not load epub", "waiting for page", "preparing epub" ];
-        if (!textToPlay || invalidMessages.some(msg => textToPlay.toLowerCase().includes(msg))) {
-            toast({variant: "destructive", title: "No Valid Text", description: `No valid text to read. Text was: "${textToPlay.substring(0,50)}..."`});
-            // Reset state if we bail early
-            if (isMountedRef.current) {
-              setIsSpeaking(false);
-              setIsRepeating(false);
-            }
-            return;
+    
+    const invalidMessages = [ "error:", "failed to load", "loading", "mobi files", "image loaded", "no text content", "no selectable text", "ocr completed, no text found", "no document selected", "graphical or empty", "could not load epub", "waiting for page", "preparing epub" ];
+    if (!textToPlay || invalidMessages.some(msg => textToPlay.toLowerCase().includes(msg))) {
+        toast({variant: "destructive", title: "No Valid Text", description: `No valid text to read. Text was: "${textToPlay.substring(0,50)}..."`});
+        if (isMountedRef.current) {
+          setIsSpeaking(false);
+          setIsRepeating(false);
         }
+        return;
     }
 
     setIsLoadingTTS(true);
@@ -619,7 +614,7 @@ export default function ReaderPage() {
   };
 
   // Public controller to start speech. It always resets state first.
-  const startSpeech = (textToPlay: string, options: { repeat?: boolean; bypassMinLengthCheck?: boolean } = {}) => {
+  const startSpeech = (textToPlay: string, options: { repeat?: boolean; } = {}) => {
       stopSpeech(true);
       setTimeout(() => {
           if (isMountedRef.current) {
@@ -661,7 +656,7 @@ export default function ReaderPage() {
     } else { // If not speaking, start a new speech.
       const selection = getSelectedText();
       const effectiveTextToRead = selection || currentTextForTTS;
-      startSpeech(effectiveTextToRead, { bypassMinLengthCheck: !!selection });
+      startSpeech(effectiveTextToRead);
     }
   };
   
@@ -670,32 +665,39 @@ export default function ReaderPage() {
       stopSpeech(true);
       return;
     }
-    const selection = getSelectedText();
-    if (!selection) {
-      toast({
-        variant: "destructive",
-        title: "No Text Selected",
-        description: "Please select text to repeat.",
-      });
-      return;
-    }
-    startSpeech(selection, { repeat: true, bypassMinLengthCheck: true });
+    
+    stopSpeech(true); // Always stop previous speech before starting a new one
+    
+    setTimeout(() => {
+        if (!isMountedRef.current) return;
+        const selection = getSelectedText();
+        if (!selection) {
+          toast({
+            variant: "destructive",
+            title: "No Text Selected",
+            description: "Please select text to repeat.",
+          });
+          return;
+        }
+        _startSpeech(selection, { repeat: true });
+    }, 100);
   };
   
   const handlePlayFromSelection = () => {
-    const selection = getSelectedText();
-    if (!selection) {
-      toast({
-        variant: 'default',
-        title: 'No Text Selected',
-        description: 'To use this feature, please select some text first.',
-      });
-      return;
-    }
-    
     stopSpeech(true);
+    
     setTimeout(() => {
       if (!isMountedRef.current) return;
+      const selection = getSelectedText();
+      if (!selection) {
+        toast({
+          variant: 'default',
+          title: 'No Text Selected',
+          description: 'To use this feature, please select some text first.',
+        });
+        return;
+      }
+
       const fullText = currentTextForTTS;
       const startIndex = fullText.indexOf(selection);
       const textToPlay = startIndex !== -1 ? fullText.substring(startIndex) : selection;
@@ -706,7 +708,7 @@ export default function ReaderPage() {
           description: 'Could not find selection in current text. Playing selection only.',
         });
       }
-      _startSpeech(textToPlay, { bypassMinLengthCheck: true });
+      _startSpeech(textToPlay);
     }, 100);
   };
 
@@ -787,6 +789,9 @@ export default function ReaderPage() {
   };
 
   const getButtonState = () => {
+    if (typeof window === 'undefined') {
+      return { text: "Play", icon: <Play className="mr-1 h-4 w-4" />, disabled: true };
+    }
     const selectedText = getSelectedText();
     let canPlay = !!selectedText;
 
@@ -810,7 +815,7 @@ export default function ReaderPage() {
     if (isPerformingOcr || docErrorMessage) canPlay = false;
 
     if (isLoadingTTS) return { text: "Loading...", icon: <Loader2 className="mr-1 h-4 w-4 animate-spin" />, disabled: true };
-    if (isSpeaking && isRepeating) return { text: "Repeating...", icon: <Repeat className="mr-1 h-4 w-4 animate-spin" />, disabled: false };
+    if (isSpeaking && isRepeating) return { text: "Pausing...", icon: <Pause className="mr-1 h-4 w-4" />, disabled: false };
     if (isSpeaking && !isPaused) return { text: "Pause", icon: <Pause className="mr-1 h-4 w-4" />, disabled: false };
     if (isSpeaking && isPaused) return { text: "Resume", icon: <Play className="mr-1 h-4 w-4" />, disabled: false };
     return { text: selectedText ? "Play Selected" : "Play Text", icon: <Play className="mr-1 h-4 w-4" />, disabled: !canPlay };
@@ -1039,7 +1044,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                     {isRepeating ? "Stop Repeat" : "Repeat Sel."}
                   </Button>
                 </div>
-                <Button onClick={handlePlayFromSelection} variant="outline" size="sm" className="w-full mt-2 text-xs" disabled={isLoadingTTS && !isSpeaking}> <TextSelect className="mr-2 h-3 w-3" /> Play from Sel. </Button>
+                <Button onClick={handlePlayFromSelection} variant="outline" size="sm" className="w-full mt-2 text-xs" disabled={isLoadingTTS || isSpeaking}> <TextSelect className="mr-2 h-3 w-3" /> Play from Sel. </Button>
               </CardContent>
             </Card>
         </div>
@@ -1047,7 +1052,3 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
     </div>
   );
 }
-
-    
-
-    
