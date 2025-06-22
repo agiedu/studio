@@ -982,14 +982,14 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                 
                 <div className="grid grid-cols-2 gap-2 mt-2">
                     <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full text-xs"> <Star className="mr-2 h-3 w-3" /> Favorite Text </Button>
-                    <Button 
-                        onClick={handleRepeatSelection} 
-                        variant="outline" 
-                        size="sm" 
-                        className="w-full text-xs" 
-                        disabled={isSpeaking && speechOrigin === 'main'}> 
-                        <Repeat className="mr-2 h-3 w-3" /> 
-                        {isSpeaking && speechOrigin === 'repeat' ? 'Playing...' : 'Repeat Sel.'} 
+                    <Button
+                        onClick={handleRepeatSelection}
+                        variant="outline"
+                        size="sm"
+                        className="w-full text-xs"
+                        disabled={isSpeaking && speechOrigin === 'main' && !isPaused}>
+                        <Repeat className="mr-2 h-3 w-3" />
+                        {isSpeaking && speechOrigin === 'repeat' ? 'Playing...' : 'Repeat Sel.'}
                     </Button>
                 </div>
               </CardContent>
@@ -999,7 +999,3 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
     </div>
   );
 }
-
-    
-
-    
