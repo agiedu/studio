@@ -545,9 +545,21 @@ export default function ReaderPage() {
   // The executor function. It just speaks.
   const _startSpeech = useCallback(async (textToPlay: string, origin: SpeechOrigin) => {
     if (!isMountedRef.current) return;
+    
+    // Centralized validation
+    const trimmedText = textToPlay?.trim();
+    if (!trimmedText) {
+        toast({variant: "destructive", title: "No Text", description: "No text is available to be read aloud."});
+        stopSpeech(true);
+        return;
+    }
+    const invalidMessages = ["loading...", "performing ocr..."];
+    if(invalidMessages.some(msg => trimmedText.toLowerCase().includes(msg))) {
+        toast({variant: "destructive", title: "Cannot Play", description: "Please wait for the current action to complete."});
+        stopSpeech(true);
+        return;
+    }
 
-    // This function now trusts that it's been given valid text.
-    // It's job is just to speak.
     stopSpeech(false); // Stop active speech, but don't reset UI yet.
     
     // A small delay to prevent race conditions with the SpeechSynthesis API.
@@ -565,7 +577,7 @@ export default function ReaderPage() {
                 stopSpeech(true);
                 return;
             }
-            const utterance = new SpeechSynthesisUtterance(textToPlay);
+            const utterance = new SpeechSynthesisUtterance(trimmedText);
             utterance.lang = ttsSettings.language;
             utterance.pitch = ttsSettings.pitch;
             utterance.rate = ttsSettings.rate;
@@ -576,7 +588,7 @@ export default function ReaderPage() {
             utterance.onend = () => {
                 if (utteranceRef.current === utterance && isMountedRef.current) {
                     if (origin === 'repeat' && window.speechSynthesis && !window.speechSynthesis.speaking) {
-                        window.speechSynthesis.speak(utterance);
+                        try { window.speechSynthesis.speak(utterance); } catch (e) { stopSpeech(true); }
                     } else {
                         stopSpeech(true);
                     }
@@ -597,7 +609,7 @@ export default function ReaderPage() {
                 if (audioPlayerRef.current) {
                     audioPlayerRef.current.loop = (origin === 'repeat');
                 }
-                const result = await getCloudSpeech(textToPlay, ttsSettings.language);
+                const result = await getCloudSpeech(trimmedText, ttsSettings.language);
                 if(!isMountedRef.current) return;
                 if ('audioUrl' in result && audioPlayerRef.current) {
                     audioPlayerRef.current.src = result.audioUrl;
@@ -618,72 +630,62 @@ export default function ReaderPage() {
 
   // The "brain" function for the main play button.
   const playPauseSpeech = () => {
-    if (!isMountedRef.current || typeof window === 'undefined' || !window.speechSynthesis) return;
-
-    // 1. Simple, reliable validation.
-    if (!currentTextForTTS || currentTextForTTS.trim() === '') {
-        toast({variant: "destructive", title: "No Text", description: "No text is available to be read aloud."});
-        return;
-    }
-    const invalidMessages = ["loading...", "performing ocr..."];
-    if(invalidMessages.some(msg => currentTextForTTS.toLowerCase().includes(msg))) {
-        toast({variant: "destructive", title: "Cannot Play", description: "Please wait for the current action to complete."});
+    if (!isMountedRef.current) return;
+    
+    // If a speech is active AND it's from the main button, then toggle pause/resume.
+    if (isSpeaking && speechOrigin === 'main') {
+        if (isPaused) {
+            if (ttsSettings.engine === 'local') { window.speechSynthesis.resume(); } 
+            else { audioPlayerRef.current?.play(); }
+            setIsPaused(false);
+        } else {
+            if (ttsSettings.engine === 'local') { window.speechSynthesis.pause(); } 
+            else { audioPlayerRef.current?.pause(); }
+            setIsPaused(true);
+        }
         return;
     }
     
-    // 2. If another speech is running, the main button takes priority and will take over.
-    if (isSpeaking && speechOrigin !== 'main') {
-        _startSpeech(currentTextForTTS, 'main');
-        return;
-    }
-
-    // 3. At this point, we are only concerned with the 'main' speech task or no speech at all.
-    // We can now safely use the browser's REAL state to determine the correct action.
-    if (window.speechSynthesis.speaking) { // It's either paused or speaking
-        if (window.speechSynthesis.paused) {
-            window.speechSynthesis.resume();
-            setIsPaused(false);
-        } else {
-            window.speechSynthesis.pause();
-            setIsPaused(true);
-        }
-    } else { // It's not speaking at all, start fresh
-        _startSpeech(currentTextForTTS, 'main');
-    }
+    // Otherwise (no speech, or speech from another origin), start a new main speech.
+    _startSpeech(currentTextForTTS, 'main');
   };
   
   const handleRepeatSelection = () => {
+    if (!isMountedRef.current) return;
+    
+    // If 'repeat' speech is active, just stop it.
     if (isSpeaking && speechOrigin === 'repeat') {
-      stopSpeech(true);
-      return;
+        stopSpeech(true);
+        return;
     }
-  
+
+    // Otherwise, get selected text and start a new 'repeat' speech.
     const selectionInfo = getSelectedText();
-    if (!selectionInfo.text) {
-      toast({
-        variant: "destructive",
-        title: "No Text Selected",
-        description: "Please select text to repeat.",
-      });
-      return;
+    if (selectionInfo.text) {
+        _startSpeech(selectionInfo.text, 'repeat');
+    } else {
+        toast({ variant: "destructive", title: "No Text Selected", description: "Please select text to repeat." });
     }
-    _startSpeech(selectionInfo.text, 'repeat');
   };
   
   const handlePlayFromSelection = () => {
+    if (!isMountedRef.current) return;
+
+    // If 'selection' speech is active, toggle pause/resume.
     if (isSpeaking && speechOrigin === 'selection') {
-      if (isPaused) {
-        if (ttsSettings.engine === 'local') window.speechSynthesis.resume();
-        else if (audioPlayerRef.current) audioPlayerRef.current.play();
-        setIsPaused(false);
-      } else {
-        if (ttsSettings.engine === 'local') window.speechSynthesis.pause();
-        else if (audioPlayerRef.current) audioPlayerRef.current.pause();
-        setIsPaused(true);
-      }
-      return;
+        if (isPaused) {
+            if (ttsSettings.engine === 'local') window.speechSynthesis.resume();
+            else if (audioPlayerRef.current) audioPlayerRef.current.play();
+            setIsPaused(false);
+        } else {
+            if (ttsSettings.engine === 'local') window.speechSynthesis.pause();
+            else if (audioPlayerRef.current) audioPlayerRef.current.pause();
+            setIsPaused(true);
+        }
+        return;
     }
   
+    // Otherwise, find the text and start a new 'selection' speech.
     const selectionInfo = getSelectedText();
     if (!selectionInfo.text) {
       toast({ variant: 'default', title: 'No Text Selected', description: 'Please select text to start playing from that point.' });
@@ -696,25 +698,20 @@ export default function ReaderPage() {
     
     let textToPlay = '';
   
-    if (selectionInfo.startIndex !== null && (mainTextAreaRef.current || ttsBoxTextAreaRef.current)) {
-      const sourceTextArea = mainTextAreaRef.current?.value === fullText ? mainTextAreaRef.current : ttsBoxTextAreaRef.current;
-      if (sourceTextArea) {
-        textToPlay = sourceTextArea.value.substring(selectionInfo.startIndex);
-      }
+    if (selectionInfo.startIndex !== null && fullText && (mainTextAreaRef.current?.value === fullText || ttsBoxTextAreaRef.current?.value === fullText)) {
+      textToPlay = fullText.substring(selectionInfo.startIndex);
     } else if (fullText) {
-      const normalizedSource = fullText.replace(/\s+/g, ' ');
-      const normalizedSelection = selectionInfo.text.replace(/\s+/g, ' ');
-      const searchIndex = normalizedSource.indexOf(normalizedSelection);
+      // Fallback for EPUB or general page selection where startIndex is unreliable
+      const searchIndex = fullText.indexOf(selectionInfo.text);
       if (searchIndex !== -1) {
-          const preSelectionTextInSource = fullText.substring(0, fullText.indexOf(selectionInfo.text, searchIndex));
-          textToPlay = fullText.substring(fullText.indexOf(selectionInfo.text, searchIndex));
+        textToPlay = fullText.substring(searchIndex);
       }
     }
 
     if (textToPlay) {
       _startSpeech(textToPlay, 'selection');
     } else {
-      // Fallback to playing just the selection if it can't be found
+      // Fallback to playing just the selection if it can't be found in the full text
       _startSpeech(selectionInfo.text, 'selection');
     }
   };
@@ -803,10 +800,10 @@ export default function ReaderPage() {
     }
     if (isSpeaking && speechOrigin === 'main') {
       return isPaused 
-        ? { text: "Resume", icon: <Play className="mr-1 h-4 w-4" />, disabled: false } 
-        : { text: "Pause", icon: <Pause className="mr-1 h-4 w-4" />, disabled: false };
+        ? { text: "Resume", icon: <Play className="mr-1 h-4 w-4" />, disabled: false, variant: "default" } 
+        : { text: "Pause", icon: <Pause className="mr-1 h-4 w-4" />, disabled: false, variant: "outline" };
     }
-    return { text: "Play Text", icon: <Play className="mr-1 h-4 w-4" />, disabled: false };
+    return { text: "Play Text", icon: <Play className="mr-1 h-4 w-4" />, disabled: false, variant: "default" };
   };
 
   const getPlayFromSelectionButtonState = () => {
@@ -1031,7 +1028,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                 <div className="space-y-1"><Label htmlFor="tts-rate" className="text-xs">Rate: {ttsSettings.rate.toFixed(1)}</Label><Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isSpeaking && !isPaused}/></div>
                 <div className="space-y-1"><Label htmlFor="tts-pitch" className="text-xs">Pitch: {ttsSettings.pitch.toFixed(1)}</Label><Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isSpeaking && !isPaused}/></div>
                 
-                <Button onClick={playPauseSpeech} disabled={mainButtonState.disabled} variant={isSpeaking && !isPaused && speechOrigin === 'main' ? "outline" : "default"} className="w-full h-9 text-sm">{mainButtonState.icon} {mainButtonState.text}</Button>
+                <Button onClick={playPauseSpeech} disabled={mainButtonState.disabled} variant={mainButtonState.variant as "default" | "outline"} className="w-full h-9 text-sm">{mainButtonState.icon} {mainButtonState.text}</Button>
                 
                 <div className="grid grid-cols-2 gap-2 mt-2">
                   <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full text-xs"> <Star className="mr-2 h-3 w-3" /> Favorite </Button>
