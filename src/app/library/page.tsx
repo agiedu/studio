@@ -24,52 +24,55 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-// Load metadata synchronously from localStorage for an instant UI.
-// This is an unsafe cast but it's for display purposes only until the full data loads.
-// The properties used for initial render (id, title, type, etc.) are present.
-const initialDocs = LocalStorageService.loadDocumentMetadata() as StoredMangaDocument[];
-
-
 function arrayBufferToBlob(buffer: ArrayBuffer, type: string): Blob {
   return new Blob([buffer], { type });
 }
 
 export default function LibraryPage() {
   const { toast } = useToast();
-  const [storedDocuments, setStoredDocuments] = useState<StoredMangaDocument[]>(initialDocs);
-  const [isLoading, setIsLoading] = useState(initialDocs.length === 0);
+  // Initialize with empty/loading state to match server render and prevent hydration errors
+  const [storedDocuments, setStoredDocuments] = useState<StoredMangaDocument[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [isSavingToDevice, setIsSavingToDevice] = useState<string | null>(null);
   const [docToDelete, setDocToDelete] = useState<StoredMangaDocument | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const fetchDocuments = async (forceRefresh: boolean = false, operationLabel: string = "Fetching documents") => {
-    // If we are forcing a refresh, or if we had nothing to show initially, show the loader.
-    if (forceRefresh || storedDocuments.length === 0) {
+    // Only show the full-page loader on a hard refresh, not on the initial background sync
+    if (forceRefresh) {
       setIsLoading(true);
     }
     try {
-      // getAllDocuments will use its own in-memory cache unless forceRefresh is true.
-      // It will also update the localStorage metadata cache upon fetching from DB.
       const docs = await IndexedDBService.getAllDocuments(forceRefresh);
       setStoredDocuments(docs);
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error Loading Documents", description: `Could not load documents. ${error.message}` });
     } finally {
-      // Always make sure the loader is turned off.
+      // After any fetch, loading should be false.
       setIsLoading(false);
     }
   };
 
+  // This effect runs once on the client after hydration
   useEffect(() => {
-    // On mount, we always fetch. If the page was rendered with cached metadata,
-    // this will fetch the full objects (with fileData) in the background. 
-    // If the page had nothing, this will be the initial load (and `isLoading` is already true).
-    fetchDocuments();
-     if (typeof window !== 'undefined' && !GlobalWorkerOptions.workerSrc) {
-        GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsVersion}/pdf.worker.mjs`;
+    // To avoid hydration mismatch, we populate initial state from localStorage on the client.
+    const cachedDocs = LocalStorageService.loadDocumentMetadata() as StoredMangaDocument[];
+    if (cachedDocs.length > 0) {
+      setStoredDocuments(cachedDocs);
+      setIsLoading(false); // We have something to show, so no need for the main loader
     }
-  }, []);
+
+    // Now, fetch the full, up-to-date list from IndexedDB in the background.
+    // This will update the list if it has changed and also handles the initial
+    // load case where localStorage is empty.
+    fetchDocuments();
+
+    if (typeof window !== 'undefined' && !GlobalWorkerOptions.workerSrc) {
+       GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsVersion}/pdf.worker.mjs`;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty dependency array ensures this runs only once on mount
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
