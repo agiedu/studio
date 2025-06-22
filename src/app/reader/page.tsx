@@ -98,30 +98,19 @@ export default function ReaderPage() {
   const mainTextAreaRef = useRef<HTMLTextAreaElement | null>(null); // For Scratchpad, TXT
   const ttsBoxTextAreaRef = useRef<HTMLTextAreaElement | null>(null); // For the box at the bottom
 
-  // The smart selection function
-  const getSelectedText = useCallback((): string => {
+  const getSelectedText = useCallback((): { text: string; startIndex: number | null } => {
     if (typeof window === 'undefined') {
-      return '';
-    }
-    
-    // EPUB is special, it's in an iframe
-    if (activeDoc?.type === 'epub' && epubRenditionRef.current) {
-      try {
-        const epubWindow = epubRenditionRef.current.getContents()?.[0]?.window;
-        if (epubWindow) {
-          const selection = epubWindow.getSelection()?.toString();
-          if (selection) return selection;
-        }
-      } catch (e) {
-        console.warn("Could not get selection from EPUB iframe", e);
-      }
+      return { text: '', startIndex: null };
     }
 
-    // Scratchpad or TXT content in the main view
+    // Scratchpad or TXT content in the main view (MOST RELIABLE)
     if ((!activeDoc || activeDoc.type === 'txt') && mainTextAreaRef.current) {
       const textarea = mainTextAreaRef.current;
       if (textarea.selectionStart !== textarea.selectionEnd) {
-        return textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
+        return {
+          text: textarea.value.substring(textarea.selectionStart, textarea.selectionEnd),
+          startIndex: textarea.selectionStart
+        };
       }
     }
     
@@ -129,17 +118,33 @@ export default function ReaderPage() {
     if (ttsBoxTextAreaRef.current) {
         const textarea = ttsBoxTextAreaRef.current;
         if (textarea.selectionStart !== textarea.selectionEnd) {
-            return textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
+            return {
+              text: textarea.value.substring(textarea.selectionStart, textarea.selectionEnd),
+              startIndex: textarea.selectionStart
+            };
         }
     }
 
-    // Fallback for any other scenario
+    // EPUB is special, it's in an iframe
+    if (activeDoc?.type === 'epub' && epubRenditionRef.current) {
+      try {
+        const epubWindow = epubRenditionRef.current.getContents()?.[0]?.window;
+        if (epubWindow) {
+          const selection = epubWindow.getSelection()?.toString();
+          if (selection) return { text: selection, startIndex: null }; // startIndex is unknown
+        }
+      } catch (e) {
+        console.warn("Could not get selection from EPUB iframe", e);
+      }
+    }
+
+    // Fallback for any other scenario (e.g. selecting text on the page itself, less common now)
     const generalSelection = window.getSelection()?.toString();
     if (generalSelection) {
-      return generalSelection;
+      return { text: generalSelection, startIndex: null }; // startIndex is unknown
     }
     
-    return '';
+    return { text: '', startIndex: null };
   }, [activeDoc]);
 
   useEffect(() => {
@@ -277,7 +282,6 @@ export default function ReaderPage() {
               if (isMountedRef.current && epubRenditionRef.current === rendition) {
                 try {
                   const displayedContents = await rendition.getContents();
-                  // Use innerText which is more aware of rendered text and whitespace, to better match user selection.
                   const extractedText = displayedContents?.[0]?.document?.body?.innerText ?? "";
                   setCurrentTextForTTS(extractedText || "EPUB section loaded. Text may be graphical or empty.");
                 } catch (textExtractError) {
@@ -544,11 +548,12 @@ export default function ReaderPage() {
 
   // Private function to initiate speech; assumes a clean state.
   const _startSpeech = async (textToPlay: string, options: { repeat?: boolean, forceShortText?: boolean } = {}) => {
-    const { repeat = false, forceShortText = false } = options;
+    const { repeat = false } = options;
     if (!isMountedRef.current) return;
     
     const invalidMessages = [ "error:", "failed to load", "loading", "mobi files", "image loaded", "no text content", "no selectable text", "ocr completed, no text found", "no document selected", "graphical or empty", "could not load epub", "waiting for page", "preparing epub" ];
-    if (!textToPlay || (!forceShortText && invalidMessages.some(msg => textToPlay.toLowerCase().includes(msg)))) {
+    // forceShortText bypasses the invalid message check
+    if (!textToPlay || (!options.forceShortText && invalidMessages.some(msg => textToPlay.toLowerCase().includes(msg)))) {
         toast({variant: "destructive", title: "No Valid Text", description: `No valid text to read. Text was: "${textToPlay.substring(0,50)}..."`});
         if (isMountedRef.current) {
           setIsSpeaking(false);
@@ -659,33 +664,34 @@ export default function ReaderPage() {
         }
       }
     } else { // If not speaking, start a new speech.
-      const selection = getSelectedText();
-      const effectiveTextToRead = selection || currentTextForTTS;
-      startSpeech(effectiveTextToRead, { forceShortText: !!selection });
+      const selectionInfo = getSelectedText();
+      const effectiveTextToRead = selectionInfo.text || currentTextForTTS;
+      startSpeech(effectiveTextToRead, { forceShortText: !!selectionInfo.text });
     }
   };
   
   const handleRepeatSelection = () => {
-    const selection = getSelectedText();
-    
-    if (isRepeating) {
-      stopSpeech(true);
-      return;
-    }
-
-    if (!selection) {
-      toast({
-        variant: "destructive",
-        title: "No Text Selected",
-        description: "Please select text to repeat.",
-      });
-      return;
-    }
-    startSpeech(selection, { repeat: true, forceShortText: true });
+    stopSpeech(true); // Always stop previous speech before starting a new one
+    setTimeout(() => {
+        if (!isMountedRef.current) return;
+        const selectionInfo = getSelectedText();
+        if (!selectionInfo.text) {
+          toast({
+            variant: "destructive",
+            title: "No Text Selected",
+            description: "Please select text to repeat.",
+          });
+          return;
+        }
+        // Use the inverse of the current repeating state to toggle
+        _startSpeech(selectionInfo.text, { repeat: !isRepeating, forceShortText: true });
+    }, 100);
   };
   
   const handlePlayFromSelection = () => {
-    const selection = getSelectedText();
+    const selectionInfo = getSelectedText();
+    const { text: selection, startIndex: knownStartIndex } = selectionInfo;
+
     if (!selection) {
         toast({
             variant: 'default',
@@ -696,21 +702,27 @@ export default function ReaderPage() {
     }
 
     const fullText = currentTextForTTS;
-    const startIndex = fullText.indexOf(selection);
-    
-    let textToPlay;
-    if (startIndex !== -1) {
-        textToPlay = fullText.substring(startIndex);
+    let textToPlay = '';
+
+    if (knownStartIndex !== null) {
+      textToPlay = fullText.substring(knownStartIndex);
     } else {
-        textToPlay = selection; // Fallback to playing just the selection
+      const searchIndex = fullText.indexOf(selection);
+      if (searchIndex !== -1) {
+        textToPlay = fullText.substring(searchIndex);
+      } else {
+        textToPlay = selection; 
         toast({
             variant: 'default',
             title: 'Selection Not Found',
             description: 'Could not find the exact selection in the full text. Playing selection only.',
         });
+      }
     }
     
-    startSpeech(textToPlay, { forceShortText: true });
+    if (textToPlay) {
+      startSpeech(textToPlay, { forceShortText: true });
+    }
   };
 
   const handleSettingChange = <K extends keyof TTSSettings>(key: K, value: TTSSettings[K]) => {
@@ -726,7 +738,8 @@ export default function ReaderPage() {
 
   const handleFavoriteSelection = () => {
     if (!isMountedRef.current) return;
-    const textToFavorite = getSelectedText() || currentTextForTTS;
+    const selectionInfo = getSelectedText();
+    const textToFavorite = selectionInfo.text || currentTextForTTS;
     
     if (textToFavorite) {
       const sourceName = activeDoc ? activeDoc.title : 'Scratchpad';
@@ -793,8 +806,8 @@ export default function ReaderPage() {
     if (typeof window === 'undefined') {
       return { text: "Play", icon: <Play className="mr-1 h-4 w-4" />, disabled: true };
     }
-    const selectedText = getSelectedText();
-    let canPlay = !!selectedText;
+    const selectionInfo = getSelectedText();
+    let canPlay = !!selectionInfo.text;
 
     if (!canPlay) {
       const effectiveText = currentTextForTTS;
@@ -818,7 +831,7 @@ export default function ReaderPage() {
     if (isLoadingTTS) return { text: "Loading...", icon: <Loader2 className="mr-1 h-4 w-4 animate-spin" />, disabled: true };
     if (isSpeaking && !isPaused) return { text: "Pause", icon: <Pause className="mr-1 h-4 w-4" />, disabled: false };
     if (isSpeaking && isPaused) return { text: "Resume", icon: <Play className="mr-1 h-4 w-4" />, disabled: false };
-    return { text: selectedText ? "Play Selected" : "Play Text", icon: <Play className="mr-1 h-4 w-4" />, disabled: !canPlay };
+    return { text: selectionInfo.text ? "Play Selected" : "Play Text", icon: <Play className="mr-1 h-4 w-4" />, disabled: !canPlay };
   };
   const buttonState = getButtonState();
 
