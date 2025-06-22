@@ -542,104 +542,112 @@ export default function ReaderPage() {
     };
   }, [ttsSettings.engine, isSpeaking, speechOrigin, stopSpeech, toast]);
 
-  // Private function to initiate speech; assumes a clean state.
+  // The executor function. It just speaks.
   const _startSpeech = useCallback(async (textToPlay: string, origin: SpeechOrigin) => {
     if (!isMountedRef.current) return;
 
-    const invalidMessages = ["error:", "failed to load", "loading", "mobi files", "image loaded", "no selectable text", "ocr completed, no text found", "document display issue"];
-    const isInvalidText = !textToPlay || textToPlay.trim() === '' || invalidMessages.some(msg => textToPlay.toLowerCase().includes(msg));
+    // This function now trusts that it's been given valid text.
+    // It's job is just to speak.
+    stopSpeech(false); // Stop active speech, but don't reset UI yet.
     
-    if (isInvalidText) {
-        toast({variant: "destructive", title: "No Valid Text", description: "No valid text is available to be read aloud."});
-        stopSpeech(true); // CRITICAL: This prevents state deadlock.
-        return;
-    }
+    // A small delay to prevent race conditions with the SpeechSynthesis API.
+    setTimeout(async () => {
+        if (!isMountedRef.current) return;
 
-    setIsLoadingTTS(true);
-    setIsSpeaking(true);
-    setIsPaused(false);
-    setSpeechOrigin(origin);
+        setIsLoadingTTS(true);
+        setIsSpeaking(true);
+        setIsPaused(false);
+        setSpeechOrigin(origin);
 
-    if (ttsSettings.engine === 'local') {
-      if (typeof window === 'undefined' || !window.speechSynthesis) {
-        toast({ variant: "destructive", title: "TTS Error", description: "Browser Speech Synthesis not supported." });
-        stopSpeech(true);
-        return;
-      }
-      const utterance = new SpeechSynthesisUtterance(textToPlay);
-      utterance.lang = ttsSettings.language;
-      utterance.pitch = ttsSettings.pitch;
-      utterance.rate = ttsSettings.rate;
-      const systemVoices = window.speechSynthesis.getVoices();
-      let voiceToUse: SpeechSynthesisVoice | undefined = systemVoices.find(v => v.voiceURI === ttsSettings.voiceURI);
-      if (voiceToUse) utterance.voice = voiceToUse;
+        if (ttsSettings.engine === 'local') {
+            if (typeof window === 'undefined' || !window.speechSynthesis) {
+                toast({ variant: "destructive", title: "TTS Error", description: "Browser Speech Synthesis not supported." });
+                stopSpeech(true);
+                return;
+            }
+            const utterance = new SpeechSynthesisUtterance(textToPlay);
+            utterance.lang = ttsSettings.language;
+            utterance.pitch = ttsSettings.pitch;
+            utterance.rate = ttsSettings.rate;
+            const systemVoices = window.speechSynthesis.getVoices();
+            let voiceToUse: SpeechSynthesisVoice | undefined = systemVoices.find(v => v.voiceURI === ttsSettings.voiceURI);
+            if (voiceToUse) utterance.voice = voiceToUse;
 
-      utterance.onend = () => {
-        if (utteranceRef.current === utterance && isMountedRef.current) {
-          if (origin === 'repeat') {
+            utterance.onend = () => {
+                if (utteranceRef.current === utterance && isMountedRef.current) {
+                    if (origin === 'repeat' && window.speechSynthesis && !window.speechSynthesis.speaking) {
+                        window.speechSynthesis.speak(utterance);
+                    } else {
+                        stopSpeech(true);
+                    }
+                }
+            };
+            utterance.onerror = (event) => {
+                if(utteranceRef.current === utterance && isMountedRef.current) {
+                    toast({ variant: "destructive", title: "TTS Error", description: event.error || "Speech failed." });
+                    stopSpeech(true);
+                }
+            };
+            utteranceRef.current = utterance;
             window.speechSynthesis.speak(utterance);
-          } else {
-            stopSpeech(true);
-          }
+            if(isMountedRef.current) setIsLoadingTTS(false);
+
+        } else { // Cloud TTS
+            try {
+                if (audioPlayerRef.current) {
+                    audioPlayerRef.current.loop = (origin === 'repeat');
+                }
+                const result = await getCloudSpeech(textToPlay, ttsSettings.language);
+                if(!isMountedRef.current) return;
+                if ('audioUrl' in result && audioPlayerRef.current) {
+                    audioPlayerRef.current.src = result.audioUrl;
+                    await audioPlayerRef.current.play();
+                } else if ('error' in result) {
+                    toast({ variant: "destructive", title: "Cloud TTS Error", description: result.error });
+                    if(isMountedRef.current) stopSpeech(true);
+                }
+            } catch (e: any) {
+                if(isMountedRef.current) {
+                    toast({ variant: "destructive", title: "Cloud TTS Failed", description: e.message });
+                    stopSpeech(true);
+                }
+            }
         }
-      };
-      utterance.onerror = (event) => {
-        if(utteranceRef.current === utterance && isMountedRef.current) {
-          toast({ variant: "destructive", title: "TTS Error", description: event.error || "Speech failed." });
-          stopSpeech(true); // Always reset on error
-        }
-      };
-      utteranceRef.current = utterance;
-      window.speechSynthesis.speak(utterance);
-      if(isMountedRef.current) setIsLoadingTTS(false);
-    } else {
-      try {
-        if (audioPlayerRef.current) {
-            audioPlayerRef.current.loop = (origin === 'repeat');
-        }
-        const result = await getCloudSpeech(textToPlay, ttsSettings.language);
-        if(!isMountedRef.current) return;
-        if ('audioUrl' in result && audioPlayerRef.current) {
-          audioPlayerRef.current.src = result.audioUrl;
-          await audioPlayerRef.current.play();
-        } else if ('error' in result) {
-          toast({ variant: "destructive", title: "Cloud TTS Error", description: result.error });
-          if(isMountedRef.current) stopSpeech(true);
-        }
-      } catch (e: any) {
-        if(isMountedRef.current) {
-          toast({ variant: "destructive", title: "Cloud TTS Failed", description: e.message });
-          if(isMountedRef.current) stopSpeech(true);
-        }
-      }
-    }
+    }, 50);
   }, [ttsSettings, stopSpeech, toast]);
 
+  // The "brain" function for the main play button.
   const playPauseSpeech = () => {
     if (!isMountedRef.current || typeof window === 'undefined' || !window.speechSynthesis) return;
 
-    // If another speech task is running, the main button takes priority.
+    // 1. Simple, reliable validation.
+    if (!currentTextForTTS || currentTextForTTS.trim() === '') {
+        toast({variant: "destructive", title: "No Text", description: "No text is available to be read aloud."});
+        return;
+    }
+    const invalidMessages = ["loading...", "performing ocr..."];
+    if(invalidMessages.some(msg => currentTextForTTS.toLowerCase().includes(msg))) {
+        toast({variant: "destructive", title: "Cannot Play", description: "Please wait for the current action to complete."});
+        return;
+    }
+    
+    // 2. If another speech is running, the main button takes priority and will take over.
     if (isSpeaking && speechOrigin !== 'main') {
-        stopSpeech(false); // Cancel whatever is running.
-        // Use a timeout to allow the 'cancel' to fully process before starting new speech.
-        setTimeout(() => {
-            if (isMountedRef.current) _startSpeech(currentTextForTTS, 'main');
-        }, 50);
+        _startSpeech(currentTextForTTS, 'main');
         return;
     }
 
-    // At this point, we are only concerned with the 'main' speech task or no speech at all.
-    // We can now safely use the browser's state to determine the correct action.
-    const isBrowserSpeaking = window.speechSynthesis.speaking;
-    const isBrowserPaused = window.speechSynthesis.paused;
-
-    if (isBrowserSpeaking && isBrowserPaused) {
-        window.speechSynthesis.resume();
-        setIsPaused(false);
-    } else if (isBrowserSpeaking && !isBrowserPaused) {
-        window.speechSynthesis.pause();
-        setIsPaused(true);
-    } else {
+    // 3. At this point, we are only concerned with the 'main' speech task or no speech at all.
+    // We can now safely use the browser's REAL state to determine the correct action.
+    if (window.speechSynthesis.speaking) { // It's either paused or speaking
+        if (window.speechSynthesis.paused) {
+            window.speechSynthesis.resume();
+            setIsPaused(false);
+        } else {
+            window.speechSynthesis.pause();
+            setIsPaused(true);
+        }
+    } else { // It's not speaking at all, start fresh
         _startSpeech(currentTextForTTS, 'main');
     }
   };
@@ -650,27 +658,19 @@ export default function ReaderPage() {
       return;
     }
   
-    stopSpeech(false); // Reset before starting new speech
-    setTimeout(() => {
-      if (!isMountedRef.current) return;
-      const selectionInfo = getSelectedText();
-      if (!selectionInfo.text) {
-        toast({
-          variant: "destructive",
-          title: "No Text Selected",
-          description: "Please select text to repeat.",
-        });
-        stopSpeech(true); // Fully reset UI if no text
-        return;
-      }
-      _startSpeech(selectionInfo.text, 'repeat');
-    }, 100);
+    const selectionInfo = getSelectedText();
+    if (!selectionInfo.text) {
+      toast({
+        variant: "destructive",
+        title: "No Text Selected",
+        description: "Please select text to repeat.",
+      });
+      return;
+    }
+    _startSpeech(selectionInfo.text, 'repeat');
   };
   
   const handlePlayFromSelection = () => {
-    if (!isMountedRef.current) return;
-  
-    // If the selection player is already active, just pause/resume it
     if (isSpeaking && speechOrigin === 'selection') {
       if (isPaused) {
         if (ttsSettings.engine === 'local') window.speechSynthesis.resume();
@@ -684,78 +684,39 @@ export default function ReaderPage() {
       return;
     }
   
-    // If any other speech is happening, stop it. Then start the new one.
-    stopSpeech(false);
+    const selectionInfo = getSelectedText();
+    if (!selectionInfo.text) {
+      toast({ variant: 'default', title: 'No Text Selected', description: 'Please select text to start playing from that point.' });
+      return;
+    }
   
-    setTimeout(() => {
-      if (!isMountedRef.current) return;
+    const fullText = activeDoc?.type === 'txt' ? txtContent :
+                     !activeDoc ? scratchpadText :
+                     currentTextForTTS;
+    
+    let textToPlay = '';
   
-      const selectionInfo = getSelectedText();
-      if (!selectionInfo.text) {
-        toast({ variant: 'default', title: 'No Text Selected', description: 'Please select text to start playing from that point.' });
-        stopSpeech(true);
-        return;
+    if (selectionInfo.startIndex !== null && (mainTextAreaRef.current || ttsBoxTextAreaRef.current)) {
+      const sourceTextArea = mainTextAreaRef.current?.value === fullText ? mainTextAreaRef.current : ttsBoxTextAreaRef.current;
+      if (sourceTextArea) {
+        textToPlay = sourceTextArea.value.substring(selectionInfo.startIndex);
       }
-  
-      const fullText = activeDoc?.type === 'txt' ? txtContent :
-                       !activeDoc ? scratchpadText :
-                       currentTextForTTS;
-      
-      let textToPlay = '';
-  
-      // Prioritize precise index from textareas
-      if (selectionInfo.startIndex !== null && (mainTextAreaRef.current || ttsBoxTextAreaRef.current)) {
-        const sourceTextArea = mainTextAreaRef.current?.value === fullText ? mainTextAreaRef.current : ttsBoxTextAreaRef.current;
-        if (sourceTextArea) {
-          textToPlay = sourceTextArea.value.substring(selectionInfo.startIndex);
-        }
-      } 
-      
-      // Fallback to searching for EPUB and other cases
-      if (!textToPlay) {
-          // For EPUB, re-get the current displayed text to ensure consistency
-          const sourceText = activeDoc?.type === 'epub' && epubRenditionRef.current
-            ? epubRenditionRef.current.getContents()?.[0]?.document?.body?.innerText || fullText
-            : fullText;
-  
-          // Normalize both texts for a more reliable search
-          const normalizedSource = sourceText.replace(/\s+/g, ' ');
-          const normalizedSelection = selectionInfo.text.replace(/\s+/g, ' ');
-          const searchIndex = normalizedSource.indexOf(normalizedSelection);
-  
-          if (searchIndex !== -1) {
-              // Find the equivalent starting point in the original, non-normalized text
-              const preSelectionText = sourceText.substring(0, searchIndex);
-              const originalBreakCount = (preSelectionText.match(/\s+/g) || []).length;
-              
-              let currentBreakCount = 0;
-              let originalStartIndex = 0;
-              for(let i = 0; i < sourceText.length; i++) {
-                  if (/\s/.test(sourceText[i])) {
-                      currentBreakCount++;
-                  }
-                  if (currentBreakCount >= originalBreakCount) {
-                      // This is a rough approximation, find the start of the word instead
-                      let tempIndex = sourceText.indexOf(selectionInfo.text.split(/\s+/)[0], i);
-                      originalStartIndex = tempIndex > -1 ? tempIndex : i;
-                      break;
-                  }
-              }
-              textToPlay = sourceText.substring(originalStartIndex);
-          }
+    } else if (fullText) {
+      const normalizedSource = fullText.replace(/\s+/g, ' ');
+      const normalizedSelection = selectionInfo.text.replace(/\s+/g, ' ');
+      const searchIndex = normalizedSource.indexOf(normalizedSelection);
+      if (searchIndex !== -1) {
+          const preSelectionTextInSource = fullText.substring(0, fullText.indexOf(selectionInfo.text, searchIndex));
+          textToPlay = fullText.substring(fullText.indexOf(selectionInfo.text, searchIndex));
       }
+    }
 
-      if (textToPlay) {
-        _startSpeech(textToPlay, 'selection');
-      } else {
-        toast({
-          variant: 'destructive',
-          title: 'Could Not Play Selection',
-          description: 'Could not find the selected text in the current document view. Playing selection only.',
-        });
-        _startSpeech(selectionInfo.text, 'selection');
-      }
-    }, 100);
+    if (textToPlay) {
+      _startSpeech(textToPlay, 'selection');
+    } else {
+      // Fallback to playing just the selection if it can't be found
+      _startSpeech(selectionInfo.text, 'selection');
+    }
   };
 
 
