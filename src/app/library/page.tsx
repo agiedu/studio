@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { UploadCloud, Info, Trash2, BookOpen, FileText, Image as ImageIcon, RefreshCw, Loader2, Save, FileType2, Book } from 'lucide-react';
 import * as IndexedDBService from '@/lib/indexedDBService';
+import * as LocalStorageService from '@/lib/localStorageService';
 import type { StoredMangaDocument } from '@/types';
 import { getDocument, GlobalWorkerOptions, version as pdfjsVersion } from 'pdfjs-dist';
 import {
@@ -23,6 +24,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
+// Load metadata synchronously from localStorage for an instant UI.
+// This is an unsafe cast but it's for display purposes only until the full data loads.
+// The properties used for initial render (id, title, type, etc.) are present.
+const initialDocs = LocalStorageService.loadDocumentMetadata() as StoredMangaDocument[];
+
 
 function arrayBufferToBlob(buffer: ArrayBuffer, type: string): Blob {
   return new Blob([buffer], { type });
@@ -30,28 +36,35 @@ function arrayBufferToBlob(buffer: ArrayBuffer, type: string): Blob {
 
 export default function LibraryPage() {
   const { toast } = useToast();
-  const [storedDocuments, setStoredDocuments] = useState<StoredMangaDocument[]>(() => IndexedDBService.getCachedDocuments() || []);
-  const [isLoading, setIsLoading] = useState(() => !IndexedDBService.getCachedDocuments());
+  const [storedDocuments, setStoredDocuments] = useState<StoredMangaDocument[]>(initialDocs);
+  const [isLoading, setIsLoading] = useState(initialDocs.length === 0);
   const [isUploading, setIsUploading] = useState(false);
   const [isSavingToDevice, setIsSavingToDevice] = useState<string | null>(null);
   const [docToDelete, setDocToDelete] = useState<StoredMangaDocument | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const fetchDocuments = async (forceRefresh: boolean = false, operationLabel: string = "Fetching documents") => {
-    if (storedDocuments.length === 0 && !forceRefresh) {
+    // If we are forcing a refresh, or if we had nothing to show initially, show the loader.
+    if (forceRefresh || storedDocuments.length === 0) {
       setIsLoading(true);
     }
     try {
+      // getAllDocuments will use its own in-memory cache unless forceRefresh is true.
+      // It will also update the localStorage metadata cache upon fetching from DB.
       const docs = await IndexedDBService.getAllDocuments(forceRefresh);
       setStoredDocuments(docs);
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error Loading Documents", description: `Could not load documents. ${error.message}` });
     } finally {
+      // Always make sure the loader is turned off.
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
+    // On mount, we always fetch. If the page was rendered with cached metadata,
+    // this will fetch the full objects (with fileData) in the background. 
+    // If the page had nothing, this will be the initial load (and `isLoading` is already true).
     fetchDocuments();
      if (typeof window !== 'undefined' && !GlobalWorkerOptions.workerSrc) {
         GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsVersion}/pdf.worker.mjs`;

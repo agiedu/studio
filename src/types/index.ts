@@ -1,4 +1,5 @@
 
+
 export interface MangaSubPage { // Primarily for PDF pages rendered as images
   imageDataUrl: string;
   extractedText?: string;
@@ -82,3 +83,16 @@ export type ActiveMangaDocument = StoredMangaDocument & {
   // currentPdfPageImage?: string;
   // currentEpubBookInstance?: any; // epub.js Book instance
 };
+
+/**
+ * A lightweight version of StoredMangaDocument for quick, synchronous loading from localStorage.
+ * Contains only the data needed for display in the library list.
+ */
+export interface MangaDocumentDisplayInfo {
+  id: string;
+  title: string;
+  type: StoredMangaDocument['type'];
+  originalType: string;
+  createdAt: number;
+  numPages?: number;
+}

@@ -1,5 +1,5 @@
 
-import type { TTSSettings, FavoriteItem } from '@/types';
+import type { TTSSettings, FavoriteItem, MangaDocumentDisplayInfo } from '@/types';
 // PDF_MANGA_DOCUMENT_PAGE_STATES_KEY will be managed differently or per document in IndexedDB if needed.
 // For now, we simplify and assume MangaRoom handles its current page index in component state.
 
@@ -7,6 +7,7 @@ const TTS_SETTINGS_KEY = 'mangaTalk_ttsSettings_v2';
 const NIGHT_MODE_KEY = 'mangaTalk_nightMode_v2';
 const FAVORITE_ITEMS_KEY = 'mangaTalk_favoriteItems_v1';
 const SCRATCHPAD_TEXT_KEY = 'mangaTalk_scratchpadText_v1';
+const DOC_METADATA_CACHE_KEY = 'mangaTalk_docMetadataCache_v1';
 
 
 // Helper to safely access localStorage
@@ -99,4 +100,13 @@ export const loadScratchpadText = (): string => {
 
 export const saveScratchpadText = (text: string): boolean => {
   return safeLocalStorageSet(SCRATCHPAD_TEXT_KEY, text);
+};
+
+// Document Metadata Cache
+export const loadDocumentMetadata = (): MangaDocumentDisplayInfo[] => {
+  return safeLocalStorageGet<MangaDocumentDisplayInfo[]>(DOC_METADATA_CACHE_KEY, []);
+};
+
+export const saveDocumentMetadata = (metadata: MangaDocumentDisplayInfo[]): boolean => {
+  return safeLocalStorageSet(DOC_METADATA_CACHE_KEY, metadata);
 };

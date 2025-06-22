@@ -1,6 +1,7 @@
 
 // src/lib/indexedDBService.ts
-import type { StoredMangaDocument } from '@/types';
+import type { StoredMangaDocument, StoredPdfDocument, MangaDocumentDisplayInfo } from '@/types';
+import { saveDocumentMetadata } from './localStorageService';
 
 const DB_NAME = 'MangaTalkDB';
 const DB_VERSION = 2;
@@ -139,6 +140,23 @@ export async function getAllDocuments(forceRefresh: boolean = false): Promise<St
         const results = request.result as StoredMangaDocument[];
         console.log(`[IndexedDBService] getAllDocuments: Successfully retrieved ${results.length} documents.`);
         documentCache = results.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)); // Cache and sort
+
+        // Save metadata to localStorage for instant UI loads
+        const metadata: MangaDocumentDisplayInfo[] = documentCache.map(doc => {
+            const meta: MangaDocumentDisplayInfo = {
+                id: doc.id,
+                title: doc.title,
+                type: doc.type,
+                originalType: doc.originalType,
+                createdAt: doc.createdAt,
+            };
+            if (doc.type === 'pdf') {
+                meta.numPages = (doc as StoredPdfDocument).numPages;
+            }
+            return meta;
+        });
+        saveDocumentMetadata(metadata);
+
         isFetching = null;
         resolve(documentCache); // Resolves when getAll request is done
     };
