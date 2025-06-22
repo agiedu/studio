@@ -6,7 +6,6 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import NextImage from 'next/image';
 import { GlobalWorkerOptions, getDocument, version as pdfjsVersion } from 'pdfjs-dist';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist/types/src/display/api';
-import type Epub from 'epubjs';
 import type Book from 'epubjs/types/book';
 import type Rendition from 'epubjs/types/rendition';
 
@@ -40,6 +39,7 @@ import { Textarea } from '@/components/ui/textarea';
 
 const PDF_DEFAULT_SCALE = 1.5;
 
+type SpeechOrigin = 'main' | 'selection' | 'repeat' | null;
 
 export default function ReaderPage() {
   const { toast } = useToast();
@@ -81,13 +81,7 @@ export default function ReaderPage() {
   const [isLoadingTTS, setIsLoadingTTS] = useState<boolean>(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
-  const [isRepeating, setIsRepeating] = useState(false);
-
-  const isRepeatingRef = useRef(isRepeating);
-  useEffect(() => {
-    isRepeatingRef.current = isRepeating;
-  }, [isRepeating]);
-
+  const [speechOrigin, setSpeechOrigin] = useState<SpeechOrigin>(null);
 
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -102,33 +96,36 @@ export default function ReaderPage() {
     if (typeof window === 'undefined') {
       return { text: '', startIndex: null };
     }
-
+  
     // Priority 1: Main content text area (Scratchpad, TXT)
-    if (mainTextAreaRef.current && mainTextAreaRef.current.selectionStart !== mainTextAreaRef.current.selectionEnd) {
-      const textarea = mainTextAreaRef.current;
+    const mainTextarea = mainTextAreaRef.current;
+    if (mainTextarea && mainTextarea.selectionStart !== mainTextarea.selectionEnd) {
       return {
-        text: textarea.value.substring(textarea.selectionStart, textarea.selectionEnd),
-        startIndex: textarea.selectionStart
+        text: mainTextarea.value.substring(mainTextarea.selectionStart, mainTextarea.selectionEnd),
+        startIndex: mainTextarea.selectionStart
       };
     }
     
     // Priority 2: Bottom TTS text area (PDF, Image)
-    if (ttsBoxTextAreaRef.current && ttsBoxTextAreaRef.current.selectionStart !== ttsBoxTextAreaRef.current.selectionEnd) {
-        const textarea = ttsBoxTextAreaRef.current;
-        return {
-          text: textarea.value.substring(textarea.selectionStart, textarea.selectionEnd),
-          startIndex: textarea.selectionStart
-        };
+    const ttsTextarea = ttsBoxTextAreaRef.current;
+    if (ttsTextarea && ttsTextarea.selectionStart !== ttsTextarea.selectionEnd) {
+      return {
+        text: ttsTextarea.value.substring(ttsTextarea.selectionStart, ttsTextarea.selectionEnd),
+        startIndex: ttsTextarea.selectionStart
+      };
     }
-
+  
     // Priority 3: EPUB iframe
     if (activeDoc?.type === 'epub' && epubRenditionRef.current) {
       try {
         const epubWindow = epubRenditionRef.current.getContents()?.[0]?.window;
         if (epubWindow) {
-          const selection = epubWindow.getSelection()?.toString();
-          if (selection) {
-            return { text: selection, startIndex: null }; // Start index is unknown from iframe
+          const selection = epubWindow.getSelection();
+          const selectionText = selection?.toString();
+          if (selectionText) {
+             // For EPUB, we can only reliably get the text, not a numeric index into a larger string.
+             // The search logic will be handled by the caller.
+            return { text: selectionText, startIndex: null };
           }
         }
       } catch (e) {
@@ -136,6 +133,12 @@ export default function ReaderPage() {
       }
     }
     
+    // Priority 4: General page selection (fallback)
+    const pageSelection = window.getSelection()?.toString();
+    if (pageSelection) {
+      return { text: pageSelection, startIndex: null };
+    }
+  
     return { text: '', startIndex: null };
   }, [activeDoc]);
 
@@ -164,7 +167,6 @@ export default function ReaderPage() {
     }
     if (audioPlayerRef.current) {
       audioPlayerRef.current.pause();
-      audioPlayerRef.current.loop = false; // Important for cloud repeat
       if (audioPlayerRef.current.src && audioPlayerRef.current.readyState >= HTMLMediaElement.HAVE_METADATA) {
         try { audioPlayerRef.current.currentTime = 0; } catch (e) { /* ignore */ }
       }
@@ -173,7 +175,7 @@ export default function ReaderPage() {
       utteranceRef.current.onend = null; utteranceRef.current.onboundary = null; utteranceRef.current.onerror = null; utteranceRef.current = null;
     }
     if (resetUIState && isMountedRef.current) {
-      setIsSpeaking(false); setIsPaused(false); setIsLoadingTTS(false); setIsRepeating(false);
+      setIsSpeaking(false); setIsPaused(false); setIsLoadingTTS(false); setSpeechOrigin(null);
     }
   }, []);
 
@@ -274,7 +276,9 @@ export default function ReaderPage() {
               if (isMountedRef.current && epubRenditionRef.current === rendition) {
                 try {
                   const displayedContents = await rendition.getContents();
-                  const extractedText = displayedContents?.[0]?.document?.body?.textContent ?? "";
+                  const body = displayedContents?.[0]?.document?.body;
+                  // Use innerText to better reflect what the user sees, including line breaks.
+                  const extractedText = body ? (body.innerText || body.textContent || "") : "";
                   setCurrentTextForTTS(extractedText || "EPUB section loaded. Text may be graphical or empty.");
                 } catch (textExtractError) {
                   setCurrentTextForTTS("EPUB section loaded, but text could not be extracted.");
@@ -520,7 +524,7 @@ export default function ReaderPage() {
     const player = new Audio(); audioPlayerRef.current = player;
     const handleAudioEnded = () => { 
         if (audioPlayerRef.current === player && isSpeaking && ttsSettings.engine === 'cloud' && isMountedRef.current) { 
-            if(isRepeatingRef.current && audioPlayerRef.current) {
+            if(speechOrigin === 'repeat' && audioPlayerRef.current) {
                 audioPlayerRef.current.currentTime = 0;
                 audioPlayerRef.current.play();
             } else {
@@ -536,19 +540,17 @@ export default function ReaderPage() {
         if (player.src && !player.paused) player.pause(); player.src = "";
         if (audioPlayerRef.current === player) audioPlayerRef.current = null;
     };
-  }, [ttsSettings.engine, isSpeaking, stopSpeech, toast]);
+  }, [ttsSettings.engine, isSpeaking, speechOrigin, stopSpeech, toast]);
 
   // Private function to initiate speech; assumes a clean state.
-  const _startSpeech = async (textToPlay: string, options: { repeat?: boolean } = {}) => {
-    const { repeat = false } = options;
+  const _startSpeech = useCallback(async (textToPlay: string, origin: SpeechOrigin) => {
     if (!isMountedRef.current) return;
     
     const invalidMessages = [ "error:", "failed to load", "loading", "mobi files", "image loaded", "no text content", "no selectable text", "ocr completed, no text found", "no document selected", "graphical or empty", "could not load epub", "waiting for page", "preparing epub" ];
     if (!textToPlay || invalidMessages.some(msg => textToPlay.toLowerCase().includes(msg))) {
         toast({variant: "destructive", title: "No Valid Text", description: `No valid text to read. Text was: "${textToPlay.substring(0,50)}..."`});
         if (isMountedRef.current) {
-          setIsSpeaking(false);
-          setIsRepeating(false);
+          stopSpeech(true); // Reset all state if text is invalid
         }
         return;
     }
@@ -556,11 +558,7 @@ export default function ReaderPage() {
     setIsLoadingTTS(true);
     setIsSpeaking(true);
     setIsPaused(false);
-    setIsRepeating(repeat);
-
-    if (audioPlayerRef.current) {
-      audioPlayerRef.current.loop = repeat;
-    }
+    setSpeechOrigin(origin);
 
     if (ttsSettings.engine === 'local') {
       if (typeof window === 'undefined' || !window.speechSynthesis) {
@@ -578,7 +576,7 @@ export default function ReaderPage() {
 
       utterance.onend = () => {
         if (utteranceRef.current === utterance && isMountedRef.current) {
-          if (isRepeatingRef.current) {
+          if (speechOrigin === 'repeat') {
             window.speechSynthesis.speak(utterance);
           } else {
             stopSpeech(true);
@@ -596,6 +594,9 @@ export default function ReaderPage() {
       if(isMountedRef.current) setIsLoadingTTS(false);
     } else {
       try {
+        if (audioPlayerRef.current) {
+            audioPlayerRef.current.loop = (origin === 'repeat');
+        }
         const result = await getCloudSpeech(textToPlay, ttsSettings.language);
         if(!isMountedRef.current) return;
         if ('audioUrl' in result && audioPlayerRef.current) {
@@ -612,28 +613,24 @@ export default function ReaderPage() {
         }
       }
     }
-  };
+  }, [ttsSettings, stopSpeech, toast, speechOrigin]);
 
   // Public controller to start speech. It always resets state first.
-  const startSpeech = (textToPlay: string, options: { repeat?: boolean } = {}) => {
-      stopSpeech(true);
+  const startSpeech = useCallback((textToPlay: string, origin: SpeechOrigin) => {
+      stopSpeech(false); // Soft stop, don't reset UI immediately
       setTimeout(() => {
           if (isMountedRef.current) {
-              _startSpeech(textToPlay, options);
+              _startSpeech(textToPlay, origin);
           }
-      }, 100);
-  };
+      }, 50); // Small delay to ensure state is clean
+  }, [_startSpeech, stopSpeech]);
 
 
   const playPauseSpeech = () => {
     if (!isMountedRef.current) return;
     
-    // If speaking, handle pause/resume
-    if (isSpeaking) {
-      if (isRepeating) {
-          stopSpeech(true);
-          return;
-      }
+    // If speaking, handle pause/resume, but only for the main player
+    if (isSpeaking && speechOrigin === 'main') {
       if (isPaused) { // If paused, resume.
         if (ttsSettings.engine === 'local' && utteranceRef.current && window.speechSynthesis?.paused) {
           window.speechSynthesis.resume();
@@ -654,66 +651,127 @@ export default function ReaderPage() {
           if (isMountedRef.current) setIsPaused(true);
         }
       }
-    } else { // If not speaking, start a new speech.
+    } else { // If not speaking, or another origin is, start a new speech from main.
       const selectionInfo = getSelectedText();
       const effectiveTextToRead = selectionInfo.text || currentTextForTTS;
-      startSpeech(effectiveTextToRead);
+      startSpeech(effectiveTextToRead, 'main');
     }
   };
   
   const handleRepeatSelection = () => {
-    stopSpeech(true);
+    if (isSpeaking && speechOrigin === 'repeat') {
+      stopSpeech(true);
+      return;
+    }
+  
+    stopSpeech(false); // Reset before starting new speech
     setTimeout(() => {
-        if (!isMountedRef.current) return;
-        const selectionInfo = getSelectedText();
-        if (!selectionInfo.text) {
-          toast({
-            variant: "destructive",
-            title: "No Text Selected",
-            description: "Please select text to repeat.",
-          });
-          return;
-        }
-        _startSpeech(selectionInfo.text, { repeat: !isRepeating });
+      if (!isMountedRef.current) return;
+      const selectionInfo = getSelectedText();
+      if (!selectionInfo.text) {
+        toast({
+          variant: "destructive",
+          title: "No Text Selected",
+          description: "Please select text to repeat.",
+        });
+        stopSpeech(true); // Fully reset UI if no text
+        return;
+      }
+      _startSpeech(selectionInfo.text, 'repeat');
     }, 100);
   };
   
   const handlePlayFromSelection = () => {
-    const selectionInfo = getSelectedText();
-    const selection = selectionInfo.text;
-
-    if (!selection) {
-        toast({
-            variant: 'default',
-            title: 'No Text Selected',
-            description: 'Please select text to start playing from that point.',
-        });
-        return;
-    }
-
-    const fullText = currentTextForTTS;
-    let textToPlay = '';
-
-    if (selectionInfo.startIndex !== null) {
-      textToPlay = fullText.substring(selectionInfo.startIndex);
-    } else {
-      const searchIndex = fullText.indexOf(selection);
-      if (searchIndex !== -1) {
-        textToPlay = fullText.substring(searchIndex);
+    if (!isMountedRef.current) return;
+  
+    // If the selection player is already active, just pause/resume it
+    if (isSpeaking && speechOrigin === 'selection') {
+      if (isPaused) {
+        if (ttsSettings.engine === 'local') window.speechSynthesis.resume();
+        else if (audioPlayerRef.current) audioPlayerRef.current.play();
+        setIsPaused(false);
       } else {
-        textToPlay = selection; 
-        toast({
-            variant: 'default',
-            title: 'Playing Selection Only',
-            description: 'Could not find the exact selection in the full text. Playing selection only.',
-        });
+        if (ttsSettings.engine === 'local') window.speechSynthesis.pause();
+        else if (audioPlayerRef.current) audioPlayerRef.current.pause();
+        setIsPaused(true);
       }
+      return;
     }
-    
-    if (textToPlay) {
-      startSpeech(textToPlay);
-    }
+  
+    // If any other speech is happening, stop it. Then start the new one.
+    stopSpeech(false);
+  
+    setTimeout(() => {
+      if (!isMountedRef.current) return;
+  
+      const selectionInfo = getSelectedText();
+      if (!selectionInfo.text) {
+        toast({ variant: 'default', title: 'No Text Selected', description: 'Please select text to start playing from that point.' });
+        stopSpeech(true);
+        return;
+      }
+  
+      const fullText = activeDoc?.type === 'txt' ? txtContent :
+                       !activeDoc ? scratchpadText :
+                       currentTextForTTS;
+      
+      let textToPlay = '';
+  
+      // Prioritize precise index from textareas
+      if (selectionInfo.startIndex !== null && (mainTextAreaRef.current || ttsBoxTextAreaRef.current)) {
+        const sourceTextArea = mainTextAreaRef.current?.value === fullText ? mainTextAreaRef.current : ttsBoxTextAreaRef.current;
+        if (sourceTextArea) {
+          textToPlay = sourceTextArea.value.substring(selectionInfo.startIndex);
+        }
+      } 
+      
+      // Fallback to searching for EPUB and other cases
+      if (!textToPlay) {
+          // For EPUB, re-get the current displayed text to ensure consistency
+          const sourceText = activeDoc?.type === 'epub' && epubRenditionRef.current
+            ? epubRenditionRef.current.getContents()?.[0]?.document?.body?.innerText || fullText
+            : fullText;
+  
+          // Normalize both texts for a more reliable search
+          const normalizedSource = sourceText.replace(/\s+/g, ' ');
+          const normalizedSelection = selectionInfo.text.replace(/\s+/g, ' ');
+          const searchIndex = normalizedSource.indexOf(normalizedSelection);
+  
+          if (searchIndex !== -1) {
+              // Find the equivalent starting point in the original, non-normalized text
+              const preSelectionText = sourceText.substring(0, searchIndex);
+              const originalBreakCount = (preSelectionText.match(/\s+/g) || []).length;
+              
+              let currentBreakCount = 0;
+              let originalStartIndex = 0;
+              for(let i = 0; i < sourceText.length; i++) {
+                  if (/\s/.test(sourceText[i])) {
+                      currentBreakCount++;
+                  }
+                  if (currentBreakCount >= originalBreakCount) {
+                      // This is a rough approximation, find the start of the word instead
+                      let tempIndex = sourceText.indexOf(selectionInfo.text.split(/\s+/)[0], i);
+                      originalStartIndex = tempIndex > -1 ? tempIndex : i;
+                      break;
+                  }
+              }
+              textToPlay = sourceText.substring(originalStartIndex);
+          }
+      }
+
+      if (textToPlay) {
+        _startSpeech(textToPlay, 'selection');
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Could Not Play Selection',
+          description: 'Could not find the selected text in the current document view. Playing selection only.',
+        });
+        _startSpeech(selectionInfo.text, 'selection');
+      }
+    }, 100);
   };
+
 
   const handleSettingChange = <K extends keyof TTSSettings>(key: K, value: TTSSettings[K]) => {
     if(!isMountedRef.current) return; stopSpeech(true); 
@@ -792,39 +850,30 @@ export default function ReaderPage() {
     toast({ title: "Scratchpad Cleared" });
   };
 
-  const getButtonState = () => {
-    if (typeof window === 'undefined') {
-      return { text: "Play", icon: <Play className="mr-1 h-4 w-4" />, disabled: true };
+  const getMainButtonState = () => {
+    if (isLoadingTTS && (!speechOrigin || speechOrigin === 'main')) return { text: "Loading...", icon: <Loader2 className="mr-1 h-4 w-4 animate-spin" />, disabled: true };
+    if (isSpeaking && speechOrigin === 'main') {
+      return isPaused ?
+        { text: "Resume", icon: <Play className="mr-1 h-4 w-4" />, disabled: false } :
+        { text: "Pause", icon: <Pause className="mr-1 h-4 w-4" />, disabled: false };
     }
     const selectionInfo = getSelectedText();
-    let canPlay = !!selectionInfo.text;
-
-    if (!canPlay) {
-      const effectiveText = currentTextForTTS;
-      const invalidMessages = [ "error:", "failed to load", "loading", "mobi files", "image loaded", "no text content", "no selectable text", "ocr completed, no text found", "no document selected", "graphical or empty", "could not load epub", "waiting for page", "preparing epub" ];
-      if (effectiveText && !invalidMessages.some(msg => effectiveText.toLowerCase().includes(msg))) {
-        canPlay = true;
-      }
-    }
-    
-    if (activeDoc) {
-      if (activeDoc.type === 'pdf' && (isLoadingDoc || isRenderingPdfPage)) canPlay = false;
-      else if (activeDoc.type === 'epub' && (isLoadingDoc || isEpubLoading)) canPlay = false;
-      else if (activeDoc.type === 'image' && isLoadingDoc) canPlay = false;
-      else if (activeDoc.type === 'txt' && isLoadingDoc) canPlay = false;
-    } else if (isLoadingDoc) {
-      canPlay = false;
-    }
-
-    if (isPerformingOcr || docErrorMessage) canPlay = false;
-
-    if (isLoadingTTS) return { text: "Loading...", icon: <Loader2 className="mr-1 h-4 w-4 animate-spin" />, disabled: true };
-    if (isSpeaking && !isPaused) return { text: "Pause", icon: <Pause className="mr-1 h-4 w-4" />, disabled: false };
-    if (isSpeaking && isPaused) return { text: "Resume", icon: <Play className="mr-1 h-4 w-4" />, disabled: false };
-    return { text: selectionInfo.text ? "Play Selected" : "Play Text", icon: <Play className="mr-1 h-4 w-4" />, disabled: !canPlay };
+    return { text: selectionInfo.text ? "Play Selected" : "Play Text", icon: <Play className="mr-1 h-4 w-4" />, disabled: false };
   };
-  const buttonState = getButtonState();
 
+  const getPlayFromSelectionButtonState = () => {
+      if (isLoadingTTS && speechOrigin === 'selection') return { text: "Loading...", icon: <Loader2 className="mr-2 h-3 w-3 animate-spin" />};
+      if (isSpeaking && speechOrigin === 'selection') {
+        return isPaused 
+          ? { text: "Resume", icon: <Play className="mr-2 h-3 w-3"/>}
+          : { text: "Pause", icon: <Pause className="mr-2 h-3 w-3"/>};
+      }
+      return { text: "Play from Sel.", icon: <TextSelect className="mr-2 h-3 w-3"/>};
+  }
+
+  const mainButtonState = getMainButtonState();
+  const playFromSelectionButtonState = getPlayFromSelectionButtonState();
+  
   const showInitialLoader = isLoadingDoc && !activeDoc && !docErrorMessage;
   const showDocumentError = docErrorMessage && !activeDoc;
   
@@ -1033,21 +1082,32 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                 )}
                 <div className="space-y-1"><Label htmlFor="tts-rate" className="text-xs">Rate: {ttsSettings.rate.toFixed(1)}</Label><Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isSpeaking && !isPaused}/></div>
                 <div className="space-y-1"><Label htmlFor="tts-pitch" className="text-xs">Pitch: {ttsSettings.pitch.toFixed(1)}</Label><Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isSpeaking && !isPaused}/></div>
-                <Button onClick={playPauseSpeech} disabled={buttonState.disabled} variant={isSpeaking && !isPaused && !isRepeating ? "outline" : "default"} className="w-full h-9 text-sm">{buttonState.icon} {buttonState.text}</Button>
+                
+                <Button onClick={playPauseSpeech} disabled={mainButtonState.disabled} variant={isSpeaking && !isPaused && speechOrigin === 'main' ? "outline" : "default"} className="w-full h-9 text-sm">{mainButtonState.icon} {mainButtonState.text}</Button>
+                
                 <div className="grid grid-cols-2 gap-2 mt-2">
                   <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full text-xs"> <Star className="mr-2 h-3 w-3" /> Favorite </Button>
                   <Button
                     onClick={handleRepeatSelection}
-                    variant={isRepeating ? "destructive" : "outline"}
+                    variant={isSpeaking && speechOrigin === 'repeat' ? "destructive" : "outline"}
                     size="sm"
                     className="w-full text-xs"
-                    disabled={isLoadingTTS && !isRepeating}
+                    disabled={isLoadingTTS && speechOrigin !== 'repeat'}
                   >
-                    {isRepeating ? <X className="mr-2 h-3 w-3" /> : <Repeat className="mr-2 h-3 w-3" />}
-                    {isRepeating ? "Stop Repeat" : "Repeat Sel."}
+                    {isSpeaking && speechOrigin === 'repeat' ? <X className="mr-2 h-3 w-3" /> : <Repeat className="mr-2 h-3 w-3" />}
+                    {isSpeaking && speechOrigin === 'repeat' ? "Stop Repeat" : "Repeat Sel."}
                   </Button>
                 </div>
-                <Button onClick={handlePlayFromSelection} variant="outline" size="sm" className="w-full mt-2 text-xs"> <TextSelect className="mr-2 h-3 w-3" /> Play from Sel. </Button>
+                <Button 
+                    onClick={handlePlayFromSelection} 
+                    variant="outline" 
+                    size="sm" 
+                    className="w-full mt-2 text-xs"
+                    disabled={isLoadingTTS && speechOrigin !== 'selection'}
+                >
+                    {playFromSelectionButtonState.icon}
+                    {playFromSelectionButtonState.text}
+                </Button>
               </CardContent>
             </Card>
         </div>
