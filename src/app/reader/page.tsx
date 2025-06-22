@@ -546,11 +546,10 @@ export default function ReaderPage() {
   const _startSpeech = useCallback(async (textToPlay: string, origin: SpeechOrigin) => {
     if (!isMountedRef.current) return;
     
-    const invalidMessages = [ "error:", "failed to load", "loading", "mobi files", "image loaded", "no text content", "no selectable text", "ocr completed, no text found", "no document selected", "graphical or empty", "could not load epub", "waiting for page", "preparing epub" ];
-    if (!textToPlay || invalidMessages.some(msg => textToPlay.toLowerCase().includes(msg))) {
-        toast({variant: "destructive", title: "No Valid Text", description: `No valid text to read. Text was: "${textToPlay.substring(0,50)}..."`});
+    if (!textToPlay || textToPlay.trim() === '') {
+        toast({variant: "destructive", title: "No Text", description: "There is no text to read."});
         if (isMountedRef.current) {
-          stopSpeech(true); // Reset all state if text is invalid
+            stopSpeech(true);
         }
         return;
     }
@@ -628,21 +627,21 @@ export default function ReaderPage() {
 
   const playPauseSpeech = () => {
     if (!isMountedRef.current) return;
-    
-    // If speaking, handle pause/resume, but only for the main player
+
+    // This button exclusively controls playback of the ENTIRE text from the start.
     if (isSpeaking && speechOrigin === 'main') {
-      if (isPaused) { // If paused, resume.
+      // If the main player is already active, this button toggles pause/resume.
+      if (isPaused) {
+        // RESUME
         if (ttsSettings.engine === 'local' && utteranceRef.current && window.speechSynthesis?.paused) {
           window.speechSynthesis.resume();
           if (isMountedRef.current) setIsPaused(false);
         } else if (ttsSettings.engine === 'cloud' && audioPlayerRef.current?.paused) {
-          audioPlayerRef.current.play().then(() => {
-            if (isMountedRef.current) setIsPaused(false);
-          }).catch(() => {
-            if (isMountedRef.current) stopSpeech(true);
-          });
+          audioPlayerRef.current.play().catch(() => { if (isMountedRef.current) stopSpeech(true); });
+          if (isMountedRef.current) setIsPaused(false);
         }
-      } else { // If speaking (and not paused), pause.
+      } else {
+        // PAUSE
         if (ttsSettings.engine === 'local' && utteranceRef.current && window.speechSynthesis?.speaking) {
           window.speechSynthesis.pause();
           if (isMountedRef.current) setIsPaused(true);
@@ -651,10 +650,10 @@ export default function ReaderPage() {
           if (isMountedRef.current) setIsPaused(true);
         }
       }
-    } else { // If not speaking, or another origin is, start a new speech from main.
-      const selectionInfo = getSelectedText();
-      const effectiveTextToRead = selectionInfo.text || currentTextForTTS;
-      startSpeech(effectiveTextToRead, 'main');
+    } else {
+      // If nothing is playing, OR if another source is playing (e.g. 'selection'),
+      // this button STOPS the other source and starts playback of the full text.
+      startSpeech(currentTextForTTS, 'main');
     }
   };
   
@@ -851,14 +850,15 @@ export default function ReaderPage() {
   };
 
   const getMainButtonState = () => {
-    if (isLoadingTTS && (!speechOrigin || speechOrigin === 'main')) return { text: "Loading...", icon: <Loader2 className="mr-1 h-4 w-4 animate-spin" />, disabled: true };
-    if (isSpeaking && speechOrigin === 'main') {
-      return isPaused ?
-        { text: "Resume", icon: <Play className="mr-1 h-4 w-4" />, disabled: false } :
-        { text: "Pause", icon: <Pause className="mr-1 h-4 w-4" />, disabled: false };
+    if (isLoadingTTS && speechOrigin === 'main') {
+      return { text: "Loading...", icon: <Loader2 className="mr-1 h-4 w-4 animate-spin" />, disabled: true };
     }
-    const selectionInfo = getSelectedText();
-    return { text: selectionInfo.text ? "Play Selected" : "Play Text", icon: <Play className="mr-1 h-4 w-4" />, disabled: false };
+    if (isSpeaking && speechOrigin === 'main') {
+      return isPaused 
+        ? { text: "Resume", icon: <Play className="mr-1 h-4 w-4" />, disabled: false } 
+        : { text: "Pause", icon: <Pause className="mr-1 h-4 w-4" />, disabled: false };
+    }
+    return { text: "Play Text", icon: <Play className="mr-1 h-4 w-4" />, disabled: false };
   };
 
   const getPlayFromSelectionButtonState = () => {
