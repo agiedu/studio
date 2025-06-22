@@ -134,7 +134,12 @@ export default function ReaderPage() {
     }
 
     // Fallback for any other scenario
-    return window.getSelection()?.toString() || '';
+    const generalSelection = window.getSelection()?.toString();
+    if (generalSelection) {
+      return generalSelection;
+    }
+    
+    return '';
   }, [activeDoc]);
 
   useEffect(() => {
@@ -538,12 +543,12 @@ export default function ReaderPage() {
   }, [ttsSettings.engine, isSpeaking, stopSpeech, toast]);
 
   // Private function to initiate speech; assumes a clean state.
-  const _startSpeech = async (textToPlay: string, options: { repeat?: boolean } = {}) => {
-    const { repeat = false } = options;
+  const _startSpeech = async (textToPlay: string, options: { repeat?: boolean, forceShortText?: boolean } = {}) => {
+    const { repeat = false, forceShortText = false } = options;
     if (!isMountedRef.current) return;
     
     const invalidMessages = [ "error:", "failed to load", "loading", "mobi files", "image loaded", "no text content", "no selectable text", "ocr completed, no text found", "no document selected", "graphical or empty", "could not load epub", "waiting for page", "preparing epub" ];
-    if (!textToPlay || invalidMessages.some(msg => textToPlay.toLowerCase().includes(msg))) {
+    if (!textToPlay || (!forceShortText && invalidMessages.some(msg => textToPlay.toLowerCase().includes(msg)))) {
         toast({variant: "destructive", title: "No Valid Text", description: `No valid text to read. Text was: "${textToPlay.substring(0,50)}..."`});
         if (isMountedRef.current) {
           setIsSpeaking(false);
@@ -614,7 +619,7 @@ export default function ReaderPage() {
   };
 
   // Public controller to start speech. It always resets state first.
-  const startSpeech = (textToPlay: string, options: { repeat?: boolean; } = {}) => {
+  const startSpeech = (textToPlay: string, options: { repeat?: boolean; forceShortText?: boolean } = {}) => {
       stopSpeech(true);
       setTimeout(() => {
           if (isMountedRef.current) {
@@ -656,60 +661,56 @@ export default function ReaderPage() {
     } else { // If not speaking, start a new speech.
       const selection = getSelectedText();
       const effectiveTextToRead = selection || currentTextForTTS;
-      startSpeech(effectiveTextToRead);
+      startSpeech(effectiveTextToRead, { forceShortText: !!selection });
     }
   };
   
   const handleRepeatSelection = () => {
+    const selection = getSelectedText();
+    
     if (isRepeating) {
       stopSpeech(true);
       return;
     }
-    
-    stopSpeech(true); // Always stop previous speech before starting a new one
-    
-    setTimeout(() => {
-        if (!isMountedRef.current) return;
-        const selection = getSelectedText();
-        if (!selection) {
-          toast({
-            variant: "destructive",
-            title: "No Text Selected",
-            description: "Please select text to repeat.",
-          });
-          return;
-        }
-        _startSpeech(selection, { repeat: true });
-    }, 100);
+
+    if (!selection) {
+      toast({
+        variant: "destructive",
+        title: "No Text Selected",
+        description: "Please select text to repeat.",
+      });
+      return;
+    }
+    startSpeech(selection, { repeat: true, forceShortText: true });
   };
   
   const handlePlayFromSelection = () => {
-    stopSpeech(true);
-    
-    setTimeout(() => {
-      if (!isMountedRef.current) return;
-      const selection = getSelectedText();
-      if (!selection) {
+    const selection = getSelectedText();
+    if (!selection) {
         toast({
-          variant: 'default',
-          title: 'No Text Selected',
-          description: 'To use this feature, please select some text first.',
+            variant: 'default',
+            title: 'No Text Selected',
+            description: 'Please select text to start playing from that point.',
         });
         return;
-      }
+    }
 
-      const fullText = currentTextForTTS;
-      const startIndex = fullText.indexOf(selection);
-      const textToPlay = startIndex !== -1 ? fullText.substring(startIndex) : selection;
-      if (startIndex === -1) {
+    const fullText = currentTextForTTS;
+    const startIndex = fullText.indexOf(selection);
+    
+    let textToPlay;
+    if (startIndex !== -1) {
+        textToPlay = fullText.substring(startIndex);
+    } else {
+        textToPlay = selection; // Fallback to playing just the selection
         toast({
-          variant: 'default',
-          title: 'Selection Not Found',
-          description: 'Could not find selection in current text. Playing selection only.',
+            variant: 'default',
+            title: 'Selection Not Found',
+            description: 'Could not find the exact selection in the full text. Playing selection only.',
         });
-      }
-      _startSpeech(textToPlay);
-    }, 100);
+    }
+    
+    startSpeech(textToPlay, { forceShortText: true });
   };
 
   const handleSettingChange = <K extends keyof TTSSettings>(key: K, value: TTSSettings[K]) => {
@@ -739,7 +740,7 @@ export default function ReaderPage() {
       });
       toast({ title: "Favorited!", description: `"${textToFavorite.substring(0, 50)}..." added.` });
     } else {
-      toast({ variant: "destructive", title: "No Valid Text to Favorite", description: "Ensure valid text is available or selected." });
+      toast({ variant: "destructive", title: "No Valid Text to Favorite", description: "Please ensure text is available to be favorited." });
     }
   };
 
@@ -815,7 +816,6 @@ export default function ReaderPage() {
     if (isPerformingOcr || docErrorMessage) canPlay = false;
 
     if (isLoadingTTS) return { text: "Loading...", icon: <Loader2 className="mr-1 h-4 w-4 animate-spin" />, disabled: true };
-    if (isSpeaking && isRepeating) return { text: "Pausing...", icon: <Pause className="mr-1 h-4 w-4" />, disabled: false };
     if (isSpeaking && !isPaused) return { text: "Pause", icon: <Pause className="mr-1 h-4 w-4" />, disabled: false };
     if (isSpeaking && isPaused) return { text: "Resume", icon: <Play className="mr-1 h-4 w-4" />, disabled: false };
     return { text: selectedText ? "Play Selected" : "Play Text", icon: <Play className="mr-1 h-4 w-4" />, disabled: !canPlay };
@@ -1044,7 +1044,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                     {isRepeating ? "Stop Repeat" : "Repeat Sel."}
                   </Button>
                 </div>
-                <Button onClick={handlePlayFromSelection} variant="outline" size="sm" className="w-full mt-2 text-xs" disabled={isLoadingTTS || isSpeaking}> <TextSelect className="mr-2 h-3 w-3" /> Play from Sel. </Button>
+                <Button onClick={handlePlayFromSelection} variant="outline" size="sm" className="w-full mt-2 text-xs"> <TextSelect className="mr-2 h-3 w-3" /> Play from Sel. </Button>
               </CardContent>
             </Card>
         </div>
