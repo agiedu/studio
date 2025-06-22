@@ -103,45 +103,37 @@ export default function ReaderPage() {
       return { text: '', startIndex: null };
     }
 
-    // Scratchpad or TXT content in the main view (MOST RELIABLE)
-    if ((!activeDoc || activeDoc.type === 'txt') && mainTextAreaRef.current) {
+    // Priority 1: Main content text area (Scratchpad, TXT)
+    if (mainTextAreaRef.current && mainTextAreaRef.current.selectionStart !== mainTextAreaRef.current.selectionEnd) {
       const textarea = mainTextAreaRef.current;
-      if (textarea.selectionStart !== textarea.selectionEnd) {
+      return {
+        text: textarea.value.substring(textarea.selectionStart, textarea.selectionEnd),
+        startIndex: textarea.selectionStart
+      };
+    }
+    
+    // Priority 2: Bottom TTS text area (PDF, Image)
+    if (ttsBoxTextAreaRef.current && ttsBoxTextAreaRef.current.selectionStart !== ttsBoxTextAreaRef.current.selectionEnd) {
+        const textarea = ttsBoxTextAreaRef.current;
         return {
           text: textarea.value.substring(textarea.selectionStart, textarea.selectionEnd),
           startIndex: textarea.selectionStart
         };
-      }
-    }
-    
-    // PDF or EPUB text displayed in the bottom TTS box
-    if (ttsBoxTextAreaRef.current) {
-        const textarea = ttsBoxTextAreaRef.current;
-        if (textarea.selectionStart !== textarea.selectionEnd) {
-            return {
-              text: textarea.value.substring(textarea.selectionStart, textarea.selectionEnd),
-              startIndex: textarea.selectionStart
-            };
-        }
     }
 
-    // EPUB is special, it's in an iframe
+    // Priority 3: EPUB iframe
     if (activeDoc?.type === 'epub' && epubRenditionRef.current) {
       try {
         const epubWindow = epubRenditionRef.current.getContents()?.[0]?.window;
         if (epubWindow) {
           const selection = epubWindow.getSelection()?.toString();
-          if (selection) return { text: selection, startIndex: null }; // startIndex is unknown
+          if (selection) {
+            return { text: selection, startIndex: null }; // Start index is unknown from iframe
+          }
         }
       } catch (e) {
         console.warn("Could not get selection from EPUB iframe", e);
       }
-    }
-
-    // Fallback for any other scenario (e.g. selecting text on the page itself, less common now)
-    const generalSelection = window.getSelection()?.toString();
-    if (generalSelection) {
-      return { text: generalSelection, startIndex: null }; // startIndex is unknown
     }
     
     return { text: '', startIndex: null };
@@ -282,7 +274,7 @@ export default function ReaderPage() {
               if (isMountedRef.current && epubRenditionRef.current === rendition) {
                 try {
                   const displayedContents = await rendition.getContents();
-                  const extractedText = displayedContents?.[0]?.document?.body?.innerText ?? "";
+                  const extractedText = displayedContents?.[0]?.document?.body?.textContent ?? "";
                   setCurrentTextForTTS(extractedText || "EPUB section loaded. Text may be graphical or empty.");
                 } catch (textExtractError) {
                   setCurrentTextForTTS("EPUB section loaded, but text could not be extracted.");
@@ -547,13 +539,12 @@ export default function ReaderPage() {
   }, [ttsSettings.engine, isSpeaking, stopSpeech, toast]);
 
   // Private function to initiate speech; assumes a clean state.
-  const _startSpeech = async (textToPlay: string, options: { repeat?: boolean, forceShortText?: boolean } = {}) => {
+  const _startSpeech = async (textToPlay: string, options: { repeat?: boolean } = {}) => {
     const { repeat = false } = options;
     if (!isMountedRef.current) return;
     
     const invalidMessages = [ "error:", "failed to load", "loading", "mobi files", "image loaded", "no text content", "no selectable text", "ocr completed, no text found", "no document selected", "graphical or empty", "could not load epub", "waiting for page", "preparing epub" ];
-    // forceShortText bypasses the invalid message check
-    if (!textToPlay || (!options.forceShortText && invalidMessages.some(msg => textToPlay.toLowerCase().includes(msg)))) {
+    if (!textToPlay || invalidMessages.some(msg => textToPlay.toLowerCase().includes(msg))) {
         toast({variant: "destructive", title: "No Valid Text", description: `No valid text to read. Text was: "${textToPlay.substring(0,50)}..."`});
         if (isMountedRef.current) {
           setIsSpeaking(false);
@@ -624,7 +615,7 @@ export default function ReaderPage() {
   };
 
   // Public controller to start speech. It always resets state first.
-  const startSpeech = (textToPlay: string, options: { repeat?: boolean; forceShortText?: boolean } = {}) => {
+  const startSpeech = (textToPlay: string, options: { repeat?: boolean } = {}) => {
       stopSpeech(true);
       setTimeout(() => {
           if (isMountedRef.current) {
@@ -666,12 +657,12 @@ export default function ReaderPage() {
     } else { // If not speaking, start a new speech.
       const selectionInfo = getSelectedText();
       const effectiveTextToRead = selectionInfo.text || currentTextForTTS;
-      startSpeech(effectiveTextToRead, { forceShortText: !!selectionInfo.text });
+      startSpeech(effectiveTextToRead);
     }
   };
   
   const handleRepeatSelection = () => {
-    stopSpeech(true); // Always stop previous speech before starting a new one
+    stopSpeech(true);
     setTimeout(() => {
         if (!isMountedRef.current) return;
         const selectionInfo = getSelectedText();
@@ -683,14 +674,13 @@ export default function ReaderPage() {
           });
           return;
         }
-        // Use the inverse of the current repeating state to toggle
-        _startSpeech(selectionInfo.text, { repeat: !isRepeating, forceShortText: true });
+        _startSpeech(selectionInfo.text, { repeat: !isRepeating });
     }, 100);
   };
   
   const handlePlayFromSelection = () => {
     const selectionInfo = getSelectedText();
-    const { text: selection, startIndex: knownStartIndex } = selectionInfo;
+    const selection = selectionInfo.text;
 
     if (!selection) {
         toast({
@@ -704,8 +694,8 @@ export default function ReaderPage() {
     const fullText = currentTextForTTS;
     let textToPlay = '';
 
-    if (knownStartIndex !== null) {
-      textToPlay = fullText.substring(knownStartIndex);
+    if (selectionInfo.startIndex !== null) {
+      textToPlay = fullText.substring(selectionInfo.startIndex);
     } else {
       const searchIndex = fullText.indexOf(selection);
       if (searchIndex !== -1) {
@@ -714,14 +704,14 @@ export default function ReaderPage() {
         textToPlay = selection; 
         toast({
             variant: 'default',
-            title: 'Selection Not Found',
+            title: 'Playing Selection Only',
             description: 'Could not find the exact selection in the full text. Playing selection only.',
         });
       }
     }
     
     if (textToPlay) {
-      startSpeech(textToPlay, { forceShortText: true });
+      startSpeech(textToPlay);
     }
   };
 
