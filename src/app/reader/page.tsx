@@ -39,7 +39,7 @@ import { Textarea } from '@/components/ui/textarea';
 
 const PDF_DEFAULT_SCALE = 1.5;
 
-type SpeechOrigin = 'main' | 'repeat' | null;
+type SpeechOrigin = 'main' | null;
 
 export default function ReaderPage() {
   const { toast } = useToast();
@@ -524,12 +524,7 @@ export default function ReaderPage() {
     const player = new Audio(); audioPlayerRef.current = player;
     const handleAudioEnded = () => { 
         if (audioPlayerRef.current === player && isSpeaking && ttsSettings.engine === 'cloud' && isMountedRef.current) { 
-            if(speechOrigin === 'repeat' && audioPlayerRef.current) {
-                audioPlayerRef.current.currentTime = 0;
-                audioPlayerRef.current.play();
-            } else {
-                stopSpeech(true); 
-            }
+            stopSpeech(true); 
         } 
     };
     const handleAudioPlaying = () => { if (audioPlayerRef.current === player && ttsSettings.engine === 'cloud' && isSpeaking && isMountedRef.current) { setIsLoadingTTS(false); } };
@@ -540,7 +535,7 @@ export default function ReaderPage() {
         if (player.src && !player.paused) player.pause(); player.src = "";
         if (audioPlayerRef.current === player) audioPlayerRef.current = null;
     };
-  }, [ttsSettings.engine, isSpeaking, speechOrigin, stopSpeech, toast]);
+  }, [ttsSettings.engine, isSpeaking, stopSpeech, toast]);
 
   // The executor function. It just speaks.
   const _startSpeech = useCallback(async (textToPlay: string, origin: SpeechOrigin) => {
@@ -587,11 +582,7 @@ export default function ReaderPage() {
 
             utterance.onend = () => {
                 if (utteranceRef.current === utterance && isMountedRef.current) {
-                    if (origin === 'repeat' && window.speechSynthesis && !window.speechSynthesis.speaking) {
-                        try { window.speechSynthesis.speak(utterance); } catch (e) { stopSpeech(true); }
-                    } else {
-                        stopSpeech(true);
-                    }
+                    stopSpeech(true);
                 }
             };
             utterance.onerror = (event) => {
@@ -607,7 +598,7 @@ export default function ReaderPage() {
         } else { // Cloud TTS
             try {
                 if (audioPlayerRef.current) {
-                    audioPlayerRef.current.loop = (origin === 'repeat');
+                    audioPlayerRef.current.loop = false;
                 }
                 const result = await getCloudSpeech(trimmedText, ttsSettings.language);
                 if(!isMountedRef.current) return;
@@ -636,7 +627,7 @@ export default function ReaderPage() {
     if (isSpeaking && speechOrigin === 'main') {
         if (isPaused) {
             if (ttsSettings.engine === 'local') { window.speechSynthesis.resume(); } 
-            else { audioPlayerRef.current?.play(); }
+            else { audioPlayerRef.current?.play().catch(() => stopSpeech(true)); }
             setIsPaused(false);
         } else {
             if (ttsSettings.engine === 'local') { window.speechSynthesis.pause(); } 
@@ -647,25 +638,11 @@ export default function ReaderPage() {
     }
     
     // Otherwise (no speech, or speech from another origin), start a new main speech.
-    _startSpeech(currentTextForTTS, 'main');
-  };
-  
-  const handleRepeatSelection = () => {
-    if (!isMountedRef.current) return;
-    
-    // If 'repeat' speech is active, just stop it.
-    if (isSpeaking && speechOrigin === 'repeat') {
-        stopSpeech(true);
-        return;
-    }
-
-    // Otherwise, get selected text and start a new 'repeat' speech.
+    // Check for selected text first.
     const selectionInfo = getSelectedText();
-    if (selectionInfo.text) {
-        _startSpeech(selectionInfo.text, 'repeat');
-    } else {
-        toast({ variant: "destructive", title: "No Text Selected", description: "Please select text to repeat." });
-    }
+    const textToPlay = selectionInfo.text || currentTextForTTS;
+    
+    _startSpeech(textToPlay, 'main');
   };
   
   const handleSettingChange = <K extends keyof TTSSettings>(key: K, value: TTSSettings[K]) => {
@@ -970,18 +947,8 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                 
                 <Button onClick={playPauseSpeech} disabled={mainButtonState.disabled} variant={mainButtonState.variant as "default" | "outline"} className="w-full h-9 text-sm">{mainButtonState.icon} {mainButtonState.text}</Button>
                 
-                <div className="grid grid-cols-2 gap-2 mt-2">
-                  <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full text-xs"> <Star className="mr-2 h-3 w-3" /> Favorite </Button>
-                  <Button
-                    onClick={handleRepeatSelection}
-                    variant={isSpeaking && speechOrigin === 'repeat' ? "destructive" : "outline"}
-                    size="sm"
-                    className="w-full text-xs"
-                    disabled={isLoadingTTS && speechOrigin !== 'repeat'}
-                  >
-                    {isSpeaking && speechOrigin === 'repeat' ? <X className="mr-2 h-3 w-3" /> : <Repeat className="mr-2 h-3 w-3" />}
-                    {isSpeaking && speechOrigin === 'repeat' ? "Stop Repeat" : "Repeat Sel."}
-                  </Button>
+                <div className="mt-2">
+                  <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full text-xs"> <Star className="mr-2 h-3 w-3" /> Favorite Text </Button>
                 </div>
               </CardContent>
             </Card>
@@ -990,5 +957,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
     </div>
   );
 }
+
+    
 
     
