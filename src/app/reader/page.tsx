@@ -17,7 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
-import { Loader2, Play, Pause, Smartphone, Cloud as CloudIcon, Star, AlertTriangle, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, BookOpen, Settings2, FileText, ScanText, Trash2, Edit, Repeat, TextSelect, X } from 'lucide-react';
+import { Loader2, Play, Pause, Smartphone, Cloud as CloudIcon, Star, AlertTriangle, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, BookOpen, Settings2, FileText, ScanText, Trash2, Edit, Repeat, X } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,7 +39,7 @@ import { Textarea } from '@/components/ui/textarea';
 
 const PDF_DEFAULT_SCALE = 1.5;
 
-type SpeechOrigin = 'main' | 'selection' | 'repeat' | null;
+type SpeechOrigin = 'main' | 'repeat' | null;
 
 export default function ReaderPage() {
   const { toast } = useToast();
@@ -668,55 +668,6 @@ export default function ReaderPage() {
     }
   };
   
-  const handlePlayFromSelection = () => {
-    if (!isMountedRef.current) return;
-
-    // If 'selection' speech is active, toggle pause/resume.
-    if (isSpeaking && speechOrigin === 'selection') {
-        if (isPaused) {
-            if (ttsSettings.engine === 'local') window.speechSynthesis.resume();
-            else if (audioPlayerRef.current) audioPlayerRef.current.play();
-            setIsPaused(false);
-        } else {
-            if (ttsSettings.engine === 'local') window.speechSynthesis.pause();
-            else if (audioPlayerRef.current) audioPlayerRef.current.pause();
-            setIsPaused(true);
-        }
-        return;
-    }
-  
-    // Otherwise, find the text and start a new 'selection' speech.
-    const selectionInfo = getSelectedText();
-    if (!selectionInfo.text) {
-      toast({ variant: 'default', title: 'No Text Selected', description: 'Please select text to start playing from that point.' });
-      return;
-    }
-  
-    const fullText = activeDoc?.type === 'txt' ? txtContent :
-                     !activeDoc ? scratchpadText :
-                     currentTextForTTS;
-    
-    let textToPlay = '';
-  
-    if (selectionInfo.startIndex !== null && fullText && (mainTextAreaRef.current?.value === fullText || ttsBoxTextAreaRef.current?.value === fullText)) {
-      textToPlay = fullText.substring(selectionInfo.startIndex);
-    } else if (fullText) {
-      // Fallback for EPUB or general page selection where startIndex is unreliable
-      const searchIndex = fullText.indexOf(selectionInfo.text);
-      if (searchIndex !== -1) {
-        textToPlay = fullText.substring(searchIndex);
-      }
-    }
-
-    if (textToPlay) {
-      _startSpeech(textToPlay, 'selection');
-    } else {
-      // Fallback to playing just the selection if it can't be found in the full text
-      _startSpeech(selectionInfo.text, 'selection');
-    }
-  };
-
-
   const handleSettingChange = <K extends keyof TTSSettings>(key: K, value: TTSSettings[K]) => {
     if(!isMountedRef.current) return; stopSpeech(true); 
     setTtsSettings(prevSettings => {
@@ -806,18 +757,7 @@ export default function ReaderPage() {
     return { text: "Play Text", icon: <Play className="mr-1 h-4 w-4" />, disabled: false, variant: "default" };
   };
 
-  const getPlayFromSelectionButtonState = () => {
-      if (isLoadingTTS && speechOrigin === 'selection') return { text: "Loading...", icon: <Loader2 className="mr-2 h-3 w-3 animate-spin" />};
-      if (isSpeaking && speechOrigin === 'selection') {
-        return isPaused 
-          ? { text: "Resume", icon: <Play className="mr-2 h-3 w-3"/>}
-          : { text: "Pause", icon: <Pause className="mr-2 h-3 w-3"/>};
-      }
-      return { text: "Play from Sel.", icon: <TextSelect className="mr-2 h-3 w-3"/>};
-  }
-
   const mainButtonState = getMainButtonState();
-  const playFromSelectionButtonState = getPlayFromSelectionButtonState();
   
   const showInitialLoader = isLoadingDoc && !activeDoc && !docErrorMessage;
   const showDocumentError = docErrorMessage && !activeDoc;
@@ -1043,16 +983,6 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                     {isSpeaking && speechOrigin === 'repeat' ? "Stop Repeat" : "Repeat Sel."}
                   </Button>
                 </div>
-                <Button 
-                    onClick={handlePlayFromSelection} 
-                    variant="outline" 
-                    size="sm" 
-                    className="w-full mt-2 text-xs"
-                    disabled={isLoadingTTS && speechOrigin !== 'selection'}
-                >
-                    {playFromSelectionButtonState.icon}
-                    {playFromSelectionButtonState.text}
-                </Button>
               </CardContent>
             </Card>
         </div>
@@ -1060,3 +990,5 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
     </div>
   );
 }
+
+    
