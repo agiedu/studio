@@ -229,8 +229,9 @@ export default function ReaderPage() {
               if (isMountedRef.current && epubRenditionRef.current === rendition) {
                 try {
                   const displayedContents = await rendition.getContents();
-                  const extractedText = displayedContents?.[0]?.document?.body?.innerText?.replace(/\s+/g, ' ').trim() ?? "";
-                  setCurrentTextForTTS(extractedText || "EPUB section loaded. Text may be graphical or empty.");
+                  // Use textContent to preserve whitespace and get a more accurate representation of the text.
+                  const extractedText = displayedContents?.[0]?.document?.body?.textContent ?? "";
+                  setCurrentTextForTTS(extractedText.trim() || "EPUB section loaded. Text may be graphical or empty.");
                 } catch (textExtractError) {
                   setCurrentTextForTTS("EPUB section loaded, but text could not be extracted.");
                 }
@@ -586,9 +587,13 @@ export default function ReaderPage() {
 
   const playPauseSpeech = () => {
     if (!isMountedRef.current) return;
-  
+    
     // If speaking, handle pause/resume
     if (isSpeaking) {
+      if (isRepeating) {
+          stopSpeech(true);
+          return;
+      }
       if (isPaused) { // If paused, resume.
         if (ttsSettings.engine === 'local' && utteranceRef.current && window.speechSynthesis?.paused) {
           window.speechSynthesis.resume();
@@ -638,29 +643,36 @@ export default function ReaderPage() {
   
   const handlePlayFromSelection = () => {
     if (!isMountedRef.current) return;
-    const selection = window.getSelection()?.toString().trim();
-    if (!selection) {
-      toast({
-        variant: 'default',
-        title: 'No Text Selected',
-        description: 'To use this feature, please select some text first.',
-      });
-      return;
-    }
+    
+    stopSpeech(true);
 
-    const fullText = currentTextForTTS;
-    const startIndex = fullText.indexOf(selection);
-    const textToPlay = startIndex !== -1 ? fullText.substring(startIndex) : selection;
+    setTimeout(() => {
+        if (!isMountedRef.current) return;
 
-    if (startIndex === -1) {
-      toast({
-        variant: 'default',
-        title: 'Selection Not Found',
-        description: 'Could not find selection in current text. Playing selection only.',
-      });
-    }
+        const selection = window.getSelection()?.toString().trim();
+        if (!selection) {
+            toast({
+                variant: 'default',
+                title: 'No Text Selected',
+                description: 'To use this feature, please select some text first.',
+            });
+            return;
+        }
 
-    startSpeech(textToPlay, { bypassMinLengthCheck: true });
+        const fullText = currentTextForTTS;
+        const startIndex = fullText.indexOf(selection);
+        const textToPlay = startIndex !== -1 ? fullText.substring(startIndex) : selection;
+
+        if (startIndex === -1) {
+            toast({
+                variant: 'default',
+                title: 'Selection Not Found',
+                description: 'Could not find selection in current text. Playing selection only.',
+            });
+        }
+
+        _startSpeech(textToPlay, { bypassMinLengthCheck: true });
+    }, 100);
   };
 
   const handleSettingChange = <K extends keyof TTSSettings>(key: K, value: TTSSettings[K]) => {
@@ -764,6 +776,7 @@ export default function ReaderPage() {
     if (isPerformingOcr || docErrorMessage) canPlay = false;
 
     if (isLoadingTTS) return { text: "Loading...", icon: <Loader2 className="mr-1 h-4 w-4 animate-spin" />, disabled: true };
+    if (isSpeaking && isRepeating) return { text: "Repeating...", icon: <Repeat className="mr-1 h-4 w-4 animate-spin" />, disabled: false };
     if (isSpeaking && !isPaused) return { text: "Pause", icon: <Pause className="mr-1 h-4 w-4" />, disabled: false };
     if (isSpeaking && isPaused) return { text: "Resume", icon: <Play className="mr-1 h-4 w-4" />, disabled: false };
     return { text: selectedText ? "Play Selected" : "Play Text", icon: <Play className="mr-1 h-4 w-4" />, disabled: !canPlay };
@@ -846,7 +859,18 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
             />
 
             {/* TXT Content */}
-            {activeDoc?.type === 'txt' && ( <pre className="whitespace-pre-wrap p-4 bg-background rounded-md text-sm font-mono w-full select-text">{txtContent}</pre> )}
+            {activeDoc?.type === 'txt' && (
+              <div className="w-full h-full p-2 md:p-4 flex flex-col">
+                  <Textarea
+                      readOnly
+                      placeholder="Text document content..."
+                      className="w-full flex-grow text-base resize-none"
+                      value={txtContent}
+                      aria-label="Text document content"
+                  />
+              </div>
+            )}
+
 
             {/* Image Content */}
             {activeDoc?.type === 'image' && displayedImageSrc && (
@@ -965,7 +989,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                 )}
                 <div className="space-y-1"><Label htmlFor="tts-rate" className="text-xs">Rate: {ttsSettings.rate.toFixed(1)}</Label><Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isSpeaking && !isPaused}/></div>
                 <div className="space-y-1"><Label htmlFor="tts-pitch" className="text-xs">Pitch: {ttsSettings.pitch.toFixed(1)}</Label><Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isSpeaking && !isPaused}/></div>
-                <Button onClick={playPauseSpeech} disabled={buttonState.disabled} variant={isSpeaking && !isPaused ? "outline" : "default"} className="w-full h-9 text-sm">{buttonState.icon} {buttonState.text}</Button>
+                <Button onClick={playPauseSpeech} disabled={buttonState.disabled} variant={isSpeaking && !isPaused && !isRepeating ? "outline" : "default"} className="w-full h-9 text-sm">{buttonState.icon} {buttonState.text}</Button>
                 <div className="grid grid-cols-2 gap-2 mt-2">
                   <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full text-xs"> <Star className="mr-2 h-3 w-3" /> Favorite </Button>
                   <Button
@@ -979,7 +1003,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                     {isRepeating ? "Stop Repeat" : "Repeat Sel."}
                   </Button>
                 </div>
-                <Button onClick={handlePlayFromSelection} variant="outline" size="sm" className="w-full mt-2 text-xs" disabled={isLoadingTTS}> <TextSelect className="mr-2 h-3 w-3" /> Play from Sel. </Button>
+                <Button onClick={handlePlayFromSelection} variant="outline" size="sm" className="w-full mt-2 text-xs" disabled={isLoadingTTS && !isSpeaking}> <TextSelect className="mr-2 h-3 w-3" /> Play from Sel. </Button>
               </CardContent>
             </Card>
         </div>
