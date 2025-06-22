@@ -545,10 +545,13 @@ export default function ReaderPage() {
   // Private function to initiate speech; assumes a clean state.
   const _startSpeech = useCallback(async (textToPlay: string, origin: SpeechOrigin) => {
     if (!isMountedRef.current) return;
+
+    const invalidMessages = ["error:", "failed to load", "loading", "mobi files", "image loaded", "no selectable text", "ocr completed, no text found", "document display issue"];
+    const isInvalidText = !textToPlay || textToPlay.trim() === '' || invalidMessages.some(msg => textToPlay.toLowerCase().includes(msg));
     
-    if (!textToPlay || textToPlay.trim() === '') {
-        toast({variant: "destructive", title: "No Text", description: "There is no text to read."});
-        stopSpeech(true);
+    if (isInvalidText) {
+        toast({variant: "destructive", title: "No Valid Text", description: "No valid text is available to be read aloud."});
+        stopSpeech(true); // CRITICAL: This prevents state deadlock.
         return;
     }
 
@@ -583,7 +586,7 @@ export default function ReaderPage() {
       utterance.onerror = (event) => {
         if(utteranceRef.current === utterance && isMountedRef.current) {
           toast({ variant: "destructive", title: "TTS Error", description: event.error || "Speech failed." });
-          stopSpeech(true);
+          stopSpeech(true); // Always reset on error
         }
       };
       utteranceRef.current = utterance;
@@ -610,51 +613,35 @@ export default function ReaderPage() {
         }
       }
     }
-  }, [ttsSettings, stopSpeech, toast, availableVoices]);
-
-  // Public controller to start speech. It always resets state first.
-  const startSpeech = useCallback((textToPlay: string, origin: SpeechOrigin) => {
-      stopSpeech(false); // Soft stop, don't reset UI immediately
-      setTimeout(() => {
-          if (isMountedRef.current) {
-              _startSpeech(textToPlay, origin);
-          }
-      }, 50); // Small delay to ensure state is clean
-  }, [_startSpeech, stopSpeech]);
-
+  }, [ttsSettings, stopSpeech, toast]);
 
   const playPauseSpeech = () => {
-      if (!isMountedRef.current || typeof window === 'undefined' || !window.speechSynthesis) return;
-  
-      // Always query the browser's state first as the source of truth
-      const isCurrentlySpeaking = window.speechSynthesis.speaking;
-      const isCurrentlyPaused = window.speechSynthesis.paused;
-  
-      // Case 1: Speech is active and paused. We should resume.
-      if (isCurrentlySpeaking && isCurrentlyPaused) {
-          window.speechSynthesis.resume();
-          setIsPaused(false);
-          return;
-      }
-      
-      // Case 2: Speech is active and not paused. We should pause.
-      if (isCurrentlySpeaking && !isCurrentlyPaused) {
-          window.speechSynthesis.pause();
-          setIsPaused(true);
-          return;
-      }
-      
-      // Case 3: Nothing is happening. We should start a new speech from the beginning.
-      // This will also handle taking over from other speech origins.
-      if (!isCurrentlySpeaking) {
-          // It's crucial to stop any previous, completed-but-not-cleared utterances.
-          stopSpeech(false); // Use soft stop to not reset UI yet.
-          setTimeout(() => {
-              if (isMountedRef.current) {
-                  _startSpeech(currentTextForTTS, 'main');
-              }
-          }, 50); // Delay to ensure cancelation completes.
-      }
+    if (!isMountedRef.current || typeof window === 'undefined' || !window.speechSynthesis) return;
+
+    // If another speech task is running, the main button takes priority.
+    if (isSpeaking && speechOrigin !== 'main') {
+        stopSpeech(false); // Cancel whatever is running.
+        // Use a timeout to allow the 'cancel' to fully process before starting new speech.
+        setTimeout(() => {
+            if (isMountedRef.current) _startSpeech(currentTextForTTS, 'main');
+        }, 50);
+        return;
+    }
+
+    // At this point, we are only concerned with the 'main' speech task or no speech at all.
+    // We can now safely use the browser's state to determine the correct action.
+    const isBrowserSpeaking = window.speechSynthesis.speaking;
+    const isBrowserPaused = window.speechSynthesis.paused;
+
+    if (isBrowserSpeaking && isBrowserPaused) {
+        window.speechSynthesis.resume();
+        setIsPaused(false);
+    } else if (isBrowserSpeaking && !isBrowserPaused) {
+        window.speechSynthesis.pause();
+        setIsPaused(true);
+    } else {
+        _startSpeech(currentTextForTTS, 'main');
+    }
   };
   
   const handleRepeatSelection = () => {
@@ -1115,5 +1102,3 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
     </div>
   );
 }
-
-    
