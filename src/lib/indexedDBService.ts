@@ -10,6 +10,19 @@ const LAST_ACTIVE_DOC_KEY = 'lastActiveDocIdRead2';
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
+// --- Caching layer ---
+let documentCache: StoredMangaDocument[] | null = null;
+let isFetching: Promise<StoredMangaDocument[]> | null = null;
+
+/**
+ * Synchronously gets the cached list of documents.
+ * Returns null if the cache is empty.
+ */
+export function getCachedDocuments(): StoredMangaDocument[] | null {
+    return documentCache;
+}
+// --- End Caching layer ---
+
 function getDB(): Promise<IDBDatabase> {
   if (typeof window === 'undefined') {
     console.error("[IndexedDBService] getDB called in a non-browser environment.");
@@ -50,6 +63,7 @@ function getDB(): Promise<IDBDatabase> {
 }
 
 export async function saveDocument(doc: StoredMangaDocument): Promise<void> {
+  documentCache = null; // Invalidate cache
   console.log(`[IndexedDBService] saveDocument: Attempting to save docId: ${doc.id}, title: "${doc.title}"`);
   const db = await getDB();
   return new Promise((resolve, reject) => {
@@ -103,10 +117,20 @@ export async function getDocumentById(id: string): Promise<StoredMangaDocument |
   });
 }
 
-export async function getAllDocuments(): Promise<StoredMangaDocument[]> {
-  console.log(`[IndexedDBService] getAllDocuments: Attempting to get all documents.`);
+export async function getAllDocuments(forceRefresh: boolean = false): Promise<StoredMangaDocument[]> {
+  if (documentCache && !forceRefresh) {
+    console.log(`[IndexedDBService] getAllDocuments: Returning ${documentCache.length} documents from cache.`);
+    return documentCache;
+  }
+
+  if (isFetching) { // A fetch is already happening
+    console.log('[IndexedDBService] getAllDocuments: Fetch already in progress, awaiting result.');
+    return isFetching;
+  }
+
+  console.log(`[IndexedDBService] getAllDocuments: Fetching all documents from DB (forceRefresh: ${forceRefresh}).`);
   const db = await getDB();
-  return new Promise((resolve, reject) => {
+  isFetching = new Promise((resolve, reject) => {
     const transaction = db.transaction(DOC_STORE_NAME, 'readonly');
     const store = transaction.objectStore(DOC_STORE_NAME);
     const request = store.getAll();
@@ -114,16 +138,21 @@ export async function getAllDocuments(): Promise<StoredMangaDocument[]> {
     request.onsuccess = () => {
         const results = request.result as StoredMangaDocument[];
         console.log(`[IndexedDBService] getAllDocuments: Successfully retrieved ${results.length} documents.`);
-        resolve(results); // Resolves when getAll request is done
+        documentCache = results.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)); // Cache and sort
+        isFetching = null;
+        resolve(documentCache); // Resolves when getAll request is done
     };
     request.onerror = () => {
       console.error('[IndexedDBService] getAllDocuments: Error getting all documents:', request.error);
+      isFetching = null;
       reject(new Error(`Failed to get all documents: ${request.error?.message}`));
     };
   });
+  return isFetching;
 }
 
 export async function deleteDocumentById(id: string): Promise<void> {
+  documentCache = null; // Invalidate cache
   console.log(`[IndexedDBService] deleteDocumentById: CALLED for docId: "${id}"`);
   if (!id || typeof id !== 'string' || id.trim() === "") {
     const errorMsg = `[IndexedDBService] deleteDocumentById: Invalid ID provided for deletion: "${id}" (type: ${typeof id})`;

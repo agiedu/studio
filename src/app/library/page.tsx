@@ -30,18 +30,20 @@ function arrayBufferToBlob(buffer: ArrayBuffer, type: string): Blob {
 
 export default function LibraryPage() {
   const { toast } = useToast();
-  const [isLoading, setIsLoading] = useState(true);
+  const [storedDocuments, setStoredDocuments] = useState<StoredMangaDocument[]>(() => IndexedDBService.getCachedDocuments() || []);
+  const [isLoading, setIsLoading] = useState(() => !IndexedDBService.getCachedDocuments());
   const [isUploading, setIsUploading] = useState(false);
   const [isSavingToDevice, setIsSavingToDevice] = useState<string | null>(null);
-  const [storedDocuments, setStoredDocuments] = useState<StoredMangaDocument[]>([]);
   const [docToDelete, setDocToDelete] = useState<StoredMangaDocument | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const fetchDocuments = async (operationLabel: string = "Fetching documents") => {
-    setIsLoading(true);
+  const fetchDocuments = async (forceRefresh: boolean = false, operationLabel: string = "Fetching documents") => {
+    if (storedDocuments.length === 0 && !forceRefresh) {
+      setIsLoading(true);
+    }
     try {
-      const docs = await IndexedDBService.getAllDocuments();
-      setStoredDocuments(docs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
+      const docs = await IndexedDBService.getAllDocuments(forceRefresh);
+      setStoredDocuments(docs);
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error Loading Documents", description: `Could not load documents. ${error.message}` });
     } finally {
@@ -50,7 +52,7 @@ export default function LibraryPage() {
   };
 
   useEffect(() => {
-    fetchDocuments("Initial document fetch");
+    fetchDocuments();
      if (typeof window !== 'undefined' && !GlobalWorkerOptions.workerSrc) {
         GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsVersion}/pdf.worker.mjs`;
     }
@@ -101,7 +103,7 @@ export default function LibraryPage() {
       if (newDocument) {
         await IndexedDBService.saveDocument(newDocument);
         toast({ title: "Document Saved in Browser", description: `"${newDocument.title}" saved.` });
-        await fetchDocuments("Post-upload document fetch");
+        await fetchDocuments(true, "Post-upload document fetch");
       }
     } catch (error: any) {
       toast({ variant: "destructive", title: "Upload & Save Error", description: `Failed to process/save "${file.name}". ${error.message}` });
@@ -126,7 +128,7 @@ export default function LibraryPage() {
         if (lastActiveId === docIdToDelete) {
             await IndexedDBService.saveLastActiveDocId(null);
         }
-        await fetchDocuments("Data refresh after deletion");
+        await fetchDocuments(true, "Data refresh after deletion");
         toast({ title: "Success", description: `"${docTitleToDelete}" has been deleted.` });
     } catch (error: any) {
         console.error("Deletion failed:", error);
@@ -219,12 +221,12 @@ export default function LibraryPage() {
           <CardDescription>
             List of documents in this browser. Click &quot;Open in Reader&quot; to view.
           </CardDescription>
-          <Button variant="outline" size="sm" onClick={() => fetchDocuments("Manual refresh of document list")} disabled={isLoading || isUploading} className="mt-2 w-fit">
+          <Button variant="outline" size="sm" onClick={() => fetchDocuments(true, "Manual refresh of document list")} disabled={isLoading || isUploading} className="mt-2 w-fit">
             <RefreshCw className={`mr-2 h-4 w-4 ${isLoading && !isUploading ? 'animate-spin' : ''}`} /> Refresh List
           </Button>
         </CardHeader>
         <CardContent>
-          {isLoading && !storedDocuments.length && <p className="text-muted-foreground flex items-center"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading documents...</p>}
+          {isLoading && <p className="text-muted-foreground flex items-center"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading documents...</p>}
           {!isLoading && storedDocuments.length === 0 && (
             <p className="text-muted-foreground">No documents found. Upload one to get started.</p>
           )}
