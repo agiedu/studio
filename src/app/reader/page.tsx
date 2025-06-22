@@ -548,9 +548,7 @@ export default function ReaderPage() {
     
     if (!textToPlay || textToPlay.trim() === '') {
         toast({variant: "destructive", title: "No Text", description: "There is no text to read."});
-        if (isMountedRef.current) {
-            stopSpeech(true);
-        }
+        stopSpeech(true);
         return;
     }
 
@@ -575,7 +573,7 @@ export default function ReaderPage() {
 
       utterance.onend = () => {
         if (utteranceRef.current === utterance && isMountedRef.current) {
-          if (speechOrigin === 'repeat') {
+          if (origin === 'repeat') {
             window.speechSynthesis.speak(utterance);
           } else {
             stopSpeech(true);
@@ -612,7 +610,7 @@ export default function ReaderPage() {
         }
       }
     }
-  }, [ttsSettings, stopSpeech, toast, speechOrigin]);
+  }, [ttsSettings, stopSpeech, toast, availableVoices]);
 
   // Public controller to start speech. It always resets state first.
   const startSpeech = useCallback((textToPlay: string, origin: SpeechOrigin) => {
@@ -626,43 +624,37 @@ export default function ReaderPage() {
 
 
   const playPauseSpeech = () => {
-    if (!isMountedRef.current) return;
-    if (typeof window === 'undefined' || !window.speechSynthesis) return;
-
-    if (ttsSettings.engine === 'local') {
-        // RESUME if the browser is in a paused state AND the last command was from this button
-        if (window.speechSynthesis.paused && speechOrigin === 'main') {
-            window.speechSynthesis.resume();
-            setIsPaused(false);
-            return;
-        }
-        
-        // PAUSE if the browser is actively speaking AND the command was from this button
-        if (window.speechSynthesis.speaking && speechOrigin === 'main') {
-            window.speechSynthesis.pause();
-            setIsPaused(true);
-            return;
-        }
-    } else { // Cloud TTS
-        if (audioPlayerRef.current) {
-            // isSpeaking helps differentiate between a freshly loaded player (paused) and one that the user explicitly paused.
-            if (audioPlayerRef.current.paused && isSpeaking && speechOrigin === 'main') {
-                // RESUME
-                audioPlayerRef.current.play().catch(() => stopSpeech(true));
-                setIsPaused(false);
-                return;
-            } else if (!audioPlayerRef.current.paused && isSpeaking && speechOrigin === 'main') {
-                // PAUSE
-                audioPlayerRef.current.pause();
-                setIsPaused(true);
-                return;
-            }
-        }
-    }
-    
-    // If none of the above conditions were met, it means we need to START a new speech.
-    // This will handle cases where nothing is playing, or another source was playing.
-    startSpeech(currentTextForTTS, 'main');
+      if (!isMountedRef.current || typeof window === 'undefined' || !window.speechSynthesis) return;
+  
+      // Always query the browser's state first as the source of truth
+      const isCurrentlySpeaking = window.speechSynthesis.speaking;
+      const isCurrentlyPaused = window.speechSynthesis.paused;
+  
+      // Case 1: Speech is active and paused. We should resume.
+      if (isCurrentlySpeaking && isCurrentlyPaused) {
+          window.speechSynthesis.resume();
+          setIsPaused(false);
+          return;
+      }
+      
+      // Case 2: Speech is active and not paused. We should pause.
+      if (isCurrentlySpeaking && !isCurrentlyPaused) {
+          window.speechSynthesis.pause();
+          setIsPaused(true);
+          return;
+      }
+      
+      // Case 3: Nothing is happening. We should start a new speech from the beginning.
+      // This will also handle taking over from other speech origins.
+      if (!isCurrentlySpeaking) {
+          // It's crucial to stop any previous, completed-but-not-cleared utterances.
+          stopSpeech(false); // Use soft stop to not reset UI yet.
+          setTimeout(() => {
+              if (isMountedRef.current) {
+                  _startSpeech(currentTextForTTS, 'main');
+              }
+          }, 50); // Delay to ensure cancelation completes.
+      }
   };
   
   const handleRepeatSelection = () => {
@@ -1123,3 +1115,5 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
     </div>
   );
 }
+
+    
