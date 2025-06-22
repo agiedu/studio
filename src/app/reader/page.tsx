@@ -100,6 +100,11 @@ export default function ReaderPage() {
 
   // The smart selection function
   const getSelectedText = useCallback((): string => {
+    // This function can only run on the client, so we check for window
+    if (typeof window === 'undefined') {
+      return '';
+    }
+    
     // EPUB is special, it's in an iframe
     if (activeDoc?.type === 'epub' && epubRenditionRef.current) {
       try {
@@ -661,11 +666,11 @@ export default function ReaderPage() {
   };
   
   const handleRepeatSelection = () => {
-    const selection = getSelectedText();
     if (isRepeating) {
       stopSpeech(true);
       return;
     }
+    const selection = getSelectedText();
     if (!selection) {
       toast({
         variant: "destructive",
@@ -678,18 +683,19 @@ export default function ReaderPage() {
   };
   
   const handlePlayFromSelection = () => {
+    const selection = getSelectedText();
+    if (!selection) {
+      toast({
+        variant: 'default',
+        title: 'No Text Selected',
+        description: 'To use this feature, please select some text first.',
+      });
+      return;
+    }
+    
     stopSpeech(true);
     setTimeout(() => {
       if (!isMountedRef.current) return;
-      const selection = getSelectedText();
-      if (!selection) {
-        toast({
-          variant: 'default',
-          title: 'No Text Selected',
-          description: 'To use this feature, please select some text first.',
-        });
-        return;
-      }
       const fullText = currentTextForTTS;
       const startIndex = fullText.indexOf(selection);
       const textToPlay = startIndex !== -1 ? fullText.substring(startIndex) : selection;
