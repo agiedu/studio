@@ -94,6 +94,45 @@ export default function ReaderPage() {
 
   const isMountedRef = useRef(false);
 
+  // Refs for text selection
+  const mainTextAreaRef = useRef<HTMLTextAreaElement | null>(null); // For Scratchpad, TXT
+  const ttsBoxTextAreaRef = useRef<HTMLTextAreaElement | null>(null); // For the box at the bottom
+
+  // The smart selection function
+  const getSelectedText = useCallback((): string => {
+    // EPUB is special, it's in an iframe
+    if (activeDoc?.type === 'epub' && epubRenditionRef.current) {
+      try {
+        const epubWindow = epubRenditionRef.current.getContents()?.[0]?.window;
+        if (epubWindow) {
+          const selection = epubWindow.getSelection()?.toString().trim();
+          if (selection) return selection;
+        }
+      } catch (e) {
+        console.warn("Could not get selection from EPUB iframe", e);
+      }
+    }
+
+    // Scratchpad or TXT content in the main view
+    if ((!activeDoc || activeDoc.type === 'txt') && mainTextAreaRef.current) {
+      const textarea = mainTextAreaRef.current;
+      if (textarea.selectionStart !== textarea.selectionEnd) {
+        return textarea.value.substring(textarea.selectionStart, textarea.selectionEnd).trim();
+      }
+    }
+    
+    // PDF or EPUB text displayed in the bottom TTS box
+    if (ttsBoxTextAreaRef.current) {
+        const textarea = ttsBoxTextAreaRef.current;
+        if (textarea.selectionStart !== textarea.selectionEnd) {
+            return textarea.value.substring(textarea.selectionStart, textarea.selectionEnd).trim();
+        }
+    }
+
+    // Fallback for any other scenario
+    return window.getSelection()?.toString().trim() || '';
+  }, [activeDoc]);
+
   useEffect(() => {
     isMountedRef.current = true;
     if (typeof window !== 'undefined' && !GlobalWorkerOptions.workerSrc) {
@@ -615,63 +654,53 @@ export default function ReaderPage() {
         }
       }
     } else { // If not speaking, start a new speech.
-      const selection = typeof window !== 'undefined' ? window.getSelection()?.toString().trim() : '';
+      const selection = getSelectedText();
       const effectiveTextToRead = selection || currentTextForTTS;
       startSpeech(effectiveTextToRead, { bypassMinLengthCheck: !!selection });
     }
   };
   
   const handleRepeatSelection = () => {
-    if (!isMountedRef.current) return;
-    const selection = window.getSelection()?.toString().trim();
-
+    const selection = getSelectedText();
     if (isRepeating) {
-        stopSpeech(true);
-        return;
+      stopSpeech(true);
+      return;
     }
-
     if (!selection) {
-        toast({
-            variant: "destructive",
-            title: "No Text Selected",
-            description: "Please select text to repeat.",
-        });
-        return;
+      toast({
+        variant: "destructive",
+        title: "No Text Selected",
+        description: "Please select text to repeat.",
+      });
+      return;
     }
     startSpeech(selection, { repeat: true, bypassMinLengthCheck: true });
   };
   
   const handlePlayFromSelection = () => {
-    if (!isMountedRef.current) return;
-    
     stopSpeech(true);
-
     setTimeout(() => {
-        if (!isMountedRef.current) return;
-
-        const selection = window.getSelection()?.toString().trim();
-        if (!selection) {
-            toast({
-                variant: 'default',
-                title: 'No Text Selected',
-                description: 'To use this feature, please select some text first.',
-            });
-            return;
-        }
-
-        const fullText = currentTextForTTS;
-        const startIndex = fullText.indexOf(selection);
-        const textToPlay = startIndex !== -1 ? fullText.substring(startIndex) : selection;
-
-        if (startIndex === -1) {
-            toast({
-                variant: 'default',
-                title: 'Selection Not Found',
-                description: 'Could not find selection in current text. Playing selection only.',
-            });
-        }
-
-        _startSpeech(textToPlay, { bypassMinLengthCheck: true });
+      if (!isMountedRef.current) return;
+      const selection = getSelectedText();
+      if (!selection) {
+        toast({
+          variant: 'default',
+          title: 'No Text Selected',
+          description: 'To use this feature, please select some text first.',
+        });
+        return;
+      }
+      const fullText = currentTextForTTS;
+      const startIndex = fullText.indexOf(selection);
+      const textToPlay = startIndex !== -1 ? fullText.substring(startIndex) : selection;
+      if (startIndex === -1) {
+        toast({
+          variant: 'default',
+          title: 'Selection Not Found',
+          description: 'Could not find selection in current text. Playing selection only.',
+        });
+      }
+      _startSpeech(textToPlay, { bypassMinLengthCheck: true });
     }, 100);
   };
 
@@ -688,8 +717,7 @@ export default function ReaderPage() {
 
   const handleFavoriteSelection = () => {
     if (!isMountedRef.current) return;
-    const selectionFromWindow = typeof window !== 'undefined' ? window.getSelection()?.toString().trim() : '';
-    const textToFavorite = selectionFromWindow || currentTextForTTS;
+    const textToFavorite = getSelectedText() || currentTextForTTS;
     
     if (textToFavorite) {
       const sourceName = activeDoc ? activeDoc.title : 'Scratchpad';
@@ -753,7 +781,7 @@ export default function ReaderPage() {
   };
 
   const getButtonState = () => {
-    const selectedText = typeof window !== 'undefined' ? window.getSelection()?.toString().trim() : '';
+    const selectedText = getSelectedText();
     let canPlay = !!selectedText;
 
     if (!canPlay) {
@@ -824,6 +852,7 @@ export default function ReaderPage() {
             {!activeDoc && !isLoadingDoc && !docErrorMessage && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
                   <Textarea
+                      ref={mainTextAreaRef}
                       id="scratchpad-input"
                       placeholder="Welcome to the Scratchpad!
 
@@ -862,6 +891,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
             {activeDoc?.type === 'txt' && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
                   <Textarea
+                      ref={mainTextAreaRef}
                       readOnly
                       placeholder="Text document content..."
                       className="w-full flex-grow text-base resize-none"
@@ -892,7 +922,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                         <CardTitle className="text-sm flex items-center"><FileText className="mr-2 h-4 w-4"/> Current Text for TTS</CardTitle>
                     </CardHeader>
                     <CardContent className="pt-0">
-                        <textarea readOnly value={currentTextForTTS} className="w-full h-20 p-2 border rounded-md bg-muted/30 text-xs select-text" placeholder="Text for TTS..." />
+                        <textarea ref={ttsBoxTextAreaRef} readOnly value={currentTextForTTS} className="w-full h-20 p-2 border rounded-md bg-muted/30 text-xs select-text" placeholder="Text for TTS..." />
                     </CardContent>
                 </Card>
             </div>
@@ -1011,5 +1041,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
     </div>
   );
 }
+
+    
 
     
