@@ -4,7 +4,6 @@ import type { TTSSettings, FavoriteItem, MangaDocumentDisplayInfo } from '@/type
 // For now, we simplify and assume MangaRoom handles its current page index in component state.
 
 const TTS_SETTINGS_KEY = 'mangaTalk_ttsSettings_v2';
-const NIGHT_MODE_KEY = 'mangaTalk_nightMode_v2';
 const FAVORITE_ITEMS_KEY = 'mangaTalk_favoriteItems_v1';
 const SCRATCHPAD_TEXT_KEY = 'mangaTalk_scratchpadText_v1';
 const DOC_METADATA_CACHE_KEY = 'mangaTalk_docMetadataCache_v1';
@@ -67,10 +66,6 @@ export const loadTTSSettings = (): TTSSettings => {
   return { ...defaultTTSSettings, ...settings };
 };
 export const saveTTSSettings = (settings: TTSSettings): boolean => safeLocalStorageSet(TTS_SETTINGS_KEY, settings);
-
-// Night Mode (shared)
-export const loadNightMode = (): boolean => safeLocalStorageGet<boolean>(NIGHT_MODE_KEY, true);
-export const saveNightMode = (isNightMode: boolean): boolean => safeLocalStorageSet(NIGHT_MODE_KEY, isNightMode);
 
 // Favorites Page specific storage (FavoriteItem - shared)
 export const loadFavoriteItems = (): FavoriteItem[] => {

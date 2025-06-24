@@ -1,37 +1,15 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Moon, Sun, BookOpenText, Library, Star, Home as HomeIcon } from 'lucide-react';
+import { BookOpenText, Library, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { MangaTalkLogo } from '@/components/icons/MangaTalkLogo';
-import * as LocalStorage from '@/lib/localStorageService';
 import { cn } from '@/lib/utils';
 
 export function AppHeader() {
-  const [isDarkMode, setIsDarkMode] = useState(true);
   const pathname = usePathname();
-
-  useEffect(() => {
-    const root = window.document.documentElement;
-    if (isDarkMode) {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
-    }
-    LocalStorage.saveNightMode(isDarkMode);
-  }, [isDarkMode]);
-
-  useEffect(() => {
-    setIsDarkMode(LocalStorage.loadNightMode());
-  }, []);
-
-
-  const toggleDarkMode = () => {
-    setIsDarkMode(!isDarkMode);
-  };
 
   const getLinkClass = (path: string) => {
     // For reader, also highlight if path starts with /reader (e.g. /reader?docId=...)
@@ -68,9 +46,6 @@ export function AppHeader() {
             </Button>
           </nav>
         </div>
-        <Button variant="ghost" size="icon" onClick={toggleDarkMode} aria-label="Toggle theme">
-          {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-        </Button>
       </div>
     </header>
   );
