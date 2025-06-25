@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import NextImage from 'next/image';
 import { GlobalWorkerOptions, getDocument, version as pdfjsVersion } from 'pdfjs-dist';
@@ -94,7 +94,7 @@ export default function ReaderPage() {
   const mainTextAreaRef = useRef<HTMLTextAreaElement | null>(null); // For Scratchpad, TXT
   const ttsBoxTextAreaRef = useRef<HTMLTextAreaElement | null>(null); // For the box at the bottom
 
-  const textSegments = React.useMemo(() => {
+  const textSegments = useMemo(() => {
     return currentTextForTTS?.split(/(?<=[.?!,])\s+/).filter(Boolean) || [];
   }, [currentTextForTTS]);
 
