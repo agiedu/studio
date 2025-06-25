@@ -287,7 +287,7 @@ export default function ReaderPage() {
 
               if (isStale) { pdf.destroy(); return; }
 
-              if (allText.length > 100) { // Heuristic: if substantial text, use text view
+              if (allText.length > 0) { // If any text is found, use text view.
                 setPdfTextContent(allText);
                 setCurrentTextForTTS(allText);
                 setIsPdfTextView(true);
