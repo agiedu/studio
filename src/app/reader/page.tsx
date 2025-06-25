@@ -82,6 +82,8 @@ export default function ReaderPage() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [speechOrigin, setSpeechOrigin] = useState<SpeechOrigin>(null);
+  const [highlightedSegmentIndex, setHighlightedSegmentIndex] = useState<number>(-1);
+
 
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -91,6 +93,11 @@ export default function ReaderPage() {
   // Refs for text selection
   const mainTextAreaRef = useRef<HTMLTextAreaElement | null>(null); // For Scratchpad, TXT
   const ttsBoxTextAreaRef = useRef<HTMLTextAreaElement | null>(null); // For the box at the bottom
+
+  const textSegments = React.useMemo(() => {
+    return currentTextForTTS?.split(/(?<=[.?!,])\s+/).filter(Boolean) || [];
+  }, [currentTextForTTS]);
+
 
   const getSelectedText = useCallback((): { text: string; startIndex: number | null } => {
     if (typeof window === 'undefined') {
@@ -162,6 +169,9 @@ export default function ReaderPage() {
 
 
   const stopSpeech = useCallback((resetUIState = true) => {
+    if (isMountedRef.current) {
+        setHighlightedSegmentIndex(-1);
+    }
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
@@ -580,6 +590,23 @@ export default function ReaderPage() {
             let voiceToUse: SpeechSynthesisVoice | undefined = systemVoices.find(v => v.voiceURI === ttsSettings.voiceURI);
             if (voiceToUse) utterance.voice = voiceToUse;
 
+            const segments = trimmedText.split(/(?<=[.?!,])\s+/).filter(Boolean);
+            const cumulativeLengths = segments.reduce((acc, s) => {
+                const lastLength = acc.length > 0 ? acc[acc.length - 1] : 0;
+                acc.push(lastLength + s.length);
+                return acc;
+            }, [] as number[]);
+
+            utterance.onboundary = (event) => {
+                if (!isMountedRef.current) return;
+                const charIndex = event.charIndex;
+                const currentIndex = cumulativeLengths.findIndex(len => charIndex < len);
+                
+                if (currentIndex !== -1) {
+                    setHighlightedSegmentIndex(currentIndex);
+                }
+            };
+
             utterance.onend = () => {
                 if (utteranceRef.current === utterance && isMountedRef.current) {
                     stopSpeech(true);
@@ -880,7 +907,17 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                         <CardTitle className="text-sm flex items-center"><FileText className="mr-2 h-4 w-4"/> Current Text for TTS</CardTitle>
                     </CardHeader>
                     <CardContent className="pt-0">
-                        <textarea ref={ttsBoxTextAreaRef} readOnly value={currentTextForTTS} className="w-full h-20 p-2 border rounded-md bg-muted/30 text-xs select-text" placeholder="Text for TTS..." />
+                        {(isSpeaking || isPaused) ? (
+                            <div className="w-full h-20 p-2 border rounded-md bg-muted/30 text-xs select-text overflow-y-auto">
+                                {textSegments.map((segment, index) => (
+                                    <span key={index} className={cn({ "text-green-600": index === highlightedSegmentIndex })}>
+                                        {segment}
+                                    </span>
+                                ))}
+                            </div>
+                        ) : (
+                            <textarea ref={ttsBoxTextAreaRef} readOnly value={currentTextForTTS} className="w-full h-20 p-2 border rounded-md bg-muted/30 text-xs select-text" placeholder="Text for TTS..." />
+                        )}
                     </CardContent>
                 </Card>
             </div>
