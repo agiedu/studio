@@ -37,7 +37,7 @@ import type { TTSSettings, TTSVoice, StoredMangaDocument, ActiveMangaDocument, S
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 
-const PDF_DEFAULT_SCALE = 1.5;
+const PDF_DEFAULT_SCALE = 1.0;
 
 type SpeechOrigin = 'main' | 'repeat' | null;
 
@@ -58,6 +58,9 @@ export default function ReaderPage() {
   const [isRenderingPdfPage, setIsRenderingPdfPage] = useState(false);
   const [pdfScale, setPdfScale] = useState(PDF_DEFAULT_SCALE);
   const [pdfPageIsTextBased, setPdfPageIsTextBased] = useState(true);
+  const [isPdfTextView, setIsPdfTextView] = useState(false);
+  const [pdfTextContent, setPdfTextContent] = useState<string | null>(null);
+
 
   // EPUB specific states and refs
   const epubViewerRef = useRef<HTMLDivElement | null>(null);
@@ -91,7 +94,7 @@ export default function ReaderPage() {
   const isMountedRef = useRef(false);
 
   // Refs for text selection
-  const mainTextAreaRef = useRef<HTMLTextAreaElement | null>(null); // For Scratchpad, TXT
+  const mainTextAreaRef = useRef<HTMLTextAreaElement | null>(null); // For Scratchpad, TXT, PDF-Text
   const ttsBoxTextAreaRef = useRef<HTMLTextAreaElement | null>(null); // For the box at the bottom
 
   const textSegments = useMemo(() => {
@@ -104,7 +107,7 @@ export default function ReaderPage() {
       return { text: '', startIndex: null };
     }
   
-    // Priority 1: Main content text area (Scratchpad, TXT)
+    // Priority 1: Main content text area (Scratchpad, TXT, PDF-Text)
     const mainTextarea = mainTextAreaRef.current;
     if (mainTextarea && mainTextarea.selectionStart !== mainTextarea.selectionEnd) {
       return {
@@ -113,7 +116,7 @@ export default function ReaderPage() {
       };
     }
     
-    // Priority 2: Bottom TTS text area (PDF, Image)
+    // Priority 2: Bottom TTS text area (Image, PDF-Image)
     const ttsTextarea = ttsBoxTextAreaRef.current;
     if (ttsTextarea && ttsTextarea.selectionStart !== ttsTextarea.selectionEnd) {
       return {
@@ -205,6 +208,8 @@ export default function ReaderPage() {
         try { pdfDocProxy.destroy(); } catch (e) { console.log("Non-critical error destroying PDF proxy", e); }
         setPdfDocProxy(null);
       }
+      setPdfTextContent(null);
+      setIsPdfTextView(false);
       
       // Cleanup Image
       if (currentImageObjectUrlRef.current) {
@@ -260,13 +265,49 @@ export default function ReaderPage() {
         // Handle loading based on type
         switch (doc.type) {
           case 'pdf':
-            const pdf = await getDocument({ data: doc.fileData.slice(0) }).promise;
-            if(isStale) { try {pdf.destroy();} catch(e){} return; }
-            setPdfDocProxy(pdf);
-            setPdfTotalPages(pdf.numPages);
-            const savedPageIndex = LocalStorageService.loadCurrentPdfPageIndexForDoc(doc.id);
-            setCurrentPdfPageNum((savedPageIndex > 0 && savedPageIndex <= pdf.numPages) ? savedPageIndex : 1);
-            // Page rendering will be handled by a separate effect watching pdfDocProxy and page number
+            setIsLoadingDoc(true);
+            try {
+              const pdf = await getDocument({ data: doc.fileData.slice(0) }).promise;
+              if (isStale) { try { pdf.destroy(); } catch(e){} return; }
+
+              // Try to extract all text to determine view mode
+              const pagePromises = [];
+              for (let i = 1; i <= pdf.numPages; i++) {
+                pagePromises.push(
+                  pdf.getPage(i).then(page => 
+                    page.getTextContent().then(textContent => {
+                      page.cleanup(); // Essential for memory management
+                      return textContent.items.map(item => ('str' in item ? item.str : '')).join(' ');
+                    })
+                  )
+                );
+              }
+              const pageTexts = await Promise.all(pagePromises);
+              const allText = pageTexts.join('\n\n').trim();
+
+              if (isStale) { pdf.destroy(); return; }
+
+              if (allText.length > 100) { // Heuristic: if substantial text, use text view
+                setPdfTextContent(allText);
+                setCurrentTextForTTS(allText);
+                setIsPdfTextView(true);
+                pdf.destroy(); // We don't need the proxy anymore
+              } else {
+                // Fallback to image-based view
+                setIsPdfTextView(false);
+                setPdfDocProxy(pdf);
+                setPdfTotalPages(pdf.numPages);
+                const savedPageIndex = LocalStorageService.loadCurrentPdfPageIndexForDoc(doc.id);
+                setCurrentPdfPageNum((savedPageIndex > 0 && savedPageIndex <= pdf.numPages) ? savedPageIndex : 1);
+                // The other useEffect will handle rendering the page image
+              }
+            } catch (pdfError: any) {
+              if (isStale) return;
+              console.error("Error processing PDF:", pdfError);
+              setDocErrorMessage(`Error processing PDF: ${pdfError.message}`);
+            } finally {
+              if (isMountedRef.current) setIsLoadingDoc(false);
+            }
             break;
           
           case 'epub':
@@ -358,7 +399,7 @@ export default function ReaderPage() {
 
   // PDF Page Rendering Effect
   useEffect(() => {
-    if (activeDoc?.type !== 'pdf' || !pdfDocProxy || !currentPdfPageNum) return;
+    if (activeDoc?.type !== 'pdf' || isPdfTextView || !pdfDocProxy || !currentPdfPageNum) return;
 
     let isStale = false;
     const renderPage = async () => {
@@ -410,7 +451,7 @@ export default function ReaderPage() {
 
     renderPage();
     return () => { isStale = true; };
-  }, [pdfDocProxy, currentPdfPageNum, pdfScale, activeDoc?.id]);
+  }, [pdfDocProxy, currentPdfPageNum, pdfScale, activeDoc?.id, isPdfTextView]);
 
 
   const handlePerformOcr = useCallback(async () => {
@@ -593,7 +634,7 @@ export default function ReaderPage() {
             const segments = trimmedText.split(/(?<=[.?!,])\s+/).filter(Boolean);
             const cumulativeLengths = segments.reduce((acc, s) => {
                 const lastLength = acc.length > 0 ? acc[acc.length - 1] : 0;
-                acc.push(lastLength + s.length);
+                acc.push(lastLength + s.length + 1); // +1 for the space/punctuation
                 return acc;
             }, [] as number[]);
 
@@ -780,18 +821,23 @@ export default function ReaderPage() {
   };
 
   const getMainButtonState = () => {
+    const isContentLoading = isLoadingDoc || isEpubLoading || (activeDoc?.type === 'pdf' && !isPdfTextView && isRenderingPdfPage);
+
+    if (isContentLoading) {
+      return { text: "Loading...", icon: <Loader2 className="mr-1 h-4 w-4 animate-spin" />, disabled: true, variant: "outline" as const };
+    }
     if (isLoadingTTS && speechOrigin === 'main') {
-      return { text: "Loading...", icon: <Loader2 className="mr-1 h-4 w-4 animate-spin" />, disabled: true };
+      return { text: "Loading...", icon: <Loader2 className="mr-1 h-4 w-4 animate-spin" />, disabled: true, variant: "outline" as const };
     }
     if (isSpeaking && speechOrigin === 'repeat') {
-      return { text: "Play Text", icon: <Play className="mr-1 h-4 w-4" />, disabled: true, variant: "default" };
+      return { text: "Play Text", icon: <Play className="mr-1 h-4 w-4" />, disabled: true, variant: "default" as const };
     }
     if (isSpeaking && speechOrigin === 'main') {
       return isPaused 
-        ? { text: "Resume", icon: <Play className="mr-1 h-4 w-4" />, disabled: false, variant: "default" } 
-        : { text: "Pause", icon: <Pause className="mr-1 h-4 w-4" />, disabled: false, variant: "outline" };
+        ? { text: "Resume", icon: <Play className="mr-1 h-4 w-4" />, disabled: false, variant: "default" as const } 
+        : { text: "Pause", icon: <Pause className="mr-1 h-4 w-4" />, disabled: false, variant: "outline" as const };
     }
-    return { text: "Play Text", icon: <Play className="mr-1 h-4 w-4" />, disabled: false, variant: "default" };
+    return { text: "Play Text", icon: <Play className="mr-1 h-4 w-4" />, disabled: false, variant: "default" as const };
   };
 
   const mainButtonState = getMainButtonState();
@@ -806,7 +852,7 @@ export default function ReaderPage() {
     return <div className="flex flex-col items-center justify-center h-full flex-grow p-4 text-center"> <AlertTriangle className="h-12 w-12 text-destructive mb-4" /> <h2 className="text-xl font-semibold mb-2">Error Loading Document</h2> <p className="text-muted-foreground mb-4">{docErrorMessage}</p> <Button onClick={() => router.push('/library')}>Go to Library</Button> </div>; 
   }
   
-  const showOcrButtonForPdfPage = activeDoc?.type === 'pdf' && pdfPageImage && !isRenderingPdfPage && !isLoadingDoc && !isPerformingOcr && !pdfPageIsTextBased;
+  const showOcrButtonForPdfPage = activeDoc?.type === 'pdf' && !isPdfTextView && pdfPageImage && !isRenderingPdfPage && !isLoadingDoc && !isPerformingOcr && !pdfPageIsTextBased;
   const showOcrButtonForImage = activeDoc?.type === 'image' && displayedImageSrc && !isLoadingDoc && !isPerformingOcr && !(activeDoc as StoredImageDocument).extractedText;
 
   return (
@@ -842,7 +888,7 @@ export default function ReaderPage() {
                       placeholder="Welcome to the Scratchpad!
 
 Type or paste any text here to have it read aloud or to save snippets to your favorites."
-                      className="w-full flex-grow text-base resize-none"
+                      className="w-full flex-grow text-sm resize-none"
                       value={scratchpadText}
                       onChange={(e) => {
                           setScratchpadText(e.target.value);
@@ -853,10 +899,25 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
               </div>
             )}
 
-            {/* PDF Content */}
-            {activeDoc?.type === 'pdf' && (
+            {/* PDF Text View */}
+            {activeDoc?.type === 'pdf' && isPdfTextView && (
+              <div className="w-full h-full p-2 md:p-4 flex flex-col">
+                  <Textarea
+                      ref={mainTextAreaRef}
+                      readOnly
+                      placeholder="Loading PDF text..."
+                      className="w-full flex-grow text-sm resize-none"
+                      value={pdfTextContent || ''}
+                      aria-label="PDF text content"
+                  />
+              </div>
+            )}
+
+
+            {/* PDF Image Content */}
+            {activeDoc?.type === 'pdf' && !isPdfTextView && (
                 <div className="w-full text-center p-4 space-y-4">
-                    {pdfPageImage && <NextImage src={pdfPageImage} alt={`Page ${currentPdfPageNum}`} width={0} height={0} style={{ width: 'auto', height: 'auto', maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} className="shadow-lg border rounded-md inline-block" />}
+                    {pdfPageImage && <NextImage src={pdfPageImage} alt={`Page ${currentPdfPageNum}`} width={0} height={0} style={{ width: 'auto', height: 'auto', maxHeight: '100%', maxWidth: '100%', objectFit: 'contain', transform: `scale(${pdfScale})`, transformOrigin: 'top center' }} className="shadow-lg border rounded-md" />}
                     {showOcrButtonForPdfPage && (<Button onClick={handlePerformOcr} disabled={isPerformingOcr} className="mt-4"> {isPerformingOcr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />} Perform OCR on PDF Page </Button> )}
                 </div>
             )}
@@ -879,7 +940,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                       ref={mainTextAreaRef}
                       readOnly
                       placeholder="Text document content..."
-                      className="w-full flex-grow text-base resize-none"
+                      className="w-full flex-grow text-sm resize-none"
                       value={txtContent}
                       aria-label="Text document content"
                   />
@@ -908,15 +969,18 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                     </CardHeader>
                     <CardContent className="pt-0">
                         {(isSpeaking || isPaused) ? (
-                            <div className="w-full h-20 p-2 border rounded-md bg-muted/30 text-xs select-text overflow-y-auto">
+                            <div className="w-full h-20 p-2 border rounded-md bg-muted/30 text-sm overflow-y-auto whitespace-pre-wrap font-sans select-text">
                                 {textSegments.map((segment, index) => (
-                                    <span key={index} className={cn({ "text-green-600": index === highlightedSegmentIndex })}>
+                                    <span key={index} className={cn(
+                                        "transition-colors duration-200",
+                                        { "text-green-600 font-medium": index === highlightedSegmentIndex }
+                                    )}>
                                         {segment}
                                     </span>
                                 ))}
                             </div>
                         ) : (
-                            <textarea ref={ttsBoxTextAreaRef} readOnly value={currentTextForTTS} className="w-full h-20 p-2 border rounded-md bg-muted/30 text-xs select-text" placeholder="Text for TTS..." />
+                            <textarea ref={ttsBoxTextAreaRef} readOnly value={currentTextForTTS} className="w-full h-20 p-2 border rounded-md bg-muted/30 text-sm overflow-y-auto whitespace-pre-wrap font-sans select-text" placeholder="Text for TTS..." />
                         )}
                     </CardContent>
                 </Card>
@@ -934,7 +998,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                     </CardTitle>
                     <CardDescription className="text-xs">
                       {activeDoc
-                        ? `Type: ${activeDoc.type?.toUpperCase()}${activeDoc?.type === 'pdf' && pdfTotalPages > 0 ? `, Page: ${currentPdfPageNum}/${pdfTotalPages}` : ''}`
+                        ? `Type: ${activeDoc.type?.toUpperCase()}${activeDoc?.type === 'pdf' && !isPdfTextView && pdfTotalPages > 0 ? `, Page: ${currentPdfPageNum}/${pdfTotalPages}` : ''}`
                         : 'Custom text input'}
                     </CardDescription>
                 </CardHeader>
@@ -959,7 +1023,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                 </CardContent>
             </Card>
 
-            {(activeDoc?.type === 'pdf' && pdfTotalPages > 0) && (
+            {(activeDoc?.type === 'pdf' && !isPdfTextView && pdfTotalPages > 0) && (
               <Card>
                 <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">PDF Navigation & View</CardTitle></CardHeader>
                 <CardContent className="space-y-2 pt-0">
@@ -969,9 +1033,9 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                     <Button onClick={() => navigatePdf('next')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum >= pdfTotalPages} size="sm" variant="outline">Next <ChevronRight /></Button>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button onClick={() => handlePdfScaleChange(pdfScale - 0.25)} size="icon" variant="outline" className="h-7 w-7" disabled={isRenderingPdfPage || pdfScale <= 0.5}><ZoomOut className="h-4 w-4"/></Button>
-                    <Slider value={[pdfScale]} min={0.5} max={3} step={0.25} onValueChange={([val]) => handlePdfScaleChange(val)} disabled={isRenderingPdfPage} />
-                    <Button onClick={() => handlePdfScaleChange(pdfScale + 0.25)} size="icon" variant="outline" className="h-7 w-7" disabled={isRenderingPdfPage || pdfScale >=3}><ZoomIn className="h-4 w-4"/></Button>
+                    <Button onClick={() => handlePdfScaleChange(pdfScale - 0.25)} size="icon" variant="outline" className="h-7 w-7" disabled={isRenderingPdfPage || pdfScale <= 0.25}><ZoomOut className="h-4 w-4"/></Button>
+                    <Slider value={[pdfScale]} min={0.25} max={5} step={0.25} onValueChange={([val]) => handlePdfScaleChange(val)} disabled={isRenderingPdfPage} />
+                    <Button onClick={() => handlePdfScaleChange(pdfScale + 0.25)} size="icon" variant="outline" className="h-7 w-7" disabled={isRenderingPdfPage || pdfScale >= 5}><ZoomIn className="h-4 w-4"/></Button>
                   </div>
                 </CardContent>
               </Card>
@@ -1015,7 +1079,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                 <div className="space-y-1"><Label htmlFor="tts-rate" className="text-xs">Rate: {ttsSettings.rate.toFixed(1)}</Label><Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isSpeaking && !isPaused}/></div>
                 <div className="space-y-1"><Label htmlFor="tts-pitch" className="text-xs">Pitch: {ttsSettings.pitch.toFixed(1)}</Label><Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isSpeaking && !isPaused}/></div>
                 
-                <Button onClick={playPauseSpeech} disabled={mainButtonState.disabled} variant={mainButtonState.variant as "default" | "outline"} className="w-full h-9 text-sm">{mainButtonState.icon} {mainButtonState.text}</Button>
+                <Button onClick={playPauseSpeech} disabled={mainButtonState.disabled} variant={mainButtonState.variant} className="w-full h-9 text-sm">{mainButtonState.icon} {mainButtonState.text}</Button>
                 
                 <div className="grid grid-cols-2 gap-2 mt-2">
                     <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full text-xs"> <Star className="mr-2 h-3 w-3" /> Favorite Text </Button>
