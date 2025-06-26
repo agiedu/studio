@@ -341,7 +341,7 @@ export default function ReaderPage() {
                   const book = ePub(doc.fileData);
                   epubBookRef.current = book;
                   
-                  await book.spine.ready;
+                  await book.ready; // Wait for book metadata to be ready
 
                   if (isStale) { book.destroy(); return; }
 
