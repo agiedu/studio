@@ -93,6 +93,8 @@ export default function ReaderPage() {
   const ttsDisplayRef = useRef<HTMLDivElement | null>(null);
 
   const isMountedRef = useRef(false);
+  const isSpeakingRef = useRef(false);
+  const segmentIndexRef = useRef(0);
 
   // Refs for text selection
   const mainTextAreaRef = useRef<HTMLTextAreaElement | null>(null); // For Scratchpad, TXT, PDF-Text
@@ -100,10 +102,11 @@ export default function ReaderPage() {
 
   const textSegments = useMemo(() => {
     if (!currentTextForTTS) return [];
-    // This regex splits the text after any of the specified punctuation marks.
-    // It captures the text and the delimiter together, preserving all whitespace.
-    const parts = currentTextForTTS.split(/([.?!,。？！，、])/g);
+    // Split by common sentence-ending punctuation, keeping the delimiter.
+    // This regex handles English and Chinese punctuation.
+    const parts = currentTextForTTS.split(/([.?!,。？！，、\n]+)/g);
     const segments = [];
+    // Reassemble parts to ensure delimiters are attached to the preceding text segment
     for (let i = 0; i < parts.length; i += 2) {
       const text = parts[i];
       const delimiter = parts[i + 1] || '';
@@ -111,7 +114,7 @@ export default function ReaderPage() {
         segments.push(text + delimiter);
       }
     }
-    return segments.filter(Boolean); // Filter out any potential empty strings
+    return segments.filter(s => s.length > 0);
   }, [currentTextForTTS]);
 
 
@@ -185,6 +188,7 @@ export default function ReaderPage() {
 
 
   const stopSpeech = useCallback((resetUIState = true) => {
+    isSpeakingRef.current = false;
     if (isMountedRef.current) {
         setHighlightedSegmentIndex(-1);
     }
@@ -327,23 +331,24 @@ export default function ReaderPage() {
             setIsEpubLoading(true);
             try {
                 const ePubModule = await import('epubjs');
-                const book = ePubModule.default(doc.fileData);
+                // Ensure we get the correct constructor, robust to different module bundling results
+                const ePub = (ePubModule as any).default || ePubModule;
+                const book = ePub(doc.fileData);
                 epubBookRef.current = book;
                 
-                await book.ready; // Wait for book metadata to be ready
+                await book.loaded.spine; // Critical Fix: Wait for spine to be fully ready before accessing items.
 
                 if(isStale) { try { book.destroy(); } catch(e){} return; }
 
-                // More robust text extraction using Promise.all
                 const textPromises = book.spine.items.map(section => {
                     return section.load()
                         .then(loadedSection => {
                             const text = loadedSection.documentElement?.textContent ?? '';
-                            section.unload();
+                            section.unload(); // Unload section to free memory
                             return text;
                         })
                         .catch(err => {
-                            console.warn(`Could not load or get text from EPUB section:`, err);
+                            console.warn(`Could not load or get text from EPUB section: ${section.idref}`, err);
                             return ''; // Return empty string for failed sections
                         });
                 });
@@ -484,7 +489,7 @@ export default function ReaderPage() {
 
     renderPage();
     return () => { isStale = true; };
-  }, [pdfDocProxy, currentPdfPageNum, pdfScale, activeDoc?.id, isPdfTextView]);
+  }, [pdfDocProxy, currentPdfPageNum, pdfScale, activeDoc?.id, isPdfTextView, stopSpeech]);
 
 
   const handlePerformOcr = useCallback(async () => {
@@ -632,12 +637,11 @@ export default function ReaderPage() {
   }, [highlightedSegmentIndex, isSpeaking, isPaused]);
 
 
-  // The executor function. It just speaks.
-  const _startSpeech = useCallback(async (textToPlay: string, origin: SpeechOrigin, startIndex = 0) => {
+  // The executor function. It queues up utterances sentence by sentence.
+  const _startSpeech = useCallback(async (origin: SpeechOrigin, startIndex = 0) => {
     if (!isMountedRef.current) return;
     
-    // Centralized validation
-    const trimmedText = textToPlay?.trim();
+    const trimmedText = currentTextForTTS?.trim();
     if (!trimmedText) {
         toast({variant: "destructive", title: "No Text", description: "No text is available to be read aloud."});
         stopSpeech(true);
@@ -650,16 +654,16 @@ export default function ReaderPage() {
         return;
     }
 
-    stopSpeech(false); // Stop active speech, but don't reset UI yet.
+    stopSpeech(false);
     
-    // A small delay to prevent race conditions with the SpeechSynthesis API.
     setTimeout(async () => {
         if (!isMountedRef.current) return;
 
-        setIsLoadingTTS(true);
         setIsSpeaking(true);
+        isSpeakingRef.current = true;
         setIsPaused(false);
         setSpeechOrigin(origin);
+        setIsLoadingTTS(true);
 
         if (ttsSettings.engine === 'local') {
             if (typeof window === 'undefined' || !window.speechSynthesis) {
@@ -667,51 +671,75 @@ export default function ReaderPage() {
                 stopSpeech(true);
                 return;
             }
-            const utterance = new SpeechSynthesisUtterance(trimmedText);
-            utterance.lang = ttsSettings.language;
-            utterance.pitch = ttsSettings.pitch;
-            utterance.rate = ttsSettings.rate;
-            const systemVoices = window.speechSynthesis.getVoices();
-            let voiceToUse: SpeechSynthesisVoice | undefined = systemVoices.find(v => v.voiceURI === ttsSettings.voiceURI);
-            if (voiceToUse) utterance.voice = voiceToUse;
+            
+            let charCount = 0;
+            let startSegment = 0;
+            for (let i = 0; i < textSegments.length; i++) {
+                const segmentEnd = charCount + textSegments[i].length;
+                if (startIndex < segmentEnd) {
+                    startSegment = i;
+                    break;
+                }
+                charCount = segmentEnd;
+            }
+            segmentIndexRef.current = startSegment;
 
-            const cumulativeLengths = textSegments.reduce((acc, s) => {
-                const lastLength = acc.length > 0 ? acc[acc.length - 1] : 0;
-                acc.push(lastLength + s.length);
-                return acc;
-            }, [] as number[]);
+            const speakNext = () => {
+                if (!isSpeakingRef.current || segmentIndexRef.current >= textSegments.length) {
+                    if (isMountedRef.current) stopSpeech(true);
+                    return;
+                }
 
-            utterance.onboundary = (event) => {
-                if (!isMountedRef.current) return;
-                const charIndex = startIndex + event.charIndex;
-                const currentIndex = cumulativeLengths.findIndex(len => charIndex < len);
+                const currentIndex = segmentIndexRef.current;
+                const segmentText = textSegments[currentIndex];
+
+                if (!segmentText?.trim()) {
+                    segmentIndexRef.current++;
+                    speakNext();
+                    return;
+                }
+
+                const utterance = new SpeechSynthesisUtterance(segmentText);
+                utterance.lang = ttsSettings.language;
+                utterance.pitch = ttsSettings.pitch;
+                utterance.rate = ttsSettings.rate;
+                const systemVoices = window.speechSynthesis.getVoices();
+                let voiceToUse = systemVoices.find(v => v.voiceURI === ttsSettings.voiceURI);
+                if (voiceToUse) utterance.voice = voiceToUse;
+
+                utterance.onstart = () => {
+                    if (isSpeakingRef.current && isMountedRef.current) {
+                        setHighlightedSegmentIndex(currentIndex);
+                    }
+                };
+
+                utterance.onend = () => {
+                    segmentIndexRef.current++;
+                    setTimeout(speakNext, 50); // Small delay between utterances
+                };
+
+                utterance.onerror = (event) => {
+                    if(isMountedRef.current) {
+                        console.error("SpeechSynthesis Error:", event.error);
+                        toast({ variant: "destructive", title: "TTS Error", description: event.error || "An unknown error occurred." });
+                        stopSpeech(true);
+                    }
+                };
                 
-                if (currentIndex !== -1) {
-                    setHighlightedSegmentIndex(currentIndex);
-                }
+                utteranceRef.current = utterance;
+                window.speechSynthesis.speak(utterance);
             };
 
-            utterance.onend = () => {
-                if (utteranceRef.current === utterance && isMountedRef.current) {
-                    stopSpeech(true);
-                }
-            };
-            utterance.onerror = (event) => {
-                if(utteranceRef.current === utterance && isMountedRef.current) {
-                    toast({ variant: "destructive", title: "TTS Error", description: event.error || "Speech failed." });
-                    stopSpeech(true);
-                }
-            };
-            utteranceRef.current = utterance;
-            window.speechSynthesis.speak(utterance);
             if(isMountedRef.current) setIsLoadingTTS(false);
+            speakNext();
 
         } else { // Cloud TTS
             try {
-                if (audioPlayerRef.current) {
-                    audioPlayerRef.current.loop = false;
-                }
-                const result = await getCloudSpeech(trimmedText, ttsSettings.language);
+                const textForCloud = currentTextForTTS.substring(startIndex);
+                if (!textForCloud) throw new Error("No text to play.");
+
+                if (audioPlayerRef.current) audioPlayerRef.current.loop = false;
+                const result = await getCloudSpeech(textForCloud, ttsSettings.language);
                 if(!isMountedRef.current) return;
                 if ('audioUrl' in result && audioPlayerRef.current) {
                     audioPlayerRef.current.src = result.audioUrl;
@@ -728,7 +756,7 @@ export default function ReaderPage() {
             }
         }
     }, 50);
-  }, [ttsSettings, stopSpeech, toast, textSegments]);
+  }, [ttsSettings, stopSpeech, toast, textSegments, currentTextForTTS]);
 
   // The "brain" function for the main play button.
   const playPauseSpeech = () => {
@@ -737,11 +765,11 @@ export default function ReaderPage() {
     // If a speech is active AND it's from the main button, then toggle pause/resume.
     if (isSpeaking && speechOrigin === 'main') {
         if (isPaused) {
-            if (ttsSettings.engine === 'local') { window.speechSynthesis.resume(); } 
+            if (ttsSettings.engine === 'local' && window.speechSynthesis) { window.speechSynthesis.resume(); } 
             else { audioPlayerRef.current?.play().catch(() => stopSpeech(true)); }
             setIsPaused(false);
         } else {
-            if (ttsSettings.engine === 'local') { window.speechSynthesis.pause(); } 
+            if (ttsSettings.engine === 'local' && window.speechSynthesis) { window.speechSynthesis.pause(); } 
             else { audioPlayerRef.current?.pause(); }
             setIsPaused(true);
         }
@@ -750,7 +778,6 @@ export default function ReaderPage() {
     
     // Otherwise (no speech, or speech from another origin), start a new main speech.
     const selectionInfo = getSelectedText();
-    let textToPlay = currentTextForTTS; // Default to full text
     let startIndexForTTS = 0;
 
     if (selectionInfo.text) {
@@ -765,37 +792,62 @@ export default function ReaderPage() {
         }
     
         if (startIndex !== null) {
-            textToPlay = currentTextForTTS.substring(startIndex);
             startIndexForTTS = startIndex;
         }
     }
     
-    _startSpeech(textToPlay, 'main', startIndexForTTS);
+    _startSpeech('main', startIndexForTTS);
   };
   
   const handleRepeatSelection = () => {
     if (!isMountedRef.current) return;
     const selectionInfo = getSelectedText();
     const textToPlay = selectionInfo.text;
-    if (textToPlay) {
-      let startIndexForTTS = 0;
-      if (selectionInfo.startIndex !== null) {
-          startIndexForTTS = selectionInfo.startIndex;
-      } else {
-          // Fallback for EPUB or general page selection
-          const index = currentTextForTTS.indexOf(textToPlay);
-          if (index !== -1) {
-              startIndexForTTS = index;
-          }
-      }
-      _startSpeech(textToPlay, 'repeat', startIndexForTTS);
-    } else {
+    if (!textToPlay) {
       toast({
         variant: 'destructive',
         title: 'No Text Selected',
         description: 'Please select some text to repeat.',
       });
+      return;
     }
+    
+    // This is a simplified speech function for repeating a selection
+    // It does not support continued highlighting or scrolling of the main text view.
+    stopSpeech(true);
+
+    setTimeout(() => {
+        if (!isMountedRef.current) return;
+        if (typeof window === 'undefined' || !window.speechSynthesis) {
+          toast({ variant: "destructive", title: "TTS Error", description: "Browser Speech Synthesis not supported." });
+          return;
+        }
+
+        setIsSpeaking(true);
+        isSpeakingRef.current = true;
+        setIsPaused(false);
+        setIsLoadingTTS(true);
+        setSpeechOrigin('repeat');
+
+        const utterance = new SpeechSynthesisUtterance(textToPlay);
+        utterance.lang = ttsSettings.language;
+        utterance.pitch = ttsSettings.pitch;
+        utterance.rate = ttsSettings.rate;
+        const voiceToUse = window.speechSynthesis.getVoices().find(v => v.voiceURI === ttsSettings.voiceURI);
+        if (voiceToUse) utterance.voice = voiceToUse;
+
+        utterance.onend = () => { if(isMountedRef.current) stopSpeech(true); };
+        utterance.onerror = (event) => {
+            if(isMountedRef.current) {
+                toast({ variant: "destructive", title: "TTS Error", description: event.error || "Speech failed." });
+                stopSpeech(true);
+            }
+        };
+
+        window.speechSynthesis.speak(utterance);
+        if (isMountedRef.current) setIsLoadingTTS(false);
+
+    }, 50);
   };
 
   const handleSettingChange = <K extends keyof TTSSettings>(key: K, value: TTSSettings[K]) => {
@@ -1143,9 +1195,9 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                         variant="outline"
                         size="sm"
                         className="w-full text-xs"
-                        disabled={isSpeaking && speechOrigin === 'main' && !isPaused}>
+                        disabled={isLoadingTTS && speechOrigin === 'main'}>
                         <Repeat className="mr-2 h-3 w-3" />
-                        {isSpeaking && speechOrigin === 'repeat' ? 'Playing...' : 'Repeat Sel.'}
+                        {(isSpeaking && speechOrigin === 'repeat') || (isLoadingTTS && speechOrigin === 'repeat') ? 'Playing...' : 'Repeat Sel.'}
                     </Button>
                 </div>
               </CardContent>
