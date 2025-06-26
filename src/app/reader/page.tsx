@@ -341,7 +341,8 @@ export default function ReaderPage() {
                   const book = ePub(doc.fileData);
                   epubBookRef.current = book;
                   
-                  await book.ready; // Wait for book metadata to be ready
+                  await book.ready;
+                  await book.loaded.spine;
 
                   if (isStale) { book.destroy(); return; }
 
@@ -353,7 +354,7 @@ export default function ReaderPage() {
                               return text;
                           })
                           .catch(err => {
-                              console.warn(`Could not load or get text from EPUB section: ${section.idref}`, err);
+                              console.warn(`Could not load or get text from EPUB section: ${(section as any).idref || 'unknown'}`, err);
                               return '';
                           });
                   });
