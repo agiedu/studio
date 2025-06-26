@@ -354,7 +354,7 @@ export default function ReaderPage() {
                               return text;
                           })
                           .catch(err => {
-                              console.warn(`Could not load or get text from EPUB section: ${(section as any).idref || 'unknown'}`, err);
+                              console.warn(`Could not load or get text from EPUB section:`, err);
                               return '';
                           });
                   });
