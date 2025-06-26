@@ -102,7 +102,7 @@ export default function ReaderPage() {
     if (!currentTextForTTS) return [];
     // This regex splits the text after any of the specified punctuation marks.
     // It captures the text and the delimiter together, preserving all whitespace.
-    const parts = currentTextForTTS.split(/([.?!,])/g);
+    const parts = currentTextForTTS.split(/([.?!,。？！，、])/g);
     const segments = [];
     for (let i = 0; i < parts.length; i += 2) {
       const text = parts[i];
@@ -325,36 +325,56 @@ export default function ReaderPage() {
           
           case 'epub':
             setIsEpubLoading(true);
-            const ePubModule = await import('epubjs');
-            const book = ePubModule.default(doc.fileData);
-            epubBookRef.current = book;
-            
-            if (!epubViewerRef.current) {
-              throw new Error("EPUB viewer element not ready.");
-            }
+            try {
+                const ePubModule = await import('epubjs');
+                const book = ePubModule.default(doc.fileData);
+                epubBookRef.current = book;
+                
+                await book.ready; // Wait for book metadata to be ready
 
-            const rendition = book.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
-            epubRenditionRef.current = rendition;
+                if(isStale) { try { book.destroy(); } catch(e){} return; }
 
-            rendition.on('displayed', async (sectionResult: any) => {
-              if (isMountedRef.current && epubRenditionRef.current === rendition) {
-                try {
-                  const displayedContents = await rendition.getContents();
-                  const body = displayedContents?.[0]?.document?.body;
-                  // Use innerText to better reflect what the user sees, including line breaks.
-                  const extractedText = body ? (body.innerText || body.textContent || "") : "";
-                  setCurrentTextForTTS(extractedText || "EPUB section loaded. Text may be graphical or empty.");
-                } catch (textExtractError) {
-                  setCurrentTextForTTS("EPUB section loaded, but text could not be extracted.");
+                // More robust text extraction using Promise.all
+                const textPromises = book.spine.items.map(section => {
+                    return section.load()
+                        .then(loadedSection => {
+                            const text = loadedSection.documentElement?.textContent ?? '';
+                            section.unload();
+                            return text;
+                        })
+                        .catch(err => {
+                            console.warn(`Could not load or get text from EPUB section:`, err);
+                            return ''; // Return empty string for failed sections
+                        });
+                });
+
+                const allSectionTexts = await Promise.all(textPromises);
+                const fullEpubText = allSectionTexts.join('\n\n').trim();
+
+                if (isStale) { try { book.destroy(); } catch(e){} return; }
+
+                setCurrentTextForTTS(fullEpubText || "EPUB loaded. No textual content could be extracted.");
+                
+                if (!epubViewerRef.current) {
+                  throw new Error("EPUB viewer element not ready.");
                 }
-              }
-            });
 
-            await rendition.display();
-            if(isStale) return;
+                const rendition = book.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
+                epubRenditionRef.current = rendition;
 
-            setIsEpubLoading(false);
-            setIsLoadingDoc(false);
+                await rendition.display();
+                if(isStale) return;
+
+            } catch (e: any) {
+                if (isStale) return;
+                console.error("Error processing EPUB:", e);
+                setDocErrorMessage(`Error processing EPUB: ${e.message}`);
+            } finally {
+                if (isMountedRef.current) {
+                    setIsEpubLoading(false);
+                    setIsLoadingDoc(false);
+                }
+            }
             break;
 
           case 'image':
@@ -613,7 +633,7 @@ export default function ReaderPage() {
 
 
   // The executor function. It just speaks.
-  const _startSpeech = useCallback(async (textToPlay: string, origin: SpeechOrigin) => {
+  const _startSpeech = useCallback(async (textToPlay: string, origin: SpeechOrigin, startIndex = 0) => {
     if (!isMountedRef.current) return;
     
     // Centralized validation
@@ -663,7 +683,7 @@ export default function ReaderPage() {
 
             utterance.onboundary = (event) => {
                 if (!isMountedRef.current) return;
-                const charIndex = event.charIndex;
+                const charIndex = startIndex + event.charIndex;
                 const currentIndex = cumulativeLengths.findIndex(len => charIndex < len);
                 
                 if (currentIndex !== -1) {
@@ -731,6 +751,7 @@ export default function ReaderPage() {
     // Otherwise (no speech, or speech from another origin), start a new main speech.
     const selectionInfo = getSelectedText();
     let textToPlay = currentTextForTTS; // Default to full text
+    let startIndexForTTS = 0;
 
     if (selectionInfo.text) {
         let startIndex: number | null = selectionInfo.startIndex;
@@ -745,10 +766,11 @@ export default function ReaderPage() {
     
         if (startIndex !== null) {
             textToPlay = currentTextForTTS.substring(startIndex);
+            startIndexForTTS = startIndex;
         }
     }
     
-    _startSpeech(textToPlay, 'main');
+    _startSpeech(textToPlay, 'main', startIndexForTTS);
   };
   
   const handleRepeatSelection = () => {
@@ -756,7 +778,17 @@ export default function ReaderPage() {
     const selectionInfo = getSelectedText();
     const textToPlay = selectionInfo.text;
     if (textToPlay) {
-      _startSpeech(textToPlay, 'repeat');
+      let startIndexForTTS = 0;
+      if (selectionInfo.startIndex !== null) {
+          startIndexForTTS = selectionInfo.startIndex;
+      } else {
+          // Fallback for EPUB or general page selection
+          const index = currentTextForTTS.indexOf(textToPlay);
+          if (index !== -1) {
+              startIndexForTTS = index;
+          }
+      }
+      _startSpeech(textToPlay, 'repeat', startIndexForTTS);
     } else {
       toast({
         variant: 'destructive',
