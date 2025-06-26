@@ -340,57 +340,40 @@ export default function ReaderPage() {
                   
                   const book = ePub(doc.fileData);
                   epubBookRef.current = book;
-                  
-                  // Wait for book to be ready, including the spine.
+
                   await book.ready;
-                  await book.loaded.spine;
-
-                  if (isStale) { book.destroy(); return; }
-                  
-                  // Correctly iterate through spine items to get section objects and load them
-                  const textPromises = book.spine.items.map(async (item) => {
-                    try {
-                      const section = book.spine.get(item.href);
-                      if (!section) return '';
-                      await section.load(book.load.bind(book));
-                      const text = section.document?.documentElement?.textContent ?? '';
-                      section.unload();
-                      return text;
-                    } catch(e) {
-                      console.warn(`Could not load text from EPUB section: ${item.href}`, e);
-                      return '';
-                    }
-                  });
-
-                  const allSectionTexts = (await Promise.all(textPromises)).join('\n\n').trim();
                   
                   if (isStale) { book.destroy(); return; }
-
-                  setCurrentTextForTTS(allSectionTexts || "This EPUB might be image-based. Navigate pages to check for OCR options.");
+                  
+                  setCurrentTextForTTS("Loading EPUB...");
                   
                   if (!epubViewerRef.current) throw new Error("EPUB viewer element not ready.");
 
                   const rendition = book.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
                   epubRenditionRef.current = rendition;
 
-                  // Add relocated event listener to detect image-only pages
                   rendition.on('relocated', async (location: any) => {
                       if (!epubBookRef.current || !isMountedRef.current) return;
                       
-                      // Reset image page state
                       setEpubPageIsImage(false);
                       setEpubImageForOcr(null);
+                      setCurrentTextForTTS("Loading page content...");
 
                       try {
                           const section = epubBookRef.current.spine.get(location.start.cfi);
-                          if (!section) return;
+                          if (!section) {
+                            if(isMountedRef.current) setCurrentTextForTTS("Could not load page content.");
+                            return;
+                          }
 
                           await section.load(epubBookRef.current.load.bind(epubBookRef.current));
                           const contentBody = section.document.body;
-
-                          const isImagePage = (contentBody.textContent || '').trim().length < 100 && (contentBody.querySelector('img') || contentBody.querySelector('image'));
+                          const pageText = (contentBody.textContent || '').trim();
+                          
+                          const isImagePage = pageText.length < 100 && (contentBody.querySelector('img') || contentBody.querySelector('image'));
 
                           if (isImagePage) {
+                              setCurrentTextForTTS("This page is an image. Use OCR to extract text.");
                               const imgElement = contentBody.querySelector('img') || contentBody.querySelector('image');
                               if (imgElement) {
                                   const href = imgElement.getAttribute('src') || imgElement.getAttribute('xlink:href');
@@ -403,11 +386,19 @@ export default function ReaderPage() {
                                       }
                                   }
                               }
+                          } else {
+                            if(isMountedRef.current) {
+                                setEpubPageIsImage(false);
+                                setCurrentTextForTTS(pageText || "This page has no text content.");
+                            }
                           }
                           section.unload();
-                      } catch (e) {
-                          console.error("Error checking EPUB page for image", e);
-                          if (isMountedRef.current) setEpubPageIsImage(false);
+                      } catch (e: any) {
+                          console.error("Error processing EPUB page on relocation", e);
+                          if (isMountedRef.current) {
+                            setEpubPageIsImage(false);
+                            setCurrentTextForTTS(`Error loading page content: ${e.message}`);
+                          }
                       }
                   });
 
