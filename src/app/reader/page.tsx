@@ -90,6 +90,7 @@ export default function ReaderPage() {
 
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const ttsDisplayRef = useRef<HTMLDivElement | null>(null);
 
   const isMountedRef = useRef(false);
 
@@ -98,7 +99,19 @@ export default function ReaderPage() {
   const ttsBoxTextAreaRef = useRef<HTMLTextAreaElement | null>(null); // For the box at the bottom
 
   const textSegments = useMemo(() => {
-    return currentTextForTTS?.split(/(?<=[.?!,])\s+/).filter(Boolean) || [];
+    if (!currentTextForTTS) return [];
+    // This regex splits the text after any of the specified punctuation marks.
+    // It captures the text and the delimiter together, preserving all whitespace.
+    const parts = currentTextForTTS.split(/([.?!,])/g);
+    const segments = [];
+    for (let i = 0; i < parts.length; i += 2) {
+      const text = parts[i];
+      const delimiter = parts[i + 1] || '';
+      if (text || delimiter) {
+        segments.push(text + delimiter);
+      }
+    }
+    return segments.filter(Boolean); // Filter out any potential empty strings
   }, [currentTextForTTS]);
 
 
@@ -588,6 +601,17 @@ export default function ReaderPage() {
     };
   }, [ttsSettings.engine, isSpeaking, stopSpeech, toast]);
 
+  // Effect for auto-scrolling the highlighted text
+  useEffect(() => {
+    if (isSpeaking && !isPaused && highlightedSegmentIndex > -1 && ttsDisplayRef.current) {
+      const element = ttsDisplayRef.current.children[highlightedSegmentIndex] as HTMLElement;
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [highlightedSegmentIndex, isSpeaking, isPaused]);
+
+
   // The executor function. It just speaks.
   const _startSpeech = useCallback(async (textToPlay: string, origin: SpeechOrigin) => {
     if (!isMountedRef.current) return;
@@ -631,10 +655,9 @@ export default function ReaderPage() {
             let voiceToUse: SpeechSynthesisVoice | undefined = systemVoices.find(v => v.voiceURI === ttsSettings.voiceURI);
             if (voiceToUse) utterance.voice = voiceToUse;
 
-            const segments = trimmedText.split(/(?<=[.?!,])\s+/).filter(Boolean);
-            const cumulativeLengths = segments.reduce((acc, s) => {
+            const cumulativeLengths = textSegments.reduce((acc, s) => {
                 const lastLength = acc.length > 0 ? acc[acc.length - 1] : 0;
-                acc.push(lastLength + s.length + 1); // +1 for the space/punctuation
+                acc.push(lastLength + s.length);
                 return acc;
             }, [] as number[]);
 
@@ -685,7 +708,7 @@ export default function ReaderPage() {
             }
         }
     }, 50);
-  }, [ttsSettings, stopSpeech, toast]);
+  }, [ttsSettings, stopSpeech, toast, textSegments]);
 
   // The "brain" function for the main play button.
   const playPauseSpeech = () => {
@@ -969,7 +992,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                     </CardHeader>
                     <CardContent className="pt-0">
                         {(isSpeaking || isPaused) ? (
-                            <div className="w-full h-20 p-2 border rounded-md bg-muted/30 text-sm overflow-y-auto whitespace-pre-wrap font-sans select-text">
+                            <div ref={ttsDisplayRef} className="w-full h-20 p-2 border rounded-md bg-muted/30 text-sm overflow-y-auto whitespace-pre-wrap font-sans select-text">
                                 {textSegments.map((segment, index) => (
                                     <span key={index} className={cn(
                                         "transition-colors duration-200",
