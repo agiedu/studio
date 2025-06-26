@@ -341,22 +341,24 @@ export default function ReaderPage() {
                   const book = ePub(doc.fileData);
                   epubBookRef.current = book;
                   
+                  // Wait for book to be ready, including the spine.
                   await book.ready;
                   await book.loaded.spine;
 
                   if (isStale) { book.destroy(); return; }
-
-                  const textPromises = book.spine.items.map(section => {
-                      return section.load()
-                          .then(loadedSection => {
-                              const text = loadedSection.documentElement?.textContent ?? '';
-                              section.unload();
-                              return text;
-                          })
-                          .catch(err => {
-                              console.warn(`Could not load or get text from EPUB section:`, err);
-                              return '';
-                          });
+                  
+                  // Correctly iterate through spine items to get section objects and load them
+                  const textPromises = book.spine.items.map(async (item) => {
+                    try {
+                      const section = book.spine.get(item.href);
+                      await section.load(book.load.bind(book));
+                      const text = section.document?.documentElement?.textContent ?? '';
+                      section.unload();
+                      return text;
+                    } catch(e) {
+                      console.warn(`Could not load text from EPUB section: ${item.href}`, e);
+                      return '';
+                    }
                   });
 
                   const allSectionTexts = (await Promise.all(textPromises)).join('\n\n').trim();
@@ -370,16 +372,19 @@ export default function ReaderPage() {
                   const rendition = book.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
                   epubRenditionRef.current = rendition;
 
+                  // Add relocated event listener to detect image-only pages
                   rendition.on('relocated', async (location: any) => {
                       if (!epubBookRef.current || !isMountedRef.current) return;
+                      
+                      // Reset image page state
                       setEpubPageIsImage(false);
                       setEpubImageForOcr(null);
 
                       try {
-                          const section = epubBookRef.current.spine.get(location.start.href);
+                          const section = epubBookRef.current.spine.get(location.start.cfi);
                           if (!section) return;
 
-                          await section.load();
+                          await section.load(epubBookRef.current.load.bind(epubBookRef.current));
                           const contentBody = section.document.body;
 
                           const isImagePage = (contentBody.textContent || '').trim().length < 100 && (contentBody.querySelector('img') || contentBody.querySelector('image'));
@@ -389,18 +394,13 @@ export default function ReaderPage() {
                               if (imgElement) {
                                   const href = imgElement.getAttribute('src') || imgElement.getAttribute('xlink:href');
                                   if (href) {
-                                      const imageUrl = await epubBookRef.current.resources.get(href, 'dataUrl');
+                                      const imageUrl = await epubBookRef.current.resources.get(section.resolveUrl(href), 'dataUrl');
                                       if (isMountedRef.current) {
                                           setEpubImageForOcr(imageUrl as string);
                                           setEpubPageIsImage(true);
-                                          setCurrentTextForTTS("This EPUB page is an image. Use OCR to extract text.");
+                                          // Note: We don't update currentTextForTTS here because it holds the whole book's text
                                       }
                                   }
-                              }
-                          } else {
-                              if (isMountedRef.current) {
-                                  setEpubPageIsImage(false);
-                                  setEpubImageForOcr(null);
                               }
                           }
                           section.unload();
@@ -1304,3 +1304,5 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
     </div>
   );
 }
+
+    
