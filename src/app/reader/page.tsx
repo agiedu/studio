@@ -351,6 +351,7 @@ export default function ReaderPage() {
                   const textPromises = book.spine.items.map(async (item) => {
                     try {
                       const section = book.spine.get(item.href);
+                      if (!section) return '';
                       await section.load(book.load.bind(book));
                       const text = section.document?.documentElement?.textContent ?? '';
                       section.unload();
@@ -393,12 +394,12 @@ export default function ReaderPage() {
                               const imgElement = contentBody.querySelector('img') || contentBody.querySelector('image');
                               if (imgElement) {
                                   const href = imgElement.getAttribute('src') || imgElement.getAttribute('xlink:href');
-                                  if (href) {
-                                      const imageUrl = await epubBookRef.current.resources.get(section.resolveUrl(href), 'dataUrl');
+                                  if (href && epubBookRef.current.path && section.url) {
+                                      const absoluteUrl = epubBookRef.current.path.resolve(href, section.url);
+                                      const imageUrl = await epubBookRef.current.resources.get(absoluteUrl, 'dataUrl');
                                       if (isMountedRef.current) {
                                           setEpubImageForOcr(imageUrl as string);
                                           setEpubPageIsImage(true);
-                                          // Note: We don't update currentTextForTTS here because it holds the whole book's text
                                       }
                                   }
                               }
@@ -1304,5 +1305,3 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
     </div>
   );
 }
-
-    
