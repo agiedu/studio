@@ -353,11 +353,11 @@ export default function ReaderPage() {
                   const rendition = book.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
                   epubRenditionRef.current = rendition;
 
-                  // Authoritative event for location changes.
-                  // Its ONLY job is to store the current location.
+                  // **AUTHORITATIVE LOCATION TRACKER**
+                  // Its ONLY job is to store the current location. This is our source of truth.
                   rendition.on('relocated', (location: any) => {
                       if (!isMountedRef.current) return;
-                      console.log(`[EPUB Relocated] New authoritative location set to section index: ${location.start.index}`);
+                      console.log(`[EPUB Relocated] Authoritative location set to CFI: ${location.start.cfi}`);
                       epubCurrentLocationRef.current = location;
                   });
                   
@@ -368,7 +368,8 @@ export default function ReaderPage() {
                           return;
                       }
                       
-                      // THE CRITICAL FIX: Validate that this rendered event is for the current, authoritative location.
+                      // **THE CRITICAL VALIDATION**
+                      // Validate that this rendered event is for the current, authoritative location.
                       // If not, it's a stale event from a previous page, so we ignore it completely.
                       if (section.index !== epubCurrentLocationRef.current.start.index) {
                           console.log(`[EPUB Stale Event] Ignoring rendered event for section ${section.index}. Authoritative section is ${epubCurrentLocationRef.current.start.index}.`);
@@ -378,16 +379,18 @@ export default function ReaderPage() {
                       console.log(`[EPUB Rendered] Processing event for current section ${section.index}.`);
                       
                       // This logic now only runs for the correct, visible page.
-                      setCurrentTextForTTS("Loading page content...");
-                      setEpubPageIsImage(false);
-                      epubImageForOcrRef.current = null;
-
+                      // We calculate the new state first without setting it.
+                      let newTextForTTS = "Loading page content...";
+                      let newIsPageImage = false;
+                      let newImageForOcr: string | null = null;
+                      
                       try {
                           const contentBody = view.document.body;
                           const pageText = (contentBody.textContent || '').replace(/\s+/g, ' ').trim();
                           const imageElement = contentBody.querySelector('img') || contentBody.querySelector('image');
+                          
                           // A page is an image page if it has an image and very little text.
-                          const isImagePage = imageElement && pageText.length < 150; // Increased threshold slightly for more flexibility
+                          const isImagePage = imageElement && pageText.length < 150; 
 
                           if (isImagePage) {
                               const processImage = () => {
@@ -398,46 +401,49 @@ export default function ReaderPage() {
 
                                       if (width === 0 || height === 0) {
                                           console.warn('[EPUB] Image has zero dimensions, cannot create canvas for OCR.');
-                                          if (isMountedRef.current) setCurrentTextForTTS("This page is an image, but its data could not be read for OCR.");
-                                          return;
-                                      }
-
-                                      canvas.width = width;
-                                      canvas.height = height;
-                                      const ctx = canvas.getContext('2d');
-                                      if (!ctx) throw new Error('Could not get 2D context from canvas');
-                                      
-                                      ctx.drawImage(imageElement, 0, 0, width, height);
-                                      const dataUrl = canvas.toDataURL('image/png');
-                                      
-                                      if (isMountedRef.current) {
-                                          setCurrentTextForTTS("This page is an image. Use OCR to extract text.");
-                                          epubImageForOcrRef.current = dataUrl;
-                                          setEpubPageIsImage(true);
+                                          newTextForTTS = "This page is an image, but its data could not be read for OCR.";
+                                      } else {
+                                          canvas.width = width;
+                                          canvas.height = height;
+                                          const ctx = canvas.getContext('2d');
+                                          if (!ctx) throw new Error('Could not get 2D context from canvas');
+                                          
+                                          ctx.drawImage(imageElement, 0, 0, width, height);
+                                          newImageForOcr = canvas.toDataURL('image/png');
+                                          newTextForTTS = "This page is an image. Use OCR to extract text.";
+                                          newIsPageImage = true;
                                       }
                                   } catch (e: any) {
                                       console.error("[EPUB] Error processing image for OCR:", e);
+                                      newTextForTTS = "This page is an image, but its data could not be processed for OCR.";
+                                  } finally {
+                                      // Commit state only after processing is complete
                                       if (isMountedRef.current) {
-                                          setCurrentTextForTTS("This page is an image, but its data could not be processed for OCR.");
+                                        epubImageForOcrRef.current = newImageForOcr;
+                                        setEpubPageIsImage(newIsPageImage);
+                                        setCurrentTextForTTS(newTextForTTS);
                                       }
                                   }
                               };
                               
-                              // If the image is already loaded (e.g., from cache), process it. Otherwise, wait for it to load.
                               if (imageElement.complete && imageElement.naturalWidth > 0) {
                                   processImage();
                               } else {
                                   imageElement.onload = processImage;
                                   imageElement.onerror = () => {
                                       console.error("[EPUB] Image element failed to load within the iframe for src:", imageElement.getAttribute('src'));
-                                      if (isMountedRef.current) {
-                                          setCurrentTextForTTS("This page is an image, but the image file failed to load.");
+                                      if(isMountedRef.current){
+                                        setEpubPageIsImage(false);
+                                        setCurrentTextForTTS("This page is an image, but the image file failed to load.");
                                       }
                                   };
                               }
-                          } else {
+                          } else { // It's a text page
+                              newTextForTTS = pageText || "This page has no text content.";
                               if (isMountedRef.current) {
-                                  setCurrentTextForTTS(pageText || "This page has no text content.");
+                                epubImageForOcrRef.current = null;
+                                setEpubPageIsImage(false);
+                                setCurrentTextForTTS(newTextForTTS);
                               }
                           }
                       } catch (e: any) {
@@ -448,7 +454,9 @@ export default function ReaderPage() {
                       }
                   });
 
-                  await rendition.display();
+                  // Display the rendition. This will trigger the 'relocated' and 'rendered' events.
+                  const lastLocation = LocalStorageService.loadCurrentPdfPageIndexForDoc(doc.id); // Re-using this for EPUB location (CFI)
+                  await rendition.display(lastLocation || undefined);
                   if (isStale) return;
             
               } catch (e: any) {
@@ -594,22 +602,9 @@ export default function ReaderPage() {
         if (!docToProcess || !docToProcess.fileData || !docToProcess.originalType) throw new Error('Image data missing from IndexedDB.');
         dataUrlToProcess = await IndexedDBService.arrayBufferToBase64DataURL(docToProcess.fileData, docToProcess.originalType);
       } else if (currentActiveDoc.type === 'epub' && epubPageIsImage) {
-        const imageSrc = epubImageForOcrRef.current;
-        if (!imageSrc) {
+        dataUrlToProcess = epubImageForOcrRef.current;
+        if (!dataUrlToProcess) {
           throw new Error('EPUB image source for OCR is missing.');
-        }
-
-        if (imageSrc.startsWith('blob:')) {
-          const response = await fetch(imageSrc);
-          const blob = await response.blob();
-          dataUrlToProcess = await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-          });
-        } else {
-          dataUrlToProcess = imageSrc; // Assume it's already a data: URL
         }
       }
 
@@ -1032,7 +1027,10 @@ export default function ReaderPage() {
       } else {
         await epubRenditionRef.current.next();
       }
-      // The 'relocated' event handler will now manage state updates.
+      // The 'relocated' event handler will now manage state updates and save location.
+      if (epubCurrentLocationRef.current) {
+        LocalStorageService.saveCurrentPdfPageIndexForDoc(activeDoc!.id, epubCurrentLocationRef.current.start.cfi);
+      }
     } catch (error) {
         console.log(`[EPUB Nav] Error during rendition.${direction}():`, error);
         toast({ variant: "destructive", title: "EPUB Navigation Error", description: `Failed to turn page.` });
@@ -1343,5 +1341,3 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
     </div>
   );
 }
-
-    
