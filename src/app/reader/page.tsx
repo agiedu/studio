@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -384,54 +385,55 @@ export default function ReaderPage() {
                       try {
                           const contentBody = view.document.body;
                           const pageText = (contentBody.textContent || '').replace(/\s+/g, ' ').trim();
-                          // A page is considered an image page if it has very little text and an image tag.
-                          const isImagePage = pageText.length < 50 && (contentBody.querySelector('img') || contentBody.querySelector('image') || contentBody.querySelector('svg'));
-                          
+                          const imageElement = contentBody.querySelector('img') || contentBody.querySelector('image');
+                          // A page is an image page if it has an image and very little text.
+                          const isImagePage = imageElement && pageText.length < 150; // Increased threshold slightly for more flexibility
+
                           if (isImagePage) {
-                              const imgElement = contentBody.querySelector('img') || contentBody.querySelector('image'); // 'image' is for SVGs
-                              const href = imgElement?.getAttribute('src') || imgElement?.getAttribute('xlink:href');
+                              const processImage = () => {
+                                  try {
+                                      const canvas = document.createElement('canvas');
+                                      const width = imageElement.naturalWidth || imageElement.clientWidth;
+                                      const height = imageElement.naturalHeight || imageElement.clientHeight;
 
-                              if (href) {
-                                  let finalImageUrl: string | null = null;
-                                  if (href.startsWith('blob:')) {
-                                      finalImageUrl = href;
-                                  } else {
-                                      // It's a relative path. Resolve it against the section's path to get the canonical path within the EPUB.
-                                      const absoluteUrl = epubBookRef.current.path.resolve(href, section.href);
-                                      try {
-                                          // Get the image as a raw Blob from the EPUB's resources.
-                                          const imageBlob = await epubBookRef.current.resources.get(absoluteUrl, "blob");
-                                          if (!imageBlob) {
-                                              throw new Error("Resource blob could not be loaded from EPUB archive.");
-                                          }
-                                          
-                                          // Convert the Blob to a Base64 Data URL, which is safe for OCR and display.
-                                          finalImageUrl = await new Promise((resolve, reject) => {
-                                              const reader = new FileReader();
-                                              reader.onloadend = () => resolve(reader.result as string);
-                                              reader.onerror = reject;
-                                              reader.readAsDataURL(imageBlob);
-                                          });
-                                      } catch (e: any) {
-                                          console.error(`[EPUB] Error getting/reading resource blob for canonical path "${absoluteUrl}" (from href "${href}"):`, e.message || e);
-                                          finalImageUrl = null;
+                                      if (width === 0 || height === 0) {
+                                          console.warn('[EPUB] Image has zero dimensions, cannot create canvas for OCR.');
+                                          if (isMountedRef.current) setCurrentTextForTTS("This page is an image, but its data could not be read for OCR.");
+                                          return;
                                       }
-                                  }
 
-                                  if (finalImageUrl && isMountedRef.current) {
-                                      setCurrentTextForTTS("This page is an image. Use OCR to extract text.");
-                                      epubImageForOcrRef.current = finalImageUrl;
-                                      setEpubPageIsImage(true);
-                                  } else {
-                                      console.error("[EPUB] Could not resolve image resource for href:", href);
+                                      canvas.width = width;
+                                      canvas.height = height;
+                                      const ctx = canvas.getContext('2d');
+                                      if (!ctx) throw new Error('Could not get 2D context from canvas');
+                                      
+                                      ctx.drawImage(imageElement, 0, 0, width, height);
+                                      const dataUrl = canvas.toDataURL('image/png');
+                                      
                                       if (isMountedRef.current) {
-                                          setCurrentTextForTTS("This page is an image, but its data could not be loaded for OCR.");
+                                          setCurrentTextForTTS("This page is an image. Use OCR to extract text.");
+                                          epubImageForOcrRef.current = dataUrl;
+                                          setEpubPageIsImage(true);
+                                      }
+                                  } catch (e: any) {
+                                      console.error("[EPUB] Error processing image for OCR:", e);
+                                      if (isMountedRef.current) {
+                                          setCurrentTextForTTS("This page is an image, but its data could not be processed for OCR.");
                                       }
                                   }
+                              };
+                              
+                              // If the image is already loaded (e.g., from cache), process it. Otherwise, wait for it to load.
+                              if (imageElement.complete && imageElement.naturalWidth > 0) {
+                                  processImage();
                               } else {
-                                  if (isMountedRef.current) {
-                                      setCurrentTextForTTS("This page appears to be an image, but its data could not be loaded.");
-                                  }
+                                  imageElement.onload = processImage;
+                                  imageElement.onerror = () => {
+                                      console.error("[EPUB] Image element failed to load within the iframe for src:", imageElement.getAttribute('src'));
+                                      if (isMountedRef.current) {
+                                          setCurrentTextForTTS("This page is an image, but the image file failed to load.");
+                                      }
+                                  };
                               }
                           } else {
                               if (isMountedRef.current) {
@@ -1341,3 +1343,5 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
     </div>
   );
 }
+
+    
