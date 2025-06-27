@@ -360,7 +360,7 @@ export default function ReaderPage() {
                       setCurrentTextForTTS("Loading page content...");
             
                       try {
-                          const section = epubBookRef.current.spine.get(location.start.cfi);
+                          const section = await epubBookRef.current.spine.get(location.start.cfi);
                           if (!section) {
                             if(isMountedRef.current) setCurrentTextForTTS("Could not load page content.");
                             return;
