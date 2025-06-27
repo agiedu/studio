@@ -69,7 +69,6 @@ export default function ReaderPage() {
   const [isEpubLoading, setIsEpubLoading] = useState(false);
   const [epubPageIsImage, setEpubPageIsImage] = useState(false);
   const epubImageForOcrRef = useRef<string | null>(null);
-  const epubCurrentSectionIndexRef = useRef<number>(0);
 
   // TXT and Image states
   const [txtContent, setTxtContent] = useState<string>("");
@@ -350,24 +349,20 @@ export default function ReaderPage() {
                   const rendition = book.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
                   epubRenditionRef.current = rendition;
 
-                  // This is the authoritative event for location changes.
-                  rendition.on('relocated', (location: any) => {
-                      if (isMountedRef.current && location?.start?.index !== undefined) {
-                          console.log(`[EPUB RELOCATED] New section index: ${location.start.index}`);
-                          epubCurrentSectionIndexRef.current = location.start.index;
-                      }
-                  });
-
                   // This event fires after a section is rendered to the screen.
                   // It can fire multiple times for the same location, and old events can arrive late.
                   rendition.on('rendered', async (section: any, view: any) => {
-                    // CRITICAL CHECK: Is this rendered event for the page we are actually on?
-                    if (!isMountedRef.current || !epubRenditionRef.current || section.index !== epubCurrentSectionIndexRef.current) {
-                        console.log(`[EPUB RENDERED] Stale event for section ${section.index}, current is ${epubCurrentSectionIndexRef.current}. IGNORING.`);
-                        return;
+                    if (!isMountedRef.current || !epubRenditionRef.current) return;
+                    
+                    // ROBUSTNESS FIX: Get the *current* location from the rendition itself
+                    // to avoid race conditions with stale rendered events.
+                    const currentLocation = epubRenditionRef.current.currentLocation();
+                    if (!currentLocation || section.index !== currentLocation.start.index) {
+                      console.log(`[EPUB Stale Event] Ignoring rendered event for section ${section.index}, current is ${currentLocation?.start?.index}.`);
+                      return;
                     }
                 
-                    console.log(`[EPUB RENDERED] Processing event for current section ${section.index}.`);
+                    console.log(`[EPUB Rendered] Processing event for current section ${section.index}.`);
                 
                     // Reset state for the new page BEFORE processing
                     setEpubPageIsImage(false);
@@ -382,14 +377,15 @@ export default function ReaderPage() {
                       if (isImagePage) {
                         const imgElement = contentBody.querySelector('img') || contentBody.querySelector('image');
                         const href = imgElement?.getAttribute('src');
+
                         if (href) {
-                          let finalImageUrl: string | null = null;
-                          if (href.startsWith('blob:')) {
-                            finalImageUrl = href;
-                          } else {
-                            const absoluteUrl = epubBookRef.current.path.resolve(href, section.href);
-                            finalImageUrl = await epubBookRef.current.resources.get(absoluteUrl, "url");
-                          }
+                           let finalImageUrl: string | null = null;
+                            if (href.startsWith('blob:')) {
+                                finalImageUrl = href;
+                            } else {
+                                const absoluteUrl = epubBookRef.current.path.resolve(href, section.href);
+                                finalImageUrl = await epubBookRef.current.resources.get(absoluteUrl, "url");
+                            }
 
                           if (finalImageUrl && isMountedRef.current) {
                             setCurrentTextForTTS("This page is an image. Use OCR to extract text.");
@@ -421,11 +417,6 @@ export default function ReaderPage() {
 
                   await rendition.display();
                   if (isStale) return;
-
-                  const initialLocation = rendition.currentLocation();
-                  if (initialLocation && initialLocation.start) {
-                    epubCurrentSectionIndexRef.current = initialLocation.start.index;
-                  }
             
               } catch (e: any) {
                   if (isStale) return;
@@ -1008,7 +999,7 @@ export default function ReaderPage() {
       } else {
         await epubRenditionRef.current.next();
       }
-      // The 'relocated' and 'rendered' event handlers will now manage state updates.
+      // The 'rendered' event handler will now manage state updates.
     } catch (error) {
         console.log(`[EPUB Nav] Error during rendition.${direction}():`, error);
         toast({ variant: "destructive", title: "EPUB Navigation Error", description: `Failed to turn page.` });
@@ -1319,5 +1310,3 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
     </div>
   );
 }
-
-    
