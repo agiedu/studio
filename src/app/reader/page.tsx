@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import NextImage from 'next/image';
 import { GlobalWorkerOptions, getDocument, version as pdfjsVersion } from 'pdfjs-dist';
-import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist/types/src/display/api';
+import type { PDFDocumentProxy, PDFPageProxy } from 'pdf-dist/types/src/display/api';
 import type Book from 'epubjs/types/book';
 import type Rendition from 'epubjs/types/rendition';
 
@@ -343,7 +343,6 @@ export default function ReaderPage() {
                   epubBookRef.current = book;
             
                   await book.ready;
-                  
                   if (isStale) { book.destroy(); return; }
                   
                   if (!epubViewerRef.current) throw new Error("EPUB viewer element not ready.");
@@ -351,36 +350,41 @@ export default function ReaderPage() {
                   const rendition = book.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
                   epubRenditionRef.current = rendition;
 
+                  rendition.on('relocated', (location: any) => {
+                      if (location?.start?.index !== undefined) {
+                          epubCurrentSectionIndexRef.current = location.start.index;
+                      }
+                  });
+
                   rendition.on('rendered', async (section: any, view: any) => {
                       if (!isMountedRef.current || !view?.document?.body || !epubRenditionRef.current) return;
                   
-                      // Robust guard against race conditions by checking the *actual* current location
-                      const currentLocation = epubRenditionRef.current.currentLocation();
-                      if (!currentLocation || !currentLocation.start || section.index !== currentLocation.start.index) {
-                          console.log(`[EPUB] Stale render event for section ${section.index}, but current location is ${currentLocation?.start?.index}. Ignoring.`);
+                      if (section.index !== epubCurrentSectionIndexRef.current) {
+                          console.log(`[EPUB] Stale render event for section ${section.index}, but current index is ${epubCurrentSectionIndexRef.current}. IGNORING.`);
                           return;
                       }
+                      
+                      console.log(`[EPUB] Processing render event for current section ${section.index}.`);
                   
-                      // This is now a confirmed, non-stale event.
-                      epubCurrentSectionIndexRef.current = section.index; // Keep ref in sync
                       setEpubPageIsImage(false);
                       setEpubImageForOcr(null);
                       setCurrentTextForTTS("Loading page content...");
                   
                       try {
                           const contentBody = view.document.body;
-                          const pageText = (contentBody.textContent || '').trim();
-                          
+                          const pageText = (contentBody.textContent || '').replace(/\s+/g, ' ').trim();
                           const isImagePage = pageText.length < 50 && (contentBody.querySelector('img') || contentBody.querySelector('image') || contentBody.querySelector('svg'));
             
                           if (isImagePage) {
                               const imgElement = contentBody.querySelector('img') || contentBody.querySelector('image');
                               if (imgElement && imgElement.src) {
-                                  const imageUrl = imgElement.src;
-                                  if (isMountedRef.current) {
+                                  const url = await view.contents.get(imgElement.src);
+                                  if (url && isMountedRef.current) {
                                       setCurrentTextForTTS("This page is an image. Use OCR to extract text.");
-                                      setEpubImageForOcr(imageUrl);
+                                      setEpubImageForOcr(url);
                                       setEpubPageIsImage(true);
+                                  } else {
+                                      throw new Error('Image URL could not be resolved by view.contents');
                                   }
                               } else {
                                   if (isMountedRef.current) {
@@ -990,7 +994,7 @@ export default function ReaderPage() {
       } else {
         await epubRenditionRef.current.next();
       }
-      // The 'rendered' event handler will now manage state updates and the current index ref
+      // The 'relocated' and 'rendered' event handlers will now manage state updates.
     } catch (error) {
         console.log(`[EPUB Nav] Error during rendition.${direction}():`, error);
         toast({ variant: "destructive", title: "EPUB Navigation Error", description: `Failed to turn page.` });
