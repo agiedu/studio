@@ -345,65 +345,52 @@ export default function ReaderPage() {
                   
                   if (isStale) { book.destroy(); return; }
                   
-                  setCurrentTextForTTS("Loading EPUB...");
-                  
                   if (!epubViewerRef.current) throw new Error("EPUB viewer element not ready.");
             
                   const rendition = book.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
                   epubRenditionRef.current = rendition;
-            
-                  rendition.on('relocated', async (location: any) => {
-                      if (!epubBookRef.current || !isMountedRef.current) return;
-                      
+
+                  // Use the 'rendered' event which provides the view with resolved asset URLs
+                  rendition.on('rendered', async (section: any, view: any) => {
+                      if (!isMountedRef.current || !view?.document?.body) return;
+
                       setEpubPageIsImage(false);
                       setEpubImageForOcr(null);
                       setCurrentTextForTTS("Loading page content...");
             
                       try {
-                          const section = await epubBookRef.current.spine.get(location.start.cfi);
-                          if (!section) {
-                            if(isMountedRef.current) setCurrentTextForTTS("Could not load page content.");
-                            return;
-                          }
-            
-                          await section.load(epubBookRef.current.load.bind(epubBookRef.current));
-                          const contentBody = section.document.body;
+                          const contentBody = view.document.body;
                           const pageText = (contentBody.textContent || '').trim();
                           
+                          // Check if the page is primarily an image (e.g., manga)
                           const isImagePage = pageText.length < 50 && (contentBody.querySelector('img') || contentBody.querySelector('image') || contentBody.querySelector('svg'));
             
                           if (isImagePage) {
                               setCurrentTextForTTS("This page is an image. Use OCR to extract text.");
                               const imgElement = contentBody.querySelector('img') || contentBody.querySelector('image');
-                              if (imgElement) {
-                                  const href = imgElement.getAttribute('src') || imgElement.getAttribute('xlink:href');
-                                  if (href && epubBookRef.current.path && section.href) {
-                                      const absoluteUrl = epubBookRef.current.path.resolve(href, section.href);
-                                      const canonicalUrl = absoluteUrl.startsWith('/') ? absoluteUrl.substring(1) : absoluteUrl;
-                                      const imageUrl = await epubBookRef.current.resources.get(canonicalUrl, 'dataUrl');
-                                      if (isMountedRef.current) {
-                                        if (imageUrl) {
-                                          setEpubImageForOcr(imageUrl as string);
-                                          setEpubPageIsImage(true);
-                                        } else {
-                                          console.error("EPUB Image resource not found:", {resolved: absoluteUrl, attempted: canonicalUrl});
-                                          setEpubPageIsImage(false);
-                                          setEpubImageForOcr(null);
-                                          setCurrentTextForTTS("This page is an image, but its data could not be loaded for OCR.");
-                                        }
-                                      }
+                              if (imgElement && imgElement.src) {
+                                  // The 'src' in a rendered view is a blob or data URL, which is exactly what we need for OCR.
+                                  const imageUrl = imgElement.src;
+                                  if (isMountedRef.current) {
+                                    setEpubImageForOcr(imageUrl);
+                                    setEpubPageIsImage(true);
+                                  }
+                              } else {
+                                  if (isMountedRef.current) {
+                                    setEpubPageIsImage(false);
+                                    setEpubImageForOcr(null);
+                                    setCurrentTextForTTS("This page appears to be an image, but its data could not be loaded.");
                                   }
                               }
                           } else {
-                            if(isMountedRef.current) {
+                            if (isMountedRef.current) {
                                 setEpubPageIsImage(false);
                                 setEpubImageForOcr(null);
                                 setCurrentTextForTTS(pageText || "This page has no text content.");
                             }
                           }
-                          section.unload();
                       } catch (e: any) {
-                          console.error("Error checking EPUB page for image", e);
+                          console.error("Error processing rendered EPUB page", e);
                           if (isMountedRef.current) {
                             setEpubPageIsImage(false);
                             setEpubImageForOcr(null);
@@ -412,6 +399,7 @@ export default function ReaderPage() {
                       }
                   });
             
+                  // Display the first page, which will trigger the 'rendered' event
                   await rendition.display();
                   if(isStale) return;
             
@@ -539,84 +527,79 @@ export default function ReaderPage() {
 
   const handlePerformOcr = useCallback(async () => {
     if (!activeDoc) {
-        toast({ variant: "destructive", title: "OCR Error", description: "No active document." });
-        return;
+      toast({ variant: 'destructive', title: 'OCR Error', description: 'No active document.' });
+      return;
     }
     if (!isMountedRef.current) return;
     stopSpeech(true);
-
-    let dataUrlToProcess: string | null = null;
-    const currentActiveDoc = activeDoc;
-
-    if (currentActiveDoc.type === 'pdf' && pdfPageImage && !pdfPageIsTextBased) {
-        dataUrlToProcess = pdfPageImage;
-    } else if (currentActiveDoc.type === 'image' && currentActiveDoc.fileData) {
-        if(isMountedRef.current) setIsPerformingOcr(true); // Set loading early for this path
-        try {
-            const docToProcess = await IndexedDBService.getDocumentById(currentActiveDoc.id) as StoredImageDocument | null;
-            if (!docToProcess || !docToProcess.fileData || !docToProcess.originalType) {
-                toast({variant: "destructive", title: "OCR Error", description: "Image data missing."});
-                if(isMountedRef.current) setIsPerformingOcr(false);
-                return;
-            }
-            dataUrlToProcess = await IndexedDBService.arrayBufferToBase64DataURL(docToProcess.fileData, docToProcess.originalType);
-        } catch (e: any) {
-            toast({variant: "destructive", title: "OCR Error", description: `Image preparation failed: ${e.message}`});
-            if(isMountedRef.current) setIsPerformingOcr(false);
-            return;
-        }
-    } else if (currentActiveDoc.type === 'epub' && epubPageIsImage && epubImageForOcr) {
-        dataUrlToProcess = epubImageForOcr;
-    }
-
-    if (!dataUrlToProcess) {
-        toast({ variant: "destructive", title: "OCR Error", description: "No image data available for OCR." });
-        if(isMountedRef.current && isPerformingOcr) setIsPerformingOcr(false);
-        return;
-    }
-
-    if(!isPerformingOcr && isMountedRef.current) setIsPerformingOcr(true);
-    if(isMountedRef.current) setCurrentTextForTTS("Performing OCR...");
+    setIsPerformingOcr(true);
+    setCurrentTextForTTS('Performing OCR...');
 
     try {
-        const result = await performOCR(dataUrlToProcess);
-        if(!isMountedRef.current) return;
+      let dataUrlToProcess: string | null = null;
+      const currentActiveDoc = activeDoc;
 
-        if ('extractedText' in result) {
-            const ocrText = result.extractedText || "OCR completed, no text found.";
-            setCurrentTextForTTS(ocrText);
-            toast({ title: "OCR Successful", description: "Text extracted."});
-
-            if (currentActiveDoc.type === 'pdf' || currentActiveDoc.type === 'image') {
-                const docFromDB = await IndexedDBService.getDocumentById(currentActiveDoc.id);
-                if (docFromDB) {
-                    let updatedDocForSave: StoredMangaDocument = { ...docFromDB };
-                    if (updatedDocForSave.type === 'image') {
-                        (updatedDocForSave as StoredImageDocument).extractedText = ocrText;
-                    } else if (updatedDocForSave.type === 'pdf' && currentPdfPageNum) {
-                        const ocrPages = { ...((updatedDocForSave as StoredPdfDocument).ocrTextPerPage || {}), [currentPdfPageNum]: ocrText };
-                        (updatedDocForSave as StoredPdfDocument).ocrTextPerPage = ocrPages;
-                        if(isMountedRef.current) setPdfPageIsTextBased(false);
-                    }
-                    await IndexedDBService.saveDocument(updatedDocForSave);
-                    if (isMountedRef.current && activeDoc?.id === updatedDocForSave.id) {
-                        setActiveDoc(updatedDocForSave as ActiveMangaDocument);
-                    }
-                }
-            }
+      if (currentActiveDoc.type === 'pdf' && pdfPageImage && !pdfPageIsTextBased) {
+        dataUrlToProcess = pdfPageImage;
+      } else if (currentActiveDoc.type === 'image' && currentActiveDoc.fileData) {
+        const docToProcess = await IndexedDBService.getDocumentById(currentActiveDoc.id) as StoredImageDocument | null;
+        if (!docToProcess || !docToProcess.fileData || !docToProcess.originalType) throw new Error('Image data missing from IndexedDB.');
+        dataUrlToProcess = await IndexedDBService.arrayBufferToBase64DataURL(docToProcess.fileData, docToProcess.originalType);
+      } else if (currentActiveDoc.type === 'epub' && epubPageIsImage && epubImageForOcr) {
+        if (epubImageForOcr.startsWith('blob:')) {
+          const response = await fetch(epubImageForOcr);
+          const blob = await response.blob();
+          dataUrlToProcess = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
         } else {
-            setCurrentTextForTTS("");
-            setDocErrorMessage(`OCR Error: ${result.error}`);
-            toast({ variant: "destructive", title: "OCR Error", description: result.error });
+          dataUrlToProcess = epubImageForOcr; // Assume it's already a data: URL
         }
+      }
+
+      if (!dataUrlToProcess) {
+        throw new Error('No image data available for OCR.');
+      }
+
+      const result = await performOCR(dataUrlToProcess);
+      if (!isMountedRef.current) return;
+
+      if ('extractedText' in result) {
+        const ocrText = result.extractedText || 'OCR completed, no text found.';
+        setCurrentTextForTTS(ocrText);
+        toast({ title: 'OCR Successful', description: 'Text extracted.' });
+
+        if (currentActiveDoc.type === 'pdf' || currentActiveDoc.type === 'image') {
+          const docFromDB = await IndexedDBService.getDocumentById(currentActiveDoc.id);
+          if (docFromDB) {
+            let updatedDocForSave: StoredMangaDocument = { ...docFromDB };
+            if (updatedDocForSave.type === 'image') {
+              (updatedDocForSave as StoredImageDocument).extractedText = ocrText;
+            } else if (updatedDocForSave.type === 'pdf' && currentPdfPageNum) {
+              const ocrPages = { ...((updatedDocForSave as StoredPdfDocument).ocrTextPerPage || {}), [currentPdfPageNum]: ocrText };
+              (updatedDocForSave as StoredPdfDocument).ocrTextPerPage = ocrPages;
+              if (isMountedRef.current) setPdfPageIsTextBased(false);
+            }
+            await IndexedDBService.saveDocument(updatedDocForSave);
+            if (isMountedRef.current && activeDoc?.id === updatedDocForSave.id) {
+              setActiveDoc(updatedDocForSave as ActiveMangaDocument);
+            }
+          }
+        }
+      } else {
+        throw new Error(result.error || 'OCR failed with an unknown error.');
+      }
     } catch (e: any) {
-        if(isMountedRef.current) {
-            setCurrentTextForTTS("");
-            setDocErrorMessage(`OCR failed: ${e.message}`);
-            toast({ variant: "destructive", title: "OCR Failed", description: e.message });
-        }
+      if (isMountedRef.current) {
+        setCurrentTextForTTS('OCR failed. Please try again.');
+        setDocErrorMessage(`OCR failed: ${e.message}`);
+        toast({ variant: 'destructive', title: 'OCR Failed', description: e.message });
+      }
     } finally {
-        if(isMountedRef.current) setIsPerformingOcr(false);
+      if (isMountedRef.current) setIsPerformingOcr(false);
     }
   }, [activeDoc, pdfPageImage, pdfPageIsTextBased, currentPdfPageNum, stopSpeech, toast, epubPageIsImage, epubImageForOcr]);
 
@@ -1049,7 +1032,7 @@ export default function ReaderPage() {
     return <div className="flex flex-col items-center justify-center h-full flex-grow p-4 text-center"> <AlertTriangle className="h-12 w-12 text-destructive mb-4" /> <h2 className="text-xl font-semibold mb-2">Error Loading Document</h2> <p className="text-muted-foreground mb-4">{docErrorMessage}</p> <Button onClick={() => router.push('/library')}>Go to Library</Button> </div>; 
   }
   
-  const showOcrButtonForPdfPage = activeDoc?.type === 'pdf' && !isPdfTextView && pdfPageImage && !isRenderingPdfPage && !isLoadingDoc && !isPerformingOcr && !pdfPageIsTextBased;
+  const showOcrButtonForPdfPage = activeDoc?.type === 'pdf' && !isPdfTextView && pdfPageImage && !isRenderingPdfPage && !isLoadingDoc && !pdfPageIsTextBased;
   const showOcrButtonForImage = activeDoc?.type === 'image' && displayedImageSrc && !isLoadingDoc && !isPerformingOcr && !(activeDoc as StoredImageDocument).extractedText;
   const showOcrButtonForEpubPage = activeDoc?.type === 'epub' && epubPageIsImage && !isLoadingDoc && !isPerformingOcr;
 
