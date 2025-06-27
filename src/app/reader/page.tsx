@@ -377,12 +377,19 @@ export default function ReaderPage() {
                               const imgElement = contentBody.querySelector('img') || contentBody.querySelector('image');
                               if (imgElement) {
                                   const href = imgElement.getAttribute('src') || imgElement.getAttribute('xlink:href');
-                                  if (href && epubBookRef.current.path && section.url) {
-                                      const absoluteUrl = epubBookRef.current.path.resolve(href, section.url);
+                                  if (href && epubBookRef.current.path && section.href) {
+                                      const absoluteUrl = epubBookRef.current.path.resolve(href, section.href);
                                       const imageUrl = await epubBookRef.current.resources.get(absoluteUrl, 'dataUrl');
                                       if (isMountedRef.current) {
+                                        if (imageUrl) {
                                           setEpubImageForOcr(imageUrl as string);
                                           setEpubPageIsImage(true);
+                                        } else {
+                                          console.error("EPUB Image resource not found:", absoluteUrl);
+                                          setEpubPageIsImage(false);
+                                          setEpubImageForOcr(null);
+                                          setCurrentTextForTTS("This page is an image, but its data could not be loaded for OCR.");
+                                        }
                                       }
                                   }
                               }
