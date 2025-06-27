@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -1331,7 +1330,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                         className="w-full text-xs"
                         disabled={isLoadingTTS && speechOrigin === 'main'}>
                         <Repeat className="mr-2 h-3 w-3" />
-                        {(isSpeaking && speechOrigin === 'repeat') || (isLoadingTTS && speechOrigin === 'repeat') ? 'Playing...' : 'Repeat Sel.'}
+                        {(isSpeaking && speechOrigin === 'repeat') || (isLoadingTTS && speechOrigin === 'repeat') ? 'Playing...' : 'Playing...'}
                     </Button>
                 </div>
               </CardContent>
