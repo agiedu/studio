@@ -352,7 +352,7 @@ export default function ReaderPage() {
                   // This event fires after a section is rendered to the screen.
                   // It can fire multiple times for the same location, and old events can arrive late.
                   rendition.on('rendered', async (section: any, view: any) => {
-                    if (!isMountedRef.current || !epubRenditionRef.current) return;
+                    if (!isMountedRef.current || !epubRenditionRef.current || !epubBookRef.current) return;
                     
                     // ROBUSTNESS FIX: Get the *current* location from the rendition itself
                     // to avoid race conditions with stale rendered events.
@@ -384,7 +384,20 @@ export default function ReaderPage() {
                                 finalImageUrl = href;
                             } else {
                                 const absoluteUrl = epubBookRef.current.path.resolve(href, section.href);
-                                finalImageUrl = await epubBookRef.current.resources.get(absoluteUrl, "url");
+                                try {
+                                  const imageBlob = await epubBookRef.current.resources.get(absoluteUrl, "blob");
+                                  if (imageBlob) {
+                                    finalImageUrl = await new Promise((resolve, reject) => {
+                                        const reader = new FileReader();
+                                        reader.onloadend = () => resolve(reader.result as string);
+                                        reader.onerror = reject;
+                                        reader.readAsDataURL(imageBlob);
+                                    });
+                                  }
+                                } catch (e) {
+                                  console.error(`[EPUB] Error getting/reading resource blob for ${absoluteUrl}`, e);
+                                  finalImageUrl = null;
+                                }
                             }
 
                           if (finalImageUrl && isMountedRef.current) {
