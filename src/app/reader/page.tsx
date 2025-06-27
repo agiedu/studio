@@ -352,7 +352,14 @@ export default function ReaderPage() {
 
                   // Use the 'rendered' event which provides the view with resolved asset URLs
                   rendition.on('rendered', async (section: any, view: any) => {
-                      if (!isMountedRef.current || !view?.document?.body) return;
+                      if (!isMountedRef.current || !view?.document?.body || !epubRenditionRef.current) return;
+                      
+                      // FIX: Check if the event is for the currently displayed location to prevent race conditions.
+                      const currentLocation = epubRenditionRef.current.currentLocation();
+                      if (!currentLocation || section.href !== currentLocation.start.href) {
+                        // This is a stale event from a previous page, ignore it.
+                        return;
+                      }
 
                       setEpubPageIsImage(false);
                       setEpubImageForOcr(null);
