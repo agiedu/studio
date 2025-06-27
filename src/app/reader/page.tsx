@@ -380,16 +380,28 @@ export default function ReaderPage() {
                         const imgElement = contentBody.querySelector('img') || contentBody.querySelector('image');
                         const href = imgElement?.getAttribute('src');
                         if (href) {
-                          const absoluteUrl = epubBookRef.current.path.resolve(href, section.href);
-                          const url = await epubBookRef.current.resources.get(absoluteUrl, "url");
-                          
-                          if (url && isMountedRef.current) {
+                          let finalImageUrl: string | null = null;
+                          if (href.startsWith('blob:')) {
+                            // The URL is already a blob URL, we can use it directly.
+                            finalImageUrl = href;
+                          } else {
+                            // It's a relative path, we need to resolve it against the EPUB's resources.
+                            try {
+                                const absoluteUrl = epubBookRef.current.path.resolve(href, section.href);
+                                finalImageUrl = await epubBookRef.current.resources.get(absoluteUrl, "url");
+                            } catch (resolveError) {
+                                console.error(`[EPUB] Could not resolve relative path: ${href}`, resolveError);
+                                finalImageUrl = null;
+                            }
+                          }
+
+                          if (finalImageUrl && isMountedRef.current) {
                             setCurrentTextForTTS("This page is an image. Use OCR to extract text.");
-                            setEpubImageForOcr(url);
+                            setEpubImageForOcr(finalImageUrl);
                             setEpubPageIsImage(true);
                           } else {
-                            console.error("EPUB Image resource not found:", absoluteUrl);
-                            if (isMountedRef.current) {
+                            console.error("EPUB Image resource not found for href:", href);
+                             if (isMountedRef.current) {
                               setEpubPageIsImage(false);
                               setEpubImageForOcr(null);
                               setCurrentTextForTTS("This page is an image, but its data could not be loaded for OCR.");
