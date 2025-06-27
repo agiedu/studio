@@ -350,58 +350,57 @@ export default function ReaderPage() {
                   const rendition = book.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
                   epubRenditionRef.current = rendition;
 
-                  // Use the 'rendered' event which provides the view with resolved asset URLs
                   rendition.on('rendered', async (section: any, view: any) => {
                       if (!isMountedRef.current || !view?.document?.body || !epubRenditionRef.current) return;
-                      
-                      // FIX: Check if the event is for the currently displayed location to prevent race conditions.
-                      const currentLocation = epubRenditionRef.current.currentLocation();
-                      if (!currentLocation || section.href !== currentLocation.start.href) {
-                        // This is a stale event from a previous page, ignore it.
-                        return;
+                  
+                      // ROBUST FIX: To prevent race conditions from rapid page turning,
+                      // ensure this event's view is the same as the rendition's currently active view.
+                      const currentView = epubRenditionRef.current.getContents()?.[0];
+                      if (!currentView || view.id !== currentView.id) {
+                          console.log(`[EPUB] Stale render event for section ${section.href}, ignoring.`);
+                          return;
                       }
-
+                      
+                      // This is now a confirmed, non-stale event. Reset state before setting new state.
                       setEpubPageIsImage(false);
                       setEpubImageForOcr(null);
                       setCurrentTextForTTS("Loading page content...");
-            
+                  
                       try {
                           const contentBody = view.document.body;
                           const pageText = (contentBody.textContent || '').trim();
                           
-                          // Check if the page is primarily an image (e.g., manga)
                           const isImagePage = pageText.length < 50 && (contentBody.querySelector('img') || contentBody.querySelector('image') || contentBody.querySelector('svg'));
             
                           if (isImagePage) {
-                              setCurrentTextForTTS("This page is an image. Use OCR to extract text.");
                               const imgElement = contentBody.querySelector('img') || contentBody.querySelector('image');
                               if (imgElement && imgElement.src) {
-                                  // The 'src' in a rendered view is a blob or data URL, which is exactly what we need for OCR.
                                   const imageUrl = imgElement.src;
                                   if (isMountedRef.current) {
-                                    setEpubImageForOcr(imageUrl);
-                                    setEpubPageIsImage(true);
+                                      setCurrentTextForTTS("This page is an image. Use OCR to extract text.");
+                                      setEpubImageForOcr(imageUrl);
+                                      setEpubPageIsImage(true);
                                   }
                               } else {
                                   if (isMountedRef.current) {
-                                    setEpubPageIsImage(false);
-                                    setEpubImageForOcr(null);
-                                    setCurrentTextForTTS("This page appears to be an image, but its data could not be loaded.");
+                                      setEpubImageForOcr(null);
+                                      setEpubPageIsImage(false);
+                                      setCurrentTextForTTS("This page appears to be an image, but its data could not be loaded.");
                                   }
                               }
                           } else {
-                            if (isMountedRef.current) {
-                                setEpubPageIsImage(false);
-                                setEpubImageForOcr(null);
-                                setCurrentTextForTTS(pageText || "This page has no text content.");
-                            }
+                              if (isMountedRef.current) {
+                                  setEpubImageForOcr(null);
+                                  setEpubPageIsImage(false);
+                                  setCurrentTextForTTS(pageText || "This page has no text content.");
+                              }
                           }
                       } catch (e: any) {
                           console.error("Error processing rendered EPUB page", e);
                           if (isMountedRef.current) {
-                            setEpubPageIsImage(false);
-                            setEpubImageForOcr(null);
-                            setCurrentTextForTTS(`Error loading page content: ${e.message}`);
+                              setEpubImageForOcr(null);
+                              setEpubPageIsImage(false);
+                              setCurrentTextForTTS(`Error loading page content: ${e.message}`);
                           }
                       }
                   });
