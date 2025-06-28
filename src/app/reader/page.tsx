@@ -1065,7 +1065,7 @@ export default function ReaderPage() {
             {!activeDoc && !isLoadingDoc && !docErrorMessage && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
                 {(isSpeaking || isPaused) ? (
-                  <div ref={mainContentDisplayRef} className="w-full flex-grow p-3 text-base md:text-sm whitespace-pre-wrap font-sans select-text overflow-y-auto border rounded-md bg-background">
+                  <div ref={mainContentDisplayRef} className="w-full flex-grow px-3 py-2 text-base md:text-sm whitespace-pre-wrap font-sans select-text overflow-y-auto border rounded-md bg-background">
                     {textSegments.map((segment, index) => (
                       <span key={index} className={cn(
                           "transition-colors duration-200",
