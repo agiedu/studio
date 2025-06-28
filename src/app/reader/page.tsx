@@ -94,6 +94,8 @@ export default function ReaderPage() {
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const ttsDisplayRef = useRef<HTMLDivElement | null>(null);
+  const mainContentDisplayRef = useRef<HTMLDivElement | null>(null);
+
 
   const isMountedRef = useRef(false);
   const isSpeakingRef = useRef(false);
@@ -695,13 +697,17 @@ export default function ReaderPage() {
 
   // Effect for auto-scrolling the highlighted text
   useEffect(() => {
-    if (isSpeaking && !isPaused && highlightedSegmentIndex > -1 && ttsDisplayRef.current) {
-      const element = ttsDisplayRef.current.children[highlightedSegmentIndex] as HTMLElement;
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (isSpeaking && !isPaused && highlightedSegmentIndex > -1) {
+      // Determine which container is currently displaying the highlighted text
+      const activeDisplayRef = !activeDoc ? mainContentDisplayRef : ttsDisplayRef;
+      if (activeDisplayRef.current) {
+          const element = activeDisplayRef.current.children[highlightedSegmentIndex] as HTMLElement;
+          if (element) {
+              element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
       }
     }
-  }, [highlightedSegmentIndex, isSpeaking, isPaused]);
+  }, [highlightedSegmentIndex, isSpeaking, isPaused, activeDoc]);
 
 
   // The executor function. It queues up utterances sentence by sentence.
@@ -1058,13 +1064,25 @@ export default function ReaderPage() {
             {/* Scratchpad View */}
             {!activeDoc && !isLoadingDoc && !docErrorMessage && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
+                {(isSpeaking || isPaused) ? (
+                  <div ref={mainContentDisplayRef} className="w-full flex-grow p-3 text-base md:text-sm whitespace-pre-wrap font-sans select-text overflow-y-auto border rounded-md bg-background">
+                    {textSegments.map((segment, index) => (
+                      <span key={index} className={cn(
+                          "transition-colors duration-200",
+                          { "text-green-600 dark:text-green-400 font-medium": index === highlightedSegmentIndex }
+                      )}>
+                          {segment}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
                   <Textarea
                       ref={mainTextAreaRef}
                       id="scratchpad-input"
                       placeholder="Welcome to the Scratchpad!
 
 Type or paste any text here to have it read aloud or to save snippets to your favorites."
-                      className="w-full flex-grow text-sm resize-none"
+                      className="w-full flex-grow text-base md:text-sm resize-none"
                       value={scratchpadText}
                       onChange={(e) => {
                           setScratchpadText(e.target.value);
@@ -1072,6 +1090,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                       }}
                       aria-label="Scratchpad for custom text input"
                   />
+                )}
               </div>
             )}
 
