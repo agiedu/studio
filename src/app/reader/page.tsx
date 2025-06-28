@@ -38,6 +38,7 @@ import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 
 const PDF_DEFAULT_SCALE = 1.0;
+const PUNCTUATION_REGEX = /[.,?!。？！，、\n]/g;
 
 type SpeechOrigin = 'main' | 'repeat' | null;
 
@@ -768,14 +769,15 @@ export default function ReaderPage() {
 
                 const currentIndex = segmentIndexRef.current;
                 const segmentText = textSegments[currentIndex];
+                const textToSpeak = segmentText.replace(PUNCTUATION_REGEX, ' ').trim();
 
-                if (!segmentText?.trim()) {
+                if (!textToSpeak) {
                     segmentIndexRef.current++;
                     speakNext();
                     return;
                 }
 
-                const utterance = new SpeechSynthesisUtterance(segmentText);
+                const utterance = new SpeechSynthesisUtterance(textToSpeak);
                 utterance.lang = ttsSettings.language;
                 utterance.pitch = ttsSettings.pitch;
                 utterance.rate = ttsSettings.rate;
@@ -812,10 +814,16 @@ export default function ReaderPage() {
         } else { // Cloud TTS
             try {
                 const textForCloud = currentTextForTTS.substring(startIndex);
-                if (!textForCloud) throw new Error("No text to play.");
+                const cleanedTextForCloud = textForCloud.replace(PUNCTUATION_REGEX, ' ').trim();
+
+                if (!cleanedTextForCloud) {
+                    toast({ variant: "destructive", title: "No Text to Speak", description: "Text contains only punctuation." });
+                    stopSpeech(true);
+                    return;
+                }
 
                 if (audioPlayerRef.current) audioPlayerRef.current.loop = false;
-                const result = await getCloudSpeech(textForCloud, ttsSettings.language);
+                const result = await getCloudSpeech(cleanedTextForCloud, ttsSettings.language);
                 if(!isMountedRef.current) return;
                 if ('audioUrl' in result && audioPlayerRef.current) {
                     audioPlayerRef.current.src = result.audioUrl;
@@ -888,6 +896,16 @@ export default function ReaderPage() {
       return;
     }
     
+    const cleanedTextToPlay = textToPlay.replace(PUNCTUATION_REGEX, ' ').trim();
+    if (!cleanedTextToPlay) {
+        toast({
+            variant: 'destructive',
+            title: 'No Text to Speak',
+            description: 'Your selection contains only punctuation.',
+        });
+        return;
+    }
+
     // This is a simplified speech function for repeating a selection
     // It does not support continued highlighting or scrolling of the main text view.
     stopSpeech(true);
@@ -905,7 +923,7 @@ export default function ReaderPage() {
         setIsLoadingTTS(true);
         setSpeechOrigin('repeat');
 
-        const utterance = new SpeechSynthesisUtterance(textToPlay);
+        const utterance = new SpeechSynthesisUtterance(cleanedTextToPlay);
         utterance.lang = ttsSettings.language;
         utterance.pitch = ttsSettings.pitch;
         utterance.rate = ttsSettings.rate;
@@ -1072,7 +1090,7 @@ export default function ReaderPage() {
                     {textSegments.map((segment, index) => (
                       <span key={index} className={cn(
                           "transition-colors duration-200",
-                          { "text-green-600 dark:text-green-400 font-medium": index === highlightedSegmentIndex }
+                          { "text-green-600 dark:text-green-400": index === highlightedSegmentIndex }
                       )}>
                           {segment}
                       </span>
@@ -1116,7 +1134,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                       ref={mainTextAreaRef}
                       readOnly
                       placeholder="Loading PDF text..."
-                      className="w-full flex-grow text-sm resize-none"
+                      className="w-full flex-grow text-sm resize-none font-body"
                       value={pdfTextContent || ''}
                       aria-label="PDF text content"
                   />
@@ -1170,7 +1188,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                       ref={mainTextAreaRef}
                       readOnly
                       placeholder="Text document content..."
-                      className="w-full flex-grow text-sm resize-none"
+                      className="w-full flex-grow text-sm resize-none font-body"
                       value={txtContent}
                       aria-label="Text document content"
                   />
@@ -1200,7 +1218,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                     </CardHeader>
                     <CardContent className="pt-0">
                         {(isSpeaking || isPaused) ? (
-                            <div ref={ttsDisplayRef} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 text-sm overflow-y-auto whitespace-pre-wrap select-text">
+                            <div ref={ttsDisplayRef} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 text-sm overflow-y-auto whitespace-pre-wrap select-text font-body">
                                 {textSegments.map((segment, index) => (
                                     <span key={index} className={cn(
                                         "transition-colors duration-200",
@@ -1211,7 +1229,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                                 ))}
                             </div>
                         ) : (
-                            <textarea ref={ttsBoxTextAreaRef} readOnly value={currentTextForTTS} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 text-sm overflow-y-auto whitespace-pre-wrap select-text" placeholder="Text for TTS..." />
+                            <textarea ref={ttsBoxTextAreaRef} readOnly value={currentTextForTTS} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 text-sm overflow-y-auto whitespace-pre-wrap select-text font-body" placeholder="Text for TTS..." />
                         )}
                     </CardContent>
                 </Card>
@@ -1320,9 +1338,9 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                         variant="outline"
                         size="sm"
                         className="w-full text-xs"
-                        disabled={isLoadingTTS && speechOrigin === 'main'}>
+                        disabled={(isLoadingTTS && speechOrigin === 'main') || (isSpeaking && speechOrigin !== 'repeat')}>
                         <Repeat className="mr-2 h-3 w-3" />
-                        {(isSpeaking && speechOrigin === 'repeat') || (isLoadingTTS && speechOrigin === 'repeat') ? 'Playing...' : 'Repeat Selection'}
+                        {(isLoadingTTS || isSpeaking) && speechOrigin === 'repeat' ? 'Playing...' : 'Repeat Selection'}
                     </Button>
                 </div>
               </CardContent>
@@ -1332,3 +1350,5 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
     </div>
   );
 }
+
+    
