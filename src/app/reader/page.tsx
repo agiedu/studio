@@ -354,7 +354,7 @@ export default function ReaderPage() {
                       if (!isMountedRef.current || !epubBookRef.current) return;
                       
                       const contentBody = view.document.body;
-                      const pageText = (contentBody.textContent || "").replace(/\s+/g, ' ').trim();
+                      const pageText = (contentBody.innerText || "").trim();
                       const imageElement = contentBody.querySelector('img') || contentBody.querySelector('image');
                       const isImagePage = imageElement && pageText.length < 150;
 
