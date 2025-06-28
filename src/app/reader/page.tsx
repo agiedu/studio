@@ -699,7 +699,10 @@ export default function ReaderPage() {
   useEffect(() => {
     if (isSpeaking && !isPaused && highlightedSegmentIndex > -1) {
       // Determine which container is currently displaying the highlighted text
-      const activeDisplayRef = !activeDoc ? mainContentDisplayRef : ttsDisplayRef;
+      const activeDisplayRef = !activeDoc || (activeDoc?.type === 'txt') || (activeDoc?.type === 'pdf' && isPdfTextView)
+        ? mainContentDisplayRef 
+        : ttsDisplayRef;
+
       if (activeDisplayRef.current) {
           const element = activeDisplayRef.current.children[highlightedSegmentIndex] as HTMLElement;
           if (element) {
@@ -707,7 +710,7 @@ export default function ReaderPage() {
           }
       }
     }
-  }, [highlightedSegmentIndex, isSpeaking, isPaused, activeDoc]);
+  }, [highlightedSegmentIndex, isSpeaking, isPaused, activeDoc, isPdfTextView]);
 
 
   // The executor function. It queues up utterances sentence by sentence.
@@ -1069,7 +1072,7 @@ export default function ReaderPage() {
                     {textSegments.map((segment, index) => (
                       <span key={index} className={cn(
                           "transition-colors duration-200",
-                          { "text-green-600 dark:text-green-400 font-medium": index === highlightedSegmentIndex }
+                          { "text-green-600 dark:text-green-400": index === highlightedSegmentIndex }
                       )}>
                           {segment}
                       </span>
@@ -1097,6 +1100,18 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
             {/* PDF Text View */}
             {activeDoc?.type === 'pdf' && isPdfTextView && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
+                {(isSpeaking || isPaused) ? (
+                  <div ref={mainContentDisplayRef} className="w-full flex-grow text-sm whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background p-2">
+                      {textSegments.map((segment, index) => (
+                        <span key={index} className={cn(
+                            "transition-colors duration-200",
+                            { "text-green-600 dark:text-green-400": index === highlightedSegmentIndex }
+                        )}>
+                            {segment}
+                        </span>
+                      ))}
+                  </div>
+                ) : (
                   <Textarea
                       ref={mainTextAreaRef}
                       readOnly
@@ -1105,6 +1120,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                       value={pdfTextContent || ''}
                       aria-label="PDF text content"
                   />
+                )}
               </div>
             )}
 
@@ -1138,6 +1154,18 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
             {/* TXT Content */}
             {activeDoc?.type === 'txt' && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
+                {(isSpeaking || isPaused) ? (
+                  <div ref={mainContentDisplayRef} className="w-full flex-grow text-sm whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background p-2">
+                      {textSegments.map((segment, index) => (
+                        <span key={index} className={cn(
+                            "transition-colors duration-200",
+                            { "text-green-600 dark:text-green-400": index === highlightedSegmentIndex }
+                        )}>
+                            {segment}
+                        </span>
+                      ))}
+                  </div>
+                ) : (
                   <Textarea
                       ref={mainTextAreaRef}
                       readOnly
@@ -1146,6 +1174,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                       value={txtContent}
                       aria-label="Text document content"
                   />
+                )}
               </div>
             )}
 
@@ -1175,7 +1204,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                                 {textSegments.map((segment, index) => (
                                     <span key={index} className={cn(
                                         "transition-colors duration-200",
-                                        { "text-green-600 font-medium": index === highlightedSegmentIndex }
+                                        { "text-green-600 dark:text-green-400": index === highlightedSegmentIndex }
                                     )}>
                                         {segment}
                                     </span>
@@ -1287,12 +1316,13 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                     <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full text-xs"> <Star className="mr-2 h-3 w-3" /> Favorite Text </Button>
                     <Button
                         onClick={handleRepeatSelection}
+                        onMouseDown={(e) => e.preventDefault()}
                         variant="outline"
                         size="sm"
                         className="w-full text-xs"
                         disabled={isLoadingTTS && speechOrigin === 'main'}>
                         <Repeat className="mr-2 h-3 w-3" />
-                        {(isSpeaking && speechOrigin === 'repeat') || (isLoadingTTS && speechOrigin === 'repeat') ? 'Playing...' : 'Playing...'}
+                        {(isSpeaking && speechOrigin === 'repeat') || (isLoadingTTS && speechOrigin === 'repeat') ? 'Playing...' : 'Repeat Selection'}
                     </Button>
                 </div>
               </CardContent>
@@ -1302,3 +1332,5 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
     </div>
   );
 }
+
+    
