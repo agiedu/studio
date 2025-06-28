@@ -358,10 +358,9 @@ export default function ReaderPage() {
                   rendition.on('rendered', async (section: any, view: any) => {
                       if (!isMountedRef.current || !epubBookRef.current || !epubCurrentLocationRef.current) return;
                       
-                      // CRITICAL: Validate if the rendered event is for the current location.
-                      const currentLocation = epubRenditionRef.current?.location;
-                      if (!currentLocation || currentLocation.start.cfi !== epubCurrentLocationRef.current) {
-                          console.log(`[EPUB] Stale 'rendered' event ignored. Expected: ${epubCurrentLocationRef.current}, Got: ${currentLocation?.start.cfi}`);
+                      const currentLocationCfi = epubRenditionRef.current?.location?.start?.cfi;
+                      if (!currentLocationCfi || currentLocationCfi !== epubCurrentLocationRef.current) {
+                          console.log(`[EPUB] Stale 'rendered' event ignored. Expected: ${epubCurrentLocationRef.current}, Got: ${currentLocationCfi}`);
                           return;
                       }
 
@@ -372,7 +371,6 @@ export default function ReaderPage() {
 
                       if (isImagePage) {
                           try {
-                            // More robust image to dataURL conversion
                             const canvas = document.createElement('canvas');
                             canvas.width = imageElement.naturalWidth;
                             canvas.height = imageElement.naturalHeight;
@@ -402,21 +400,14 @@ export default function ReaderPage() {
                   });
                   
                   rendition.on('relocated', (location: any) => {
-                      if (!isMountedRef.current) return;
-                      
-                      // CRITICAL: This is now the single source of truth for the current location.
+                      if (!isMountedRef.current || !epubRenditionRef.current) return;
                       epubCurrentLocationRef.current = location.start.cfi;
-                      
                       if (activeDoc?.id) {
                           LocalStorageService.saveCurrentEpubCfiForDoc(activeDoc.id, location.start.cfi);
                       }
-                      
-                      // Manually trigger a re-check of the content for the new location
-                      // This ensures state is updated even if 'rendered' is missed or delayed.
                       rendition.emit('rendered', location.start.cfi, rendition.getContents()[0]);
                   });
 
-                  // Display the rendition. This will trigger the 'relocated' and 'rendered' events.
                   const lastLocation = LocalStorageService.loadCurrentEpubCfiForDoc(doc.id); 
                   await rendition.display(lastLocation || undefined);
                   if (isStale) return;
@@ -713,7 +704,7 @@ export default function ReaderPage() {
   useEffect(() => {
     if (isSpeaking && !isPaused && highlightedSegmentIndex > -1) {
       // Determine which container is currently displaying the highlighted text
-      const activeDisplayRef = !activeDoc || (activeDoc?.type === 'txt') || (activeDoc?.type === 'pdf' && isPdfTextView) || (activeDoc?.type === 'scratchpad')
+      const activeDisplayRef = !activeDoc || (activeDoc?.type === 'txt') || (activeDoc?.type === 'pdf' && isPdfTextView) || (!activeDoc && !isLoadingDoc)
         ? mainContentDisplayRef 
         : ttsDisplayRef;
 
@@ -724,7 +715,7 @@ export default function ReaderPage() {
           }
       }
     }
-  }, [highlightedSegmentIndex, isSpeaking, isPaused, activeDoc, isPdfTextView]);
+  }, [highlightedSegmentIndex, isSpeaking, isPaused, activeDoc, isPdfTextView, isLoadingDoc]);
 
 
   // The executor function. It queues up utterances sentence by sentence.
@@ -898,6 +889,7 @@ export default function ReaderPage() {
   
   const handleRepeatSelection = () => {
     if (!isMountedRef.current) return;
+    
     // Fully stop and reset main player state before repeating a selection.
     // This ensures the main 'Play Text' button returns to a predictable initial state.
     stopSpeech(true); 
@@ -1088,7 +1080,7 @@ export default function ReaderPage() {
             {!activeDoc && !isLoadingDoc && !docErrorMessage && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
                 {(isSpeaking || isPaused) ? (
-                  <div ref={mainContentDisplayRef} className="w-full flex-grow whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 text-base md:text-sm">
+                  <div ref={mainContentDisplayRef} className="w-full flex-grow whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 text-sm">
                     {textSegments.map((segment, index) => (
                       <span key={index} className={cn(
                           "transition-colors duration-200",
@@ -1105,7 +1097,7 @@ export default function ReaderPage() {
                       placeholder="Welcome to the Scratchpad!
 
 Type or paste any text here to have it read aloud or to save snippets to your favorites."
-                      className="w-full flex-grow text-base md:text-sm resize-none"
+                      className="w-full flex-grow text-sm resize-none"
                       value={scratchpadText}
                       onChange={(e) => {
                           setScratchpadText(e.target.value);
@@ -1121,7 +1113,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
             {activeDoc?.type === 'pdf' && isPdfTextView && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
                 {(isSpeaking || isPaused) ? (
-                  <div ref={mainContentDisplayRef} className="w-full flex-grow whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 text-base md:text-sm">
+                  <div ref={mainContentDisplayRef} className="w-full flex-grow whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 text-sm">
                       {textSegments.map((segment, index) => (
                         <span key={index} className={cn(
                             "transition-colors duration-200",
@@ -1136,7 +1128,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                       ref={mainTextAreaRef}
                       readOnly
                       placeholder="Loading PDF text..."
-                      className="w-full flex-grow text-base md:text-sm resize-none"
+                      className="w-full flex-grow text-sm resize-none"
                       value={pdfTextContent || ''}
                       aria-label="PDF text content"
                   />
@@ -1175,7 +1167,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
             {activeDoc?.type === 'txt' && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
                 {(isSpeaking || isPaused) ? (
-                  <div ref={mainContentDisplayRef} className="w-full flex-grow whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 text-base md:text-sm">
+                  <div ref={mainContentDisplayRef} className="w-full flex-grow whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 text-sm">
                       {textSegments.map((segment, index) => (
                         <span key={index} className={cn(
                             "transition-colors duration-200",
@@ -1190,7 +1182,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                       ref={mainTextAreaRef}
                       readOnly
                       placeholder="Text document content..."
-                      className="w-full flex-grow text-base md:text-sm resize-none"
+                      className="w-full flex-grow text-sm resize-none"
                       value={txtContent}
                       aria-label="Text document content"
                   />
@@ -1352,13 +1344,3 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
     </div>
   );
 }
-
-    
-
-    
-
-
-
-    
-
-    
