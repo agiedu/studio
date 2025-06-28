@@ -38,7 +38,7 @@ import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 
 const PDF_DEFAULT_SCALE = 1.0;
-const PUNCTUATION_REGEX = /[.,?!。？！，、\n]/g;
+const PUNCTUATION_REGEX = /[.,?!。？！，、:;()\[\]{}'"`\n\r\t—–-]+/g;
 
 type SpeechOrigin = 'main' | 'repeat' | null;
 
@@ -906,23 +906,22 @@ export default function ReaderPage() {
         return;
     }
 
-    // This is a simplified speech function for repeating a selection
-    // It does not support continued highlighting or scrolling of the main text view.
-    stopSpeech(true);
+    // Stop any currently playing speech without resetting UI
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+    }
+    if (audioPlayerRef.current && !audioPlayerRef.current.paused) {
+      audioPlayerRef.current.pause();
+    }
 
+    // Use a small timeout to ensure the `cancel` has propagated
     setTimeout(() => {
-        if (!isMountedRef.current) return;
-        if (typeof window === 'undefined' || !window.speechSynthesis) {
-          toast({ variant: "destructive", title: "TTS Error", description: "Browser Speech Synthesis not supported." });
-          return;
+        if (!isMountedRef.current || typeof window === 'undefined' || !window.speechSynthesis) {
+            toast({ variant: "destructive", title: "TTS Error", description: "Browser Speech Synthesis not supported." });
+            return;
         }
 
-        setIsSpeaking(true);
-        isSpeakingRef.current = true;
-        setIsPaused(false);
-        setIsLoadingTTS(true);
-        setSpeechOrigin('repeat');
-
+        // Create and configure the utterance
         const utterance = new SpeechSynthesisUtterance(cleanedTextToPlay);
         utterance.lang = ttsSettings.language;
         utterance.pitch = ttsSettings.pitch;
@@ -930,17 +929,14 @@ export default function ReaderPage() {
         const voiceToUse = window.speechSynthesis.getVoices().find(v => v.voiceURI === ttsSettings.voiceURI);
         if (voiceToUse) utterance.voice = voiceToUse;
 
-        utterance.onend = () => { if(isMountedRef.current) stopSpeech(true); };
+        // Minimal handlers that don't change UI state
         utterance.onerror = (event) => {
             if(isMountedRef.current) {
                 toast({ variant: "destructive", title: "TTS Error", description: event.error || "Speech failed." });
-                stopSpeech(true);
             }
         };
 
         window.speechSynthesis.speak(utterance);
-        if (isMountedRef.current) setIsLoadingTTS(false);
-
     }, 50);
   };
 
@@ -1086,11 +1082,11 @@ export default function ReaderPage() {
             {!activeDoc && !isLoadingDoc && !docErrorMessage && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
                 {(isSpeaking || isPaused) ? (
-                  <div ref={mainContentDisplayRef} className="w-full flex-grow px-3 py-2 text-base md:text-sm whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background font-body">
+                  <div ref={mainContentDisplayRef} className="w-full flex-grow px-3 py-2 text-sm whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background font-body">
                     {textSegments.map((segment, index) => (
                       <span key={index} className={cn(
                           "transition-colors duration-200",
-                          { "text-green-600 dark:text-green-400 font-medium": index === highlightedSegmentIndex }
+                          { "text-green-600 dark:text-green-400": index === highlightedSegmentIndex }
                       )}>
                           {segment}
                       </span>
@@ -1103,7 +1099,7 @@ export default function ReaderPage() {
                       placeholder="Welcome to the Scratchpad!
 
 Type or paste any text here to have it read aloud or to save snippets to your favorites."
-                      className="w-full flex-grow text-base md:text-sm resize-none font-body"
+                      className="w-full flex-grow text-sm resize-none font-body"
                       value={scratchpadText}
                       onChange={(e) => {
                           setScratchpadText(e.target.value);
@@ -1123,7 +1119,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                       {textSegments.map((segment, index) => (
                         <span key={index} className={cn(
                             "transition-colors duration-200",
-                            { "text-green-600 dark:text-green-400 font-medium": index === highlightedSegmentIndex }
+                            { "text-green-600 dark:text-green-400": index === highlightedSegmentIndex }
                         )}>
                             {segment}
                         </span>
@@ -1177,7 +1173,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                       {textSegments.map((segment, index) => (
                         <span key={index} className={cn(
                             "transition-colors duration-200",
-                            { "text-green-600 dark:text-green-400 font-medium": index === highlightedSegmentIndex }
+                            { "text-green-600 dark:text-green-400": index === highlightedSegmentIndex }
                         )}>
                             {segment}
                         </span>
@@ -1222,7 +1218,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                                 {textSegments.map((segment, index) => (
                                     <span key={index} className={cn(
                                         "transition-colors duration-200",
-                                        { "text-green-600 dark:text-green-400 font-medium": index === highlightedSegmentIndex }
+                                        { "text-green-600 dark:text-green-400": index === highlightedSegmentIndex }
                                     )}>
                                         {segment}
                                     </span>
