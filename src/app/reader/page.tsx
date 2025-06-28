@@ -1090,7 +1090,7 @@ export default function ReaderPage() {
                     {textSegments.map((segment, index) => (
                       <span key={index} className={cn(
                           "transition-colors duration-200",
-                          { "text-green-600 dark:text-green-400": index === highlightedSegmentIndex }
+                          { "text-green-600 dark:text-green-400 font-medium": index === highlightedSegmentIndex }
                       )}>
                           {segment}
                       </span>
@@ -1103,7 +1103,7 @@ export default function ReaderPage() {
                       placeholder="Welcome to the Scratchpad!
 
 Type or paste any text here to have it read aloud or to save snippets to your favorites."
-                      className="w-full flex-grow text-base md:text-sm resize-none"
+                      className="w-full flex-grow text-base md:text-sm resize-none font-body"
                       value={scratchpadText}
                       onChange={(e) => {
                           setScratchpadText(e.target.value);
@@ -1119,11 +1119,11 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
             {activeDoc?.type === 'pdf' && isPdfTextView && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
                 {(isSpeaking || isPaused) ? (
-                  <div ref={mainContentDisplayRef} className="w-full flex-grow text-sm whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 font-body">
+                  <div ref={mainContentDisplayRef} className="w-full flex-grow whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 font-body text-sm">
                       {textSegments.map((segment, index) => (
                         <span key={index} className={cn(
                             "transition-colors duration-200",
-                            { "text-green-600 dark:text-green-400": index === highlightedSegmentIndex }
+                            { "text-green-600 dark:text-green-400 font-medium": index === highlightedSegmentIndex }
                         )}>
                             {segment}
                         </span>
@@ -1173,11 +1173,11 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
             {activeDoc?.type === 'txt' && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
                 {(isSpeaking || isPaused) ? (
-                  <div ref={mainContentDisplayRef} className="w-full flex-grow text-sm whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 font-body">
+                  <div ref={mainContentDisplayRef} className="w-full flex-grow whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 font-body text-sm">
                       {textSegments.map((segment, index) => (
                         <span key={index} className={cn(
                             "transition-colors duration-200",
-                            { "text-green-600 dark:text-green-400": index === highlightedSegmentIndex }
+                            { "text-green-600 dark:text-green-400 font-medium": index === highlightedSegmentIndex }
                         )}>
                             {segment}
                         </span>
@@ -1218,11 +1218,11 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                     </CardHeader>
                     <CardContent className="pt-0">
                         {(isSpeaking || isPaused) ? (
-                            <div ref={ttsDisplayRef} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 text-sm overflow-y-auto whitespace-pre-wrap select-text font-body">
+                            <div ref={ttsDisplayRef} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 overflow-y-auto whitespace-pre-wrap select-text font-body text-sm">
                                 {textSegments.map((segment, index) => (
                                     <span key={index} className={cn(
                                         "transition-colors duration-200",
-                                        { "text-green-600 dark:text-green-400": index === highlightedSegmentIndex }
+                                        { "text-green-600 dark:text-green-400 font-medium": index === highlightedSegmentIndex }
                                     )}>
                                         {segment}
                                     </span>
@@ -1338,7 +1338,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                         variant="outline"
                         size="sm"
                         className="w-full text-xs"
-                        disabled={(isLoadingTTS && speechOrigin === 'main') || (isSpeaking && speechOrigin !== 'repeat')}>
+                        disabled={isLoadingTTS || (isSpeaking && !isPaused)}>
                         <Repeat className="mr-2 h-3 w-3" />
                         {(isLoadingTTS || isSpeaking) && speechOrigin === 'repeat' ? 'Playing...' : 'Repeat Selection'}
                     </Button>
@@ -1350,5 +1350,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
     </div>
   );
 }
+
+    
 
     
