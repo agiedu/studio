@@ -797,7 +797,7 @@ export default function ReaderPage() {
                 };
 
                 utterance.onerror = (event) => {
-                    if(isMountedRef.current) {
+                    if (isMountedRef.current && event.error !== 'canceled') {
                         console.error("SpeechSynthesis Error:", event.error);
                         toast({ variant: "destructive", title: "TTS Error", description: event.error || "An unknown error occurred." });
                         stopSpeech(true);
@@ -931,7 +931,7 @@ export default function ReaderPage() {
 
         // Minimal handlers that don't change UI state
         utterance.onerror = (event) => {
-            if(isMountedRef.current) {
+            if(isMountedRef.current && event.error !== 'canceled') {
                 toast({ variant: "destructive", title: "TTS Error", description: event.error || "Speech failed." });
             }
         };
@@ -1082,7 +1082,7 @@ export default function ReaderPage() {
             {!activeDoc && !isLoadingDoc && !docErrorMessage && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
                 {(isSpeaking || isPaused) ? (
-                  <div ref={mainContentDisplayRef} className="w-full flex-grow px-3 py-2 text-sm whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background font-body">
+                  <div ref={mainContentDisplayRef} className="w-full flex-grow px-3 py-2 text-base md:text-sm whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background">
                     {textSegments.map((segment, index) => (
                       <span key={index} className={cn(
                           "transition-colors duration-200",
@@ -1099,7 +1099,7 @@ export default function ReaderPage() {
                       placeholder="Welcome to the Scratchpad!
 
 Type or paste any text here to have it read aloud or to save snippets to your favorites."
-                      className="w-full flex-grow text-sm resize-none font-body"
+                      className="w-full flex-grow text-base md:text-sm resize-none"
                       value={scratchpadText}
                       onChange={(e) => {
                           setScratchpadText(e.target.value);
@@ -1115,7 +1115,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
             {activeDoc?.type === 'pdf' && isPdfTextView && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
                 {(isSpeaking || isPaused) ? (
-                  <div ref={mainContentDisplayRef} className="w-full flex-grow whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 font-body text-sm">
+                  <div ref={mainContentDisplayRef} className="w-full flex-grow whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 text-base md:text-sm">
                       {textSegments.map((segment, index) => (
                         <span key={index} className={cn(
                             "transition-colors duration-200",
@@ -1130,7 +1130,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                       ref={mainTextAreaRef}
                       readOnly
                       placeholder="Loading PDF text..."
-                      className="w-full flex-grow text-sm resize-none font-body"
+                      className="w-full flex-grow text-base md:text-sm resize-none"
                       value={pdfTextContent || ''}
                       aria-label="PDF text content"
                   />
@@ -1169,7 +1169,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
             {activeDoc?.type === 'txt' && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
                 {(isSpeaking || isPaused) ? (
-                  <div ref={mainContentDisplayRef} className="w-full flex-grow whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 font-body text-sm">
+                  <div ref={mainContentDisplayRef} className="w-full flex-grow whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 text-base md:text-sm">
                       {textSegments.map((segment, index) => (
                         <span key={index} className={cn(
                             "transition-colors duration-200",
@@ -1184,7 +1184,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                       ref={mainTextAreaRef}
                       readOnly
                       placeholder="Text document content..."
-                      className="w-full flex-grow text-sm resize-none font-body"
+                      className="w-full flex-grow text-base md:text-sm resize-none"
                       value={txtContent}
                       aria-label="Text document content"
                   />
@@ -1214,7 +1214,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                     </CardHeader>
                     <CardContent className="pt-0">
                         {(isSpeaking || isPaused) ? (
-                            <div ref={ttsDisplayRef} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 overflow-y-auto whitespace-pre-wrap select-text font-body text-sm">
+                            <div ref={ttsDisplayRef} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 overflow-y-auto whitespace-pre-wrap select-text text-sm">
                                 {textSegments.map((segment, index) => (
                                     <span key={index} className={cn(
                                         "transition-colors duration-200",
@@ -1225,7 +1225,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                                 ))}
                             </div>
                         ) : (
-                            <textarea ref={ttsBoxTextAreaRef} readOnly value={currentTextForTTS} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 text-sm overflow-y-auto whitespace-pre-wrap select-text font-body" placeholder="Text for TTS..." />
+                            <textarea ref={ttsBoxTextAreaRef} readOnly value={currentTextForTTS} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 text-sm overflow-y-auto whitespace-pre-wrap select-text" placeholder="Text for TTS..." />
                         )}
                     </CardContent>
                 </Card>
@@ -1350,3 +1350,4 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
     
 
     
+
