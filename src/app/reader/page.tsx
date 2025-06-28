@@ -70,6 +70,7 @@ export default function ReaderPage() {
   const [isEpubLoading, setIsEpubLoading] = useState(false);
   const [epubPageIsImage, setEpubPageIsImage] = useState(false);
   const epubImageForOcrRef = useRef<string | null>(null);
+  const epubCurrentLocationRef = useRef<string | null>(null);
 
 
   // TXT and Image states
@@ -254,6 +255,7 @@ export default function ReaderPage() {
       }
       setEpubPageIsImage(false);
       epubImageForOcrRef.current = null;
+      epubCurrentLocationRef.current = null;
     };
 
     const loadDocument = async () => {
@@ -354,8 +356,15 @@ export default function ReaderPage() {
                   epubRenditionRef.current = rendition;
 
                   rendition.on('rendered', async (section: any, view: any) => {
-                      if (!isMountedRef.current || !epubBookRef.current) return;
+                      if (!isMountedRef.current || !epubBookRef.current || !epubCurrentLocationRef.current) return;
                       
+                      // CRITICAL: Validate if the rendered event is for the current location.
+                      const currentLocation = epubRenditionRef.current?.location;
+                      if (!currentLocation || currentLocation.start.cfi !== epubCurrentLocationRef.current) {
+                          console.log(`[EPUB] Stale 'rendered' event ignored. Expected: ${epubCurrentLocationRef.current}, Got: ${currentLocation?.start.cfi}`);
+                          return;
+                      }
+
                       const contentBody = view.document.body;
                       const pageText = (contentBody.innerText || "").trim();
                       const imageElement = contentBody.querySelector('img') || contentBody.querySelector('image');
@@ -363,6 +372,7 @@ export default function ReaderPage() {
 
                       if (isImagePage) {
                           try {
+                            // More robust image to dataURL conversion
                             const canvas = document.createElement('canvas');
                             canvas.width = imageElement.naturalWidth;
                             canvas.height = imageElement.naturalHeight;
@@ -370,24 +380,18 @@ export default function ReaderPage() {
                             if (ctx) {
                                 ctx.drawImage(imageElement, 0, 0);
                                 epubImageForOcrRef.current = canvas.toDataURL('image/png');
-                                if (isMountedRef.current) {
-                                  setCurrentTextForTTS("This page is an image. Use OCR to extract text.");
-                                }
                             } else {
                                 epubImageForOcrRef.current = null;
-                                if (isMountedRef.current) {
-                                  setCurrentTextForTTS("Could not prepare image for OCR.");
-                                }
                             }
                           } catch (e) {
                             epubImageForOcrRef.current = null;
-                            if (isMountedRef.current) {
-                              setCurrentTextForTTS("Error processing image for OCR.");
-                            }
                           }
+                          
                           if (isMountedRef.current) {
+                            setCurrentTextForTTS(epubImageForOcrRef.current ? "This page is an image. Use OCR to extract text." : "Could not prepare image for OCR.");
                             setEpubPageIsImage(true);
                           }
+
                       } else {
                           epubImageForOcrRef.current = null;
                           if (isMountedRef.current) {
@@ -398,13 +402,22 @@ export default function ReaderPage() {
                   });
                   
                   rendition.on('relocated', (location: any) => {
-                      if (isMountedRef.current && activeDoc?.id) {
-                          LocalStorageService.saveCurrentPdfPageIndexForDoc(activeDoc.id, location.start.cfi);
+                      if (!isMountedRef.current) return;
+                      
+                      // CRITICAL: This is now the single source of truth for the current location.
+                      epubCurrentLocationRef.current = location.start.cfi;
+                      
+                      if (activeDoc?.id) {
+                          LocalStorageService.saveCurrentEpubCfiForDoc(activeDoc.id, location.start.cfi);
                       }
+                      
+                      // Manually trigger a re-check of the content for the new location
+                      // This ensures state is updated even if 'rendered' is missed or delayed.
+                      rendition.emit('rendered', location.start.cfi, rendition.getContents()[0]);
                   });
 
                   // Display the rendition. This will trigger the 'relocated' and 'rendered' events.
-                  const lastLocation = LocalStorageService.loadCurrentPdfPageIndexForDoc(doc.id); // Re-using this for EPUB location (CFI)
+                  const lastLocation = LocalStorageService.loadCurrentEpubCfiForDoc(doc.id); 
                   await rendition.display(lastLocation || undefined);
                   if (isStale) return;
             
@@ -700,7 +713,7 @@ export default function ReaderPage() {
   useEffect(() => {
     if (isSpeaking && !isPaused && highlightedSegmentIndex > -1) {
       // Determine which container is currently displaying the highlighted text
-      const activeDisplayRef = !activeDoc || (activeDoc?.type === 'txt') || (activeDoc?.type === 'pdf' && isPdfTextView)
+      const activeDisplayRef = !activeDoc || (activeDoc?.type === 'txt') || (activeDoc?.type === 'pdf' && isPdfTextView) || (activeDoc?.type === 'scratchpad')
         ? mainContentDisplayRef 
         : ttsDisplayRef;
 
@@ -797,7 +810,7 @@ export default function ReaderPage() {
                 };
 
                 utterance.onerror = (event) => {
-                    if (isMountedRef.current && event.error !== 'canceled') {
+                    if (isMountedRef.current && event.error !== 'canceled' && event.error !== 'interrupted') {
                         console.error("SpeechSynthesis Error:", event.error);
                         toast({ variant: "destructive", title: "TTS Error", description: event.error || "An unknown error occurred." });
                         stopSpeech(true);
@@ -885,43 +898,37 @@ export default function ReaderPage() {
   
   const handleRepeatSelection = () => {
     if (!isMountedRef.current) return;
-    const selectionInfo = getSelectedText();
-    const textToPlay = selectionInfo.text;
-    if (!textToPlay) {
-      toast({
-        variant: 'destructive',
-        title: 'No Text Selected',
-        description: 'Please select some text to repeat.',
-      });
-      return;
-    }
-    
-    const cleanedTextToPlay = textToPlay.replace(PUNCTUATION_REGEX, ' ').trim();
-    if (!cleanedTextToPlay) {
-        toast({
-            variant: 'destructive',
-            title: 'No Text to Speak',
-            description: 'Your selection contains only punctuation.',
-        });
-        return;
-    }
+    stopSpeech(false); // Stop speech but don't reset UI, allowing for quick repetition
 
-    // Stop any currently playing speech without resetting UI
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-    }
-    if (audioPlayerRef.current && !audioPlayerRef.current.paused) {
-      audioPlayerRef.current.pause();
-    }
-
-    // Use a small timeout to ensure the `cancel` has propagated
     setTimeout(() => {
-        if (!isMountedRef.current || typeof window === 'undefined' || !window.speechSynthesis) {
+        if (!isMountedRef.current) return;
+        const selectionInfo = getSelectedText();
+        const textToPlay = selectionInfo.text;
+
+        if (!textToPlay) {
+            toast({
+                variant: 'destructive',
+                title: 'No Text Selected',
+                description: 'Please select some text to repeat.',
+            });
+            return;
+        }
+        
+        const cleanedTextToPlay = textToPlay.replace(PUNCTUATION_REGEX, ' ').trim();
+        if (!cleanedTextToPlay) {
+            toast({
+                variant: 'destructive',
+                title: 'No Text to Speak',
+                description: 'Your selection contains only punctuation.',
+            });
+            return;
+        }
+
+        if (typeof window === 'undefined' || !window.speechSynthesis) {
             toast({ variant: "destructive", title: "TTS Error", description: "Browser Speech Synthesis not supported." });
             return;
         }
 
-        // Create and configure the utterance
         const utterance = new SpeechSynthesisUtterance(cleanedTextToPlay);
         utterance.lang = ttsSettings.language;
         utterance.pitch = ttsSettings.pitch;
@@ -929,9 +936,8 @@ export default function ReaderPage() {
         const voiceToUse = window.speechSynthesis.getVoices().find(v => v.voiceURI === ttsSettings.voiceURI);
         if (voiceToUse) utterance.voice = voiceToUse;
 
-        // Minimal handlers that don't change UI state
         utterance.onerror = (event) => {
-            if(isMountedRef.current && event.error !== 'canceled') {
+            if (isMountedRef.current && event.error !== 'canceled' && event.error !== 'interrupted') {
                 toast({ variant: "destructive", title: "TTS Error", description: event.error || "Speech failed." });
             }
         };
@@ -1050,7 +1056,7 @@ export default function ReaderPage() {
   }
   
   const showOcrButtonForPdfPage = activeDoc?.type === 'pdf' && !isPdfTextView && pdfPageImage && !isRenderingPdfPage && !isLoadingDoc && !pdfPageIsTextBased;
-  const showOcrButtonForImage = activeDoc?.type === 'image' && displayedImageSrc && !isLoadingDoc && !isPerformingOcr && !(activeDoc as StoredImageDocument).extractedText;
+  const showOcrButtonForImage = activeDoc?.type === 'image' && displayedImageSrc && !isLoadingDoc && !isPerformingOcr;
   const showOcrButtonForEpubPage = activeDoc?.type === 'epub' && epubPageIsImage && !isLoadingDoc && !isPerformingOcr;
 
 
@@ -1082,7 +1088,7 @@ export default function ReaderPage() {
             {!activeDoc && !isLoadingDoc && !docErrorMessage && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
                 {(isSpeaking || isPaused) ? (
-                  <div ref={mainContentDisplayRef} className="w-full flex-grow px-3 py-2 text-base md:text-sm whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background">
+                  <div ref={mainContentDisplayRef} className="w-full flex-grow px-3 py-2 whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background text-base md:text-sm">
                     {textSegments.map((segment, index) => (
                       <span key={index} className={cn(
                           "transition-colors duration-200",
@@ -1336,7 +1342,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                         className="w-full text-xs"
                         disabled={isLoadingTTS || (isSpeaking && !isPaused)}>
                         <Repeat className="mr-2 h-3 w-3" />
-                        {(isLoadingTTS || isSpeaking) && speechOrigin === 'repeat' ? 'Playing...' : 'Repeat Selection'}
+                        Repeat Selection
                     </Button>
                 </div>
               </CardContent>
@@ -1351,3 +1357,6 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
 
     
 
+
+
+    

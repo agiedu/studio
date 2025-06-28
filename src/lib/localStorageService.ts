@@ -36,19 +36,32 @@ const safeLocalStorageSet = (key: string, value: any): boolean => {
   }
 };
 
-// MangaRoom PDF page index (kept for now, but its utility might change with IndexedDB document handling)
+// --- PDF Page Index ---
 const PDF_MANGA_DOCUMENT_PAGE_STATES_KEY = 'mangaTalk_pdfDocumentPageStates_v3';
 export const loadCurrentPdfPageIndexForDoc = (docId: string): number | undefined => {
   if (!docId || typeof window === 'undefined') return undefined;
   const states = safeLocalStorageGet<{ [docId: string]: number }>(PDF_MANGA_DOCUMENT_PAGE_STATES_KEY, {});
   return states[docId];
 };
-
 export const saveCurrentPdfPageIndexForDoc = (docId: string, pageIndex: number): boolean => {
   if (!docId || typeof window === 'undefined') return false;
   const states = safeLocalStorageGet<{ [docId: string]: number }>(PDF_MANGA_DOCUMENT_PAGE_STATES_KEY, {});
   states[docId] = pageIndex;
   return safeLocalStorageSet(PDF_MANGA_DOCUMENT_PAGE_STATES_KEY, states);
+};
+
+// --- EPUB CFI (Location) ---
+const EPUB_MANGA_DOCUMENT_CFI_KEY = 'mangaTalk_epubDocumentCfi_v1';
+export const loadCurrentEpubCfiForDoc = (docId: string): string | undefined => {
+    if (!docId || typeof window === 'undefined') return undefined;
+    const states = safeLocalStorageGet<{ [docId: string]: string }>(EPUB_MANGA_DOCUMENT_CFI_KEY, {});
+    return states[docId];
+};
+export const saveCurrentEpubCfiForDoc = (docId: string, cfi: string): boolean => {
+    if (!docId || typeof window === 'undefined') return false;
+    const states = safeLocalStorageGet<{ [docId: string]: string }>(EPUB_MANGA_DOCUMENT_CFI_KEY, {});
+    states[docId] = cfi;
+    return safeLocalStorageSet(EPUB_MANGA_DOCUMENT_CFI_KEY, states);
 };
 
 
@@ -105,3 +118,6 @@ export const loadDocumentMetadata = (): MangaDocumentDisplayInfo[] => {
 export const saveDocumentMetadata = (metadata: MangaDocumentDisplayInfo[]): boolean => {
   return safeLocalStorageSet(DOC_METADATA_CACHE_KEY, metadata);
 };
+
+
+    

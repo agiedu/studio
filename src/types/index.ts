@@ -1,5 +1,6 @@
 
 
+
 export interface MangaSubPage { // Primarily for PDF pages rendered as images
   imageDataUrl: string;
   extractedText?: string;
@@ -43,12 +44,19 @@ export interface StoredTxtDocument extends StoredDocumentBase {
   // fileData (ArrayBuffer) will be decoded to text in the reader.
 }
 
+export interface StoredScratchpadDocument extends StoredDocumentBase {
+    type: 'scratchpad';
+    // This is a virtual document type, fileData might be empty or hold the text
+}
+
+
 export type StoredMangaDocument =
   | StoredImageDocument
   | StoredPdfDocument
   | StoredEpubDocument
   | StoredMobiDocument
-  | StoredTxtDocument;
+  | StoredTxtDocument
+  | StoredScratchpadDocument;
 
 
 export interface TTSSettings {
@@ -96,3 +104,5 @@ export interface MangaDocumentDisplayInfo {
   createdAt: number;
   numPages?: number;
 }
+
+    
