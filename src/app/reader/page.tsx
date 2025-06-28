@@ -1068,11 +1068,11 @@ export default function ReaderPage() {
             {!activeDoc && !isLoadingDoc && !docErrorMessage && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
                 {(isSpeaking || isPaused) ? (
-                  <div ref={mainContentDisplayRef} className="w-full flex-grow px-3 py-2 text-base md:text-sm whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background">
+                  <div ref={mainContentDisplayRef} className="w-full flex-grow px-3 py-2 text-base md:text-sm whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background font-body">
                     {textSegments.map((segment, index) => (
                       <span key={index} className={cn(
                           "transition-colors duration-200",
-                          { "text-green-600 dark:text-green-400": index === highlightedSegmentIndex }
+                          { "text-green-600 dark:text-green-400 font-medium": index === highlightedSegmentIndex }
                       )}>
                           {segment}
                       </span>
@@ -1101,7 +1101,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
             {activeDoc?.type === 'pdf' && isPdfTextView && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
                 {(isSpeaking || isPaused) ? (
-                  <div ref={mainContentDisplayRef} className="w-full flex-grow text-sm whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background p-2">
+                  <div ref={mainContentDisplayRef} className="w-full flex-grow text-sm whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 font-body">
                       {textSegments.map((segment, index) => (
                         <span key={index} className={cn(
                             "transition-colors duration-200",
@@ -1155,7 +1155,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
             {activeDoc?.type === 'txt' && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
                 {(isSpeaking || isPaused) ? (
-                  <div ref={mainContentDisplayRef} className="w-full flex-grow text-sm whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background p-2">
+                  <div ref={mainContentDisplayRef} className="w-full flex-grow text-sm whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 font-body">
                       {textSegments.map((segment, index) => (
                         <span key={index} className={cn(
                             "transition-colors duration-200",
@@ -1200,7 +1200,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                     </CardHeader>
                     <CardContent className="pt-0">
                         {(isSpeaking || isPaused) ? (
-                            <div ref={ttsDisplayRef} className="w-full h-20 p-2 border rounded-md bg-muted/30 text-sm overflow-y-auto whitespace-pre-wrap select-text">
+                            <div ref={ttsDisplayRef} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 text-sm overflow-y-auto whitespace-pre-wrap select-text">
                                 {textSegments.map((segment, index) => (
                                     <span key={index} className={cn(
                                         "transition-colors duration-200",
@@ -1211,7 +1211,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                                 ))}
                             </div>
                         ) : (
-                            <textarea ref={ttsBoxTextAreaRef} readOnly value={currentTextForTTS} className="w-full h-20 p-2 border rounded-md bg-muted/30 text-sm overflow-y-auto whitespace-pre-wrap select-text" placeholder="Text for TTS..." />
+                            <textarea ref={ttsBoxTextAreaRef} readOnly value={currentTextForTTS} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 text-sm overflow-y-auto whitespace-pre-wrap select-text" placeholder="Text for TTS..." />
                         )}
                     </CardContent>
                 </Card>
