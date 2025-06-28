@@ -890,7 +890,7 @@ export default function ReaderPage() {
   const handleRepeatSelection = () => {
     if (!isMountedRef.current) return;
   
-    // Step 1: Get the selected text FIRST.
+    // Step 1: Get the selected text FIRST. This is crucial.
     const selectionInfo = getSelectedText();
     const textToPlay = selectionInfo.text;
   
@@ -903,7 +903,8 @@ export default function ReaderPage() {
     }
   
     // Step 2: Now that we have the text, stop the main player and reset its UI.
-    // This should no longer cause a view jump due to the JSX change (using `hidden`).
+    // This makes the "Play Text" button return to its initial state.
+    // The UI jump should be fixed by the style unification.
     stopSpeech(true);
   
     // Step 3: Use a timeout to speak the text. This ensures the state reset from stopSpeech
@@ -913,11 +914,7 @@ export default function ReaderPage() {
   
       const cleanedTextToPlay = textToPlay.replace(PUNCTUATION_REGEX, ' ').trim();
       if (!cleanedTextToPlay) {
-        // This check is in case the selection was only punctuation.
-        toast({
-          title: 'No Text to Speak',
-          description: 'Your selection contains only punctuation.',
-        });
+        toast({ title: 'No Text to Speak', description: 'Your selection contains only punctuation.' });
         return;
       }
   
@@ -940,7 +937,7 @@ export default function ReaderPage() {
       };
   
       window.speechSynthesis.speak(utterance);
-    }, 50); // A small delay is robust.
+    }, 50); 
   };
 
   const handleSettingChange = <K extends keyof TTSSettings>(key: K, value: TTSSettings[K]) => {
@@ -1084,7 +1081,7 @@ export default function ReaderPage() {
             {/* Scratchpad View */}
             {!activeDoc && !isLoadingDoc && !docErrorMessage && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
-                <div ref={mainContentDisplayRef} className={cn("w-full flex-grow whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 text-sm", { 'hidden': !(isSpeaking || isPaused) })}>
+                <div ref={mainContentDisplayRef} className={cn("w-full flex-grow whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 text-sm min-h-[80px]", { 'hidden': !(isSpeaking || isPaused) })}>
                     {textSegments.map((segment, index) => (
                       <span key={index} className={cn(
                           "transition-colors duration-200",
@@ -1114,7 +1111,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
             {/* PDF Text View */}
             {activeDoc?.type === 'pdf' && isPdfTextView && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
-                  <div ref={mainContentDisplayRef} className={cn("w-full flex-grow whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 text-sm", { 'hidden': !(isSpeaking || isPaused) })}>
+                  <div ref={mainContentDisplayRef} className={cn("w-full flex-grow whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 text-sm min-h-[80px]", { 'hidden': !(isSpeaking || isPaused) })}>
                       {textSegments.map((segment, index) => (
                         <span key={index} className={cn(
                             "transition-colors duration-200",
@@ -1165,7 +1162,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
             {/* TXT Content */}
             {activeDoc?.type === 'txt' && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
-                  <div ref={mainContentDisplayRef} className={cn("w-full flex-grow whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 text-sm", { 'hidden': !(isSpeaking || isPaused) })}>
+                  <div ref={mainContentDisplayRef} className={cn("w-full flex-grow whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 text-sm min-h-[80px]", { 'hidden': !(isSpeaking || isPaused) })}>
                       {textSegments.map((segment, index) => (
                         <span key={index} className={cn(
                             "transition-colors duration-200",
