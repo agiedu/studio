@@ -898,7 +898,9 @@ export default function ReaderPage() {
   
   const handleRepeatSelection = () => {
     if (!isMountedRef.current) return;
-    stopSpeech(false); // Stop speech but don't reset UI, allowing for quick repetition
+    // Fully stop and reset main player state before repeating a selection.
+    // This ensures the main 'Play Text' button returns to a predictable initial state.
+    stopSpeech(true); 
 
     setTimeout(() => {
         if (!isMountedRef.current) return;
@@ -907,7 +909,6 @@ export default function ReaderPage() {
 
         if (!textToPlay) {
             toast({
-                variant: 'destructive',
                 title: 'No Text Selected',
                 description: 'Please select some text to repeat.',
             });
@@ -917,7 +918,6 @@ export default function ReaderPage() {
         const cleanedTextToPlay = textToPlay.replace(PUNCTUATION_REGEX, ' ').trim();
         if (!cleanedTextToPlay) {
             toast({
-                variant: 'destructive',
                 title: 'No Text to Speak',
                 description: 'Your selection contains only punctuation.',
             });
@@ -1088,7 +1088,7 @@ export default function ReaderPage() {
             {!activeDoc && !isLoadingDoc && !docErrorMessage && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
                 {(isSpeaking || isPaused) ? (
-                  <div ref={mainContentDisplayRef} className="w-full flex-grow px-3 py-2 whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background text-base md:text-sm">
+                  <div ref={mainContentDisplayRef} className="w-full flex-grow whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 text-base md:text-sm">
                     {textSegments.map((segment, index) => (
                       <span key={index} className={cn(
                           "transition-colors duration-200",
@@ -1358,5 +1358,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
     
 
 
+
+    
 
     
