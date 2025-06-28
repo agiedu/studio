@@ -38,7 +38,7 @@ import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 
 const PDF_DEFAULT_SCALE = 1.0;
-const PUNCTUATION_REGEX = /[.,?!。？！，、:;()\[\]{}'"`\n\r\t—–-]+/g;
+const PUNCTUATION_REGEX = /\p{P}/gu;
 
 type SpeechOrigin = 'main' | 'repeat' | null;
 
@@ -889,53 +889,57 @@ export default function ReaderPage() {
   
   const handleRepeatSelection = () => {
     if (!isMountedRef.current) return;
-    
-    // Fully stop and reset main player state before repeating a selection.
-    // This ensures the main 'Play Text' button returns to a predictable initial state.
-    stopSpeech(true); 
 
+    // First, get the selected text.
+    const selectionInfo = getSelectedText();
+    const textToPlay = selectionInfo.text;
+
+    // If there's no selection, show a toast and do nothing else.
+    if (!textToPlay) {
+      toast({
+        title: 'No Text Selected',
+        description: 'Please select some text to repeat.',
+      });
+      return;
+    }
+
+    // Now that we have the text, we can safely stop the main player.
+    // This will reset the UI of the "Play Text" button to its initial state.
+    stopSpeech(true);
+
+    // Use a timeout to allow the UI to fully reset before we start a new, separate speech.
     setTimeout(() => {
-        if (!isMountedRef.current) return;
-        const selectionInfo = getSelectedText();
-        const textToPlay = selectionInfo.text;
+      if (!isMountedRef.current) return;
 
-        if (!textToPlay) {
-            toast({
-                title: 'No Text Selected',
-                description: 'Please select some text to repeat.',
-            });
-            return;
+      const cleanedTextToPlay = textToPlay.replace(PUNCTUATION_REGEX, ' ').trim();
+      if (!cleanedTextToPlay) {
+        toast({
+          title: 'No Text to Speak',
+          description: 'Your selection contains only punctuation.',
+        });
+        return;
+      }
+
+      if (typeof window === 'undefined' || !window.speechSynthesis) {
+        toast({ variant: "destructive", title: "TTS Error", description: "Browser Speech Synthesis not supported." });
+        return;
+      }
+
+      const utterance = new SpeechSynthesisUtterance(cleanedTextToPlay);
+      utterance.lang = ttsSettings.language;
+      utterance.pitch = ttsSettings.pitch;
+      utterance.rate = ttsSettings.rate;
+      const voiceToUse = window.speechSynthesis.getVoices().find(v => v.voiceURI === ttsSettings.voiceURI);
+      if (voiceToUse) utterance.voice = voiceToUse;
+
+      utterance.onerror = (event) => {
+        if (isMountedRef.current && event.error !== 'canceled' && event.error !== 'interrupted') {
+          toast({ variant: "destructive", title: "TTS Error", description: event.error || "Speech failed." });
         }
-        
-        const cleanedTextToPlay = textToPlay.replace(PUNCTUATION_REGEX, ' ').trim();
-        if (!cleanedTextToPlay) {
-            toast({
-                title: 'No Text to Speak',
-                description: 'Your selection contains only punctuation.',
-            });
-            return;
-        }
+      };
 
-        if (typeof window === 'undefined' || !window.speechSynthesis) {
-            toast({ variant: "destructive", title: "TTS Error", description: "Browser Speech Synthesis not supported." });
-            return;
-        }
-
-        const utterance = new SpeechSynthesisUtterance(cleanedTextToPlay);
-        utterance.lang = ttsSettings.language;
-        utterance.pitch = ttsSettings.pitch;
-        utterance.rate = ttsSettings.rate;
-        const voiceToUse = window.speechSynthesis.getVoices().find(v => v.voiceURI === ttsSettings.voiceURI);
-        if (voiceToUse) utterance.voice = voiceToUse;
-
-        utterance.onerror = (event) => {
-            if (isMountedRef.current && event.error !== 'canceled' && event.error !== 'interrupted') {
-                toast({ variant: "destructive", title: "TTS Error", description: event.error || "Speech failed." });
-            }
-        };
-
-        window.speechSynthesis.speak(utterance);
-    }, 50);
+      window.speechSynthesis.speak(utterance);
+    }, 50); // A small delay gives the browser time to process the UI reset from stopSpeech.
   };
 
   const handleSettingChange = <K extends keyof TTSSettings>(key: K, value: TTSSettings[K]) => {
@@ -1084,7 +1088,7 @@ export default function ReaderPage() {
                     {textSegments.map((segment, index) => (
                       <span key={index} className={cn(
                           "transition-colors duration-200",
-                          { "text-green-600 dark:text-green-400": index === highlightedSegmentIndex }
+                          { "text-green-600 dark:text-green-400 font-medium": index === highlightedSegmentIndex }
                       )}>
                           {segment}
                       </span>
@@ -1117,7 +1121,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                       {textSegments.map((segment, index) => (
                         <span key={index} className={cn(
                             "transition-colors duration-200",
-                            { "text-green-600 dark:text-green-400": index === highlightedSegmentIndex }
+                            { "text-green-600 dark:text-green-400 font-medium": index === highlightedSegmentIndex }
                         )}>
                             {segment}
                         </span>
@@ -1171,7 +1175,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                       {textSegments.map((segment, index) => (
                         <span key={index} className={cn(
                             "transition-colors duration-200",
-                            { "text-green-600 dark:text-green-400": index === highlightedSegmentIndex }
+                            { "text-green-600 dark:text-green-400 font-medium": index === highlightedSegmentIndex }
                         )}>
                             {segment}
                         </span>
@@ -1216,7 +1220,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                                 {textSegments.map((segment, index) => (
                                     <span key={index} className={cn(
                                         "transition-colors duration-200",
-                                        { "text-green-600 dark:text-green-400": index === highlightedSegmentIndex }
+                                        { "text-green-600 dark:text-green-400 font-medium": index === highlightedSegmentIndex }
                                     )}>
                                         {segment}
                                     </span>
