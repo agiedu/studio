@@ -889,12 +889,11 @@ export default function ReaderPage() {
   
   const handleRepeatSelection = () => {
     if (!isMountedRef.current) return;
-
-    // First, get the selected text.
+  
+    // Step 1: Get the selected text FIRST.
     const selectionInfo = getSelectedText();
     const textToPlay = selectionInfo.text;
-
-    // If there's no selection, show a toast and do nothing else.
+  
     if (!textToPlay) {
       toast({
         title: 'No Text Selected',
@@ -902,44 +901,46 @@ export default function ReaderPage() {
       });
       return;
     }
-
-    // Now that we have the text, we can safely stop the main player.
-    // This will reset the UI of the "Play Text" button to its initial state.
+  
+    // Step 2: Now that we have the text, stop the main player and reset its UI.
+    // This should no longer cause a view jump due to the JSX change (using `hidden`).
     stopSpeech(true);
-
-    // Use a timeout to allow the UI to fully reset before we start a new, separate speech.
+  
+    // Step 3: Use a timeout to speak the text. This ensures the state reset from stopSpeech
+    // has propagated before we initiate a new, separate speech action.
     setTimeout(() => {
       if (!isMountedRef.current) return;
-
+  
       const cleanedTextToPlay = textToPlay.replace(PUNCTUATION_REGEX, ' ').trim();
       if (!cleanedTextToPlay) {
+        // This check is in case the selection was only punctuation.
         toast({
           title: 'No Text to Speak',
           description: 'Your selection contains only punctuation.',
         });
         return;
       }
-
+  
       if (typeof window === 'undefined' || !window.speechSynthesis) {
         toast({ variant: "destructive", title: "TTS Error", description: "Browser Speech Synthesis not supported." });
         return;
       }
-
+  
       const utterance = new SpeechSynthesisUtterance(cleanedTextToPlay);
       utterance.lang = ttsSettings.language;
       utterance.pitch = ttsSettings.pitch;
       utterance.rate = ttsSettings.rate;
       const voiceToUse = window.speechSynthesis.getVoices().find(v => v.voiceURI === ttsSettings.voiceURI);
       if (voiceToUse) utterance.voice = voiceToUse;
-
+  
       utterance.onerror = (event) => {
         if (isMountedRef.current && event.error !== 'canceled' && event.error !== 'interrupted') {
           toast({ variant: "destructive", title: "TTS Error", description: event.error || "Speech failed." });
         }
       };
-
+  
       window.speechSynthesis.speak(utterance);
-    }, 50); // A small delay gives the browser time to process the UI reset from stopSpeech.
+    }, 50); // A small delay is robust.
   };
 
   const handleSettingChange = <K extends keyof TTSSettings>(key: K, value: TTSSettings[K]) => {
@@ -1083,60 +1084,54 @@ export default function ReaderPage() {
             {/* Scratchpad View */}
             {!activeDoc && !isLoadingDoc && !docErrorMessage && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
-                {(isSpeaking || isPaused) ? (
-                  <div ref={mainContentDisplayRef} className="w-full flex-grow whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 text-sm">
+                <div ref={mainContentDisplayRef} className={cn("w-full flex-grow whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 text-sm", { 'hidden': !(isSpeaking || isPaused) })}>
                     {textSegments.map((segment, index) => (
                       <span key={index} className={cn(
                           "transition-colors duration-200",
-                          { "text-green-600 dark:text-green-400 font-medium": index === highlightedSegmentIndex }
+                          { "text-green-600 dark:text-green-400": index === highlightedSegmentIndex }
                       )}>
                           {segment}
                       </span>
                     ))}
-                  </div>
-                ) : (
-                  <Textarea
-                      ref={mainTextAreaRef}
-                      id="scratchpad-input"
-                      placeholder="Welcome to the Scratchpad!
+                </div>
+                <Textarea
+                    ref={mainTextAreaRef}
+                    id="scratchpad-input"
+                    placeholder="Welcome to the Scratchpad!
 
 Type or paste any text here to have it read aloud or to save snippets to your favorites."
-                      className="w-full flex-grow text-sm resize-none"
-                      value={scratchpadText}
-                      onChange={(e) => {
-                          setScratchpadText(e.target.value);
-                          setCurrentTextForTTS(e.target.value);
-                      }}
-                      aria-label="Scratchpad for custom text input"
-                  />
-                )}
+                    className={cn("w-full flex-grow text-sm resize-none", { 'hidden': isSpeaking || isPaused })}
+                    value={scratchpadText}
+                    onChange={(e) => {
+                        setScratchpadText(e.target.value);
+                        setCurrentTextForTTS(e.target.value);
+                    }}
+                    aria-label="Scratchpad for custom text input"
+                />
               </div>
             )}
 
             {/* PDF Text View */}
             {activeDoc?.type === 'pdf' && isPdfTextView && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
-                {(isSpeaking || isPaused) ? (
-                  <div ref={mainContentDisplayRef} className="w-full flex-grow whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 text-sm">
+                  <div ref={mainContentDisplayRef} className={cn("w-full flex-grow whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 text-sm", { 'hidden': !(isSpeaking || isPaused) })}>
                       {textSegments.map((segment, index) => (
                         <span key={index} className={cn(
                             "transition-colors duration-200",
-                            { "text-green-600 dark:text-green-400 font-medium": index === highlightedSegmentIndex }
+                            { "text-green-600 dark:text-green-400": index === highlightedSegmentIndex }
                         )}>
                             {segment}
                         </span>
                       ))}
                   </div>
-                ) : (
                   <Textarea
                       ref={mainTextAreaRef}
                       readOnly
                       placeholder="Loading PDF text..."
-                      className="w-full flex-grow text-sm resize-none"
+                      className={cn("w-full flex-grow text-sm resize-none", { 'hidden': isSpeaking || isPaused })}
                       value={pdfTextContent || ''}
                       aria-label="PDF text content"
                   />
-                )}
               </div>
             )}
 
@@ -1170,27 +1165,24 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
             {/* TXT Content */}
             {activeDoc?.type === 'txt' && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
-                {(isSpeaking || isPaused) ? (
-                  <div ref={mainContentDisplayRef} className="w-full flex-grow whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 text-sm">
+                  <div ref={mainContentDisplayRef} className={cn("w-full flex-grow whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 text-sm", { 'hidden': !(isSpeaking || isPaused) })}>
                       {textSegments.map((segment, index) => (
                         <span key={index} className={cn(
                             "transition-colors duration-200",
-                            { "text-green-600 dark:text-green-400 font-medium": index === highlightedSegmentIndex }
+                            { "text-green-600 dark:text-green-400": index === highlightedSegmentIndex }
                         )}>
                             {segment}
                         </span>
                       ))}
                   </div>
-                ) : (
                   <Textarea
                       ref={mainTextAreaRef}
                       readOnly
                       placeholder="Text document content..."
-                      className="w-full flex-grow text-sm resize-none"
+                      className={cn("w-full flex-grow text-sm resize-none", { 'hidden': isSpeaking || isPaused })}
                       value={txtContent}
                       aria-label="Text document content"
                   />
-                )}
               </div>
             )}
 
@@ -1220,7 +1212,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                                 {textSegments.map((segment, index) => (
                                     <span key={index} className={cn(
                                         "transition-colors duration-200",
-                                        { "text-green-600 dark:text-green-400 font-medium": index === highlightedSegmentIndex }
+                                        { "text-green-600 dark:text-green-400": index === highlightedSegmentIndex }
                                     )}>
                                         {segment}
                                     </span>
