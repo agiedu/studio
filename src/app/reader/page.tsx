@@ -1332,5 +1332,3 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
     </div>
   );
 }
-
-    
