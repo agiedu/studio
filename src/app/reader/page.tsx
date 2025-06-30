@@ -126,6 +126,25 @@ export default function ReaderPage() {
     return segments.filter(s => s.length > 0);
   }, [currentTextForTTS]);
 
+  const speakingViewContent = useMemo(() => {
+    if (!isSpeaking && !isPaused) return null;
+    if (highlightedSegmentIndex < 0 || !textSegments[highlightedSegmentIndex]) {
+      return currentTextForTTS;
+    }
+
+    const preText = textSegments.slice(0, highlightedSegmentIndex).join('');
+    const highlightedText = textSegments[highlightedSegmentIndex];
+    const postText = textSegments.slice(highlightedSegmentIndex + 1).join('');
+
+    return (
+      <>
+        {preText}
+        <span className="bg-primary/20 rounded">{highlightedText}</span>
+        {postText}
+      </>
+    );
+  }, [isSpeaking, isPaused, highlightedSegmentIndex, textSegments, currentTextForTTS]);
+
 
   const getSelectedText = useCallback((): { text: string; startIndex: number | null } => {
     if (typeof window === 'undefined') {
@@ -754,12 +773,11 @@ export default function ReaderPage() {
       const scrollContainer = scrollContainerRef.current;
       const contentContainer = mainHighlightedContentRef.current;
 
-      if (scrollContainer && contentContainer && contentContainer.children.length > highlightedSegmentIndex) {
-          const element = contentContainer.children[highlightedSegmentIndex] as HTMLElement;
+      if (scrollContainer && contentContainer) {
+          const element = contentContainer.querySelector('span');
           if (element) {
               const elementRect = element.getBoundingClientRect();
               const containerRect = scrollContainer.getBoundingClientRect();
-              // Check if the element is not fully visible
               if (elementRect.top < containerRect.top || elementRect.bottom > containerRect.bottom) {
                 element.scrollIntoView({ behavior: 'smooth', block: 'center' });
               }
@@ -773,12 +791,11 @@ export default function ReaderPage() {
     if (isSpeaking && !isPaused && highlightedSegmentIndex > -1) {
       const ttsBoxContainer = ttsBoxHighlightedContentRef.current;
 
-      if (ttsBoxContainer && ttsBoxContainer.children.length > highlightedSegmentIndex) {
-          const element = ttsBoxContainer.children[highlightedSegmentIndex] as HTMLElement;
+      if (ttsBoxContainer) {
+          const element = ttsBoxContainer.querySelector('span');
           if (element) {
               const elementRect = element.getBoundingClientRect();
               const containerRect = ttsBoxContainer.getBoundingClientRect();
-              // Check if the element is not fully visible
               if (elementRect.top < containerRect.top || elementRect.bottom > containerRect.bottom) {
                 element.scrollIntoView({ behavior: 'smooth', block: 'center' });
               }
@@ -1134,31 +1151,27 @@ export default function ReaderPage() {
             {/* Scratchpad View */}
             {!activeDoc && !isLoadingDoc && !docErrorMessage && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
-                <div className={cn("w-full flex-grow", { 'hidden': (isSpeaking || isPaused) })}>
-                  <Textarea
-                      ref={mainTextAreaRef}
-                      id="scratchpad-input"
-                      placeholder="Welcome to the Scratchpad!
+                <div className="w-full flex-grow">
+                  {(isSpeaking || isPaused) ? (
+                    <div ref={mainHighlightedContentRef} className="w-full h-full whitespace-pre-wrap select-text text-sm overflow-y-auto">
+                      {speakingViewContent}
+                    </div>
+                  ) : (
+                    <Textarea
+                        ref={mainTextAreaRef}
+                        id="scratchpad-input"
+                        placeholder="Welcome to the Scratchpad!
 
 Type or paste any text here to have it read aloud or to save snippets to your favorites."
-                      className="w-full h-full text-sm resize-none border-none focus-visible:ring-0 p-0 shadow-none bg-transparent"
-                      value={scratchpadText}
-                      onChange={(e) => {
-                          setScratchpadText(e.target.value);
-                          setCurrentTextForTTS(e.target.value);
-                      }}
-                      aria-label="Scratchpad for custom text input"
-                  />
-                </div>
-                <div ref={mainHighlightedContentRef} className={cn("w-full flex-grow whitespace-pre-wrap select-text", { 'hidden': !(isSpeaking || isPaused) })}>
-                    {textSegments.map((segment, index) => (
-                      <span key={index} className={cn(
-                          "transition-colors duration-200",
-                          { "text-green-600 dark:text-green-400": index === highlightedSegmentIndex }
-                      )}>
-                          {segment}
-                      </span>
-                    ))}
+                        className="w-full h-full text-sm resize-none border-none focus-visible:ring-0 p-0 shadow-none bg-transparent"
+                        value={scratchpadText}
+                        onChange={(e) => {
+                            setScratchpadText(e.target.value);
+                            setCurrentTextForTTS(e.target.value);
+                        }}
+                        aria-label="Scratchpad for custom text input"
+                    />
+                  )}
                 </div>
               </div>
             )}
@@ -1167,18 +1180,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
             {activeDoc?.type === 'pdf' && isPdfTextView && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
                   <div ref={mainHighlightedContentRef} className="w-full flex-grow whitespace-pre-wrap select-text px-3 py-2 text-sm min-h-[80px]">
-                      {(isSpeaking || isPaused) ? (
-                          textSegments.map((segment, index) => (
-                            <span key={index} className={cn(
-                                "transition-colors duration-200",
-                                { "text-green-600 dark:text-green-400": index === highlightedSegmentIndex }
-                            )}>
-                                {segment}
-                            </span>
-                          ))
-                      ) : (
-                          <>{pdfTextContent || ''}</>
-                      )}
+                      {(isSpeaking || isPaused) ? speakingViewContent : <>{pdfTextContent || ''}</>}
                   </div>
               </div>
             )}
@@ -1214,18 +1216,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
             {activeDoc?.type === 'txt' && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
                   <div ref={mainHighlightedContentRef} className="w-full flex-grow whitespace-pre-wrap select-text px-3 py-2 text-sm min-h-[80px]">
-                      {(isSpeaking || isPaused) ? (
-                          textSegments.map((segment, index) => (
-                            <span key={index} className={cn(
-                                "transition-colors duration-200",
-                                { "text-green-600 dark:text-green-400": index === highlightedSegmentIndex }
-                            )}>
-                                {segment}
-                            </span>
-                          ))
-                      ) : (
-                          <>{txtContent}</>
-                      )}
+                      {(isSpeaking || isPaused) ? speakingViewContent : <>{txtContent}</>}
                   </div>
               </div>
             )}
@@ -1253,14 +1244,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                     <CardContent className="pt-0">
                         {(isSpeaking || isPaused) ? (
                             <div ref={ttsBoxHighlightedContentRef} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 overflow-y-auto whitespace-pre-wrap select-text text-sm">
-                                {textSegments.map((segment, index) => (
-                                    <span key={index} className={cn(
-                                        "transition-colors duration-200",
-                                        { "text-green-600 dark:text-green-400": index === highlightedSegmentIndex }
-                                    )}>
-                                        {segment}
-                                    </span>
-                                ))}
+                                {speakingViewContent}
                             </div>
                         ) : (
                             <textarea ref={ttsBoxTextAreaRef} readOnly value={currentTextForTTS} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 text-sm overflow-y-auto whitespace-pre-wrap select-text" placeholder="Text for TTS..." />
