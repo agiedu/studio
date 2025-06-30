@@ -16,6 +16,10 @@ export async function performOCR(
     return { extractedText: result.extractedText };
   } catch (e: any) {
     console.error("OCR Error:", e);
+    // Check for the specific FAILED_PRECONDITION error for missing API key
+    if (e.message && e.message.includes('FAILED PRECONDITION') && e.message.toLowerCase().includes('api key')) {
+        return { error: "Configuration Error: The GOOGLE_API_KEY is missing from your environment. This key is required for AI features like OCR. Please add it to your .env file and restart the server." };
+    }
     return { error: e.message || "Failed to extract text using OCR." };
   }
 }
