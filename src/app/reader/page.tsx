@@ -797,15 +797,20 @@ export default function ReaderPage() {
             
             let charCount = 0;
             let startSegment = 0;
+            let offsetInSegment = 0;
+
             for (let i = 0; i < textSegments.length; i++) {
-                const segmentEnd = charCount + textSegments[i].length;
+                const segmentText = textSegments[i];
+                const segmentEnd = charCount + segmentText.length;
                 if (startIndex < segmentEnd) {
                     startSegment = i;
+                    offsetInSegment = startIndex - charCount;
                     break;
                 }
                 charCount = segmentEnd;
             }
             segmentIndexRef.current = startSegment;
+            let firstSegmentProcessed = false;
 
             const speakNext = () => {
                 if (!isSpeakingRef.current || segmentIndexRef.current >= textSegments.length) {
@@ -814,7 +819,13 @@ export default function ReaderPage() {
                 }
 
                 const currentIndex = segmentIndexRef.current;
-                const segmentText = textSegments[currentIndex];
+                let segmentText = textSegments[currentIndex];
+
+                if (!firstSegmentProcessed) {
+                    segmentText = segmentText.substring(offsetInSegment);
+                    firstSegmentProcessed = true;
+                }
+                
                 const textToSpeak = segmentText.replace(PUNCTUATION_REGEX, ' ').trim();
 
                 if (!textToSpeak) {
