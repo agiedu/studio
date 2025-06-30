@@ -101,6 +101,7 @@ export default function ReaderPage() {
   const isMountedRef = useRef(false);
   const isSpeakingRef = useRef(false);
   const segmentIndexRef = useRef(0);
+  const selectionInfoRef = useRef<{ text: string; startIndex: number | null } | null>(null);
 
   // Refs for text selection
   const mainTextAreaRef = useRef<HTMLTextAreaElement | null>(null); // For Scratchpad, TXT, PDF-Text
@@ -906,10 +907,10 @@ export default function ReaderPage() {
     }
     
     // Otherwise (no speech, or speech from another origin), start a new main speech.
-    const selectionInfo = getSelectedText();
+    const selectionInfo = selectionInfoRef.current;
     let startIndexForTTS = 0;
 
-    if (selectionInfo.text) {
+    if (selectionInfo?.text) {
         let startIndex: number | null = selectionInfo.startIndex;
         
         if (startIndex === null) {
@@ -931,9 +932,9 @@ export default function ReaderPage() {
   const handleRepeatSelection = () => {
     if (!isMountedRef.current) return;
   
-    // Step 1: Get the selected text FIRST. This is crucial.
-    const selectionInfo = getSelectedText();
-    const textToPlay = selectionInfo.text;
+    // Step 1: Get the selected text from the ref.
+    const selectionInfo = selectionInfoRef.current;
+    const textToPlay = selectionInfo?.text;
   
     if (!textToPlay) {
       toast({
@@ -944,12 +945,9 @@ export default function ReaderPage() {
     }
   
     // Step 2: Now that we have the text, stop the main player and reset its UI.
-    // This makes the "Play Text" button return to its initial state.
-    // The UI jump should be fixed by the style unification.
     stopSpeech(true);
   
-    // Step 3: Use a timeout to speak the text. This ensures the state reset from stopSpeech
-    // has propagated before we initiate a new, separate speech action.
+    // Step 3: Use a timeout to speak the text.
     setTimeout(() => {
       if (!isMountedRef.current) return;
   
@@ -1364,13 +1362,26 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                 <div className="space-y-1"><Label htmlFor="tts-rate" className="text-xs">Rate: {ttsSettings.rate.toFixed(1)}</Label><Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isSpeaking && !isPaused}/></div>
                 <div className="space-y-1"><Label htmlFor="tts-pitch" className="text-xs">Pitch: {ttsSettings.pitch.toFixed(1)}</Label><Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isSpeaking && !isPaused}/></div>
                 
-                <Button onMouseDown={(e) => e.preventDefault()} onClick={playPauseSpeech} disabled={mainButtonState.disabled} variant={mainButtonState.variant} className="w-full h-9 text-sm">{mainButtonState.icon} {mainButtonState.text}</Button>
+                <Button onMouseDown={(e) => {
+                    e.preventDefault();
+                    selectionInfoRef.current = getSelectedText();
+                  }} 
+                  onClick={playPauseSpeech} 
+                  disabled={mainButtonState.disabled} 
+                  variant={mainButtonState.variant} 
+                  className="w-full h-9 text-sm"
+                >
+                  {mainButtonState.icon} {mainButtonState.text}
+                </Button>
                 
                 <div className="grid grid-cols-2 gap-2 mt-2">
                     <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full text-xs"> <Star className="mr-2 h-3 w-3" /> Favorite Text </Button>
                     <Button
                         onClick={handleRepeatSelection}
-                        onMouseDown={(e) => e.preventDefault()}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          selectionInfoRef.current = getSelectedText();
+                        }}
                         variant="outline"
                         size="sm"
                         className="w-full text-xs"
