@@ -96,7 +96,8 @@ export default function ReaderPage() {
 
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
-  const highlightedContentRef = useRef<HTMLDivElement | null>(null);
+  const mainHighlightedContentRef = useRef<HTMLDivElement | null>(null);
+  const ttsBoxHighlightedContentRef = useRef<HTMLDivElement | null>(null);
 
 
   const isMountedRef = useRef(false);
@@ -191,7 +192,7 @@ export default function ReaderPage() {
             if(result) return result;
         }
 
-        const ttsContainer = highlightedContentRef.current;
+        const ttsContainer = ttsBoxHighlightedContentRef.current;
         if (ttsContainer) {
             const result = getIndexFromSelection(pageSelection, ttsContainer);
             if(result) return result;
@@ -747,17 +748,36 @@ export default function ReaderPage() {
     };
   }, [ttsSettings.engine, isSpeaking, stopSpeech, toast]);
 
-  // Effect for auto-scrolling the highlighted text
+  // Effect for auto-scrolling the main content view
   useEffect(() => {
     if (isSpeaking && !isPaused && highlightedSegmentIndex > -1) {
       const scrollContainer = scrollContainerRef.current;
-      const contentContainer = highlightedContentRef.current;
+      const contentContainer = mainHighlightedContentRef.current;
 
-      if (scrollContainer && contentContainer) {
+      if (scrollContainer && contentContainer && contentContainer.children.length > highlightedSegmentIndex) {
           const element = contentContainer.children[highlightedSegmentIndex] as HTMLElement;
           if (element) {
               const elementRect = element.getBoundingClientRect();
               const containerRect = scrollContainer.getBoundingClientRect();
+              // Check if the element is not fully visible
+              if (elementRect.top < containerRect.top || elementRect.bottom > containerRect.bottom) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }
+          }
+      }
+    }
+  }, [highlightedSegmentIndex, isSpeaking, isPaused]);
+
+  // Effect for auto-scrolling the TTS box view
+  useEffect(() => {
+    if (isSpeaking && !isPaused && highlightedSegmentIndex > -1) {
+      const ttsBoxContainer = ttsBoxHighlightedContentRef.current;
+
+      if (ttsBoxContainer && ttsBoxContainer.children.length > highlightedSegmentIndex) {
+          const element = ttsBoxContainer.children[highlightedSegmentIndex] as HTMLElement;
+          if (element) {
+              const elementRect = element.getBoundingClientRect();
+              const containerRect = ttsBoxContainer.getBoundingClientRect();
               // Check if the element is not fully visible
               if (elementRect.top < containerRect.top || elementRect.bottom > containerRect.bottom) {
                 element.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1130,7 +1150,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                       aria-label="Scratchpad for custom text input"
                   />
                 </div>
-                <div ref={highlightedContentRef} className={cn("w-full flex-grow whitespace-pre-wrap select-text", { 'hidden': !(isSpeaking || isPaused) })}>
+                <div ref={mainHighlightedContentRef} className={cn("w-full flex-grow whitespace-pre-wrap select-text", { 'hidden': !(isSpeaking || isPaused) })}>
                     {textSegments.map((segment, index) => (
                       <span key={index} className={cn(
                           "transition-colors duration-200",
@@ -1146,7 +1166,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
             {/* PDF Text View */}
             {activeDoc?.type === 'pdf' && isPdfTextView && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
-                  <div ref={highlightedContentRef} className="w-full flex-grow whitespace-pre-wrap select-text px-3 py-2 text-sm min-h-[80px]">
+                  <div ref={mainHighlightedContentRef} className="w-full flex-grow whitespace-pre-wrap select-text px-3 py-2 text-sm min-h-[80px]">
                       {(isSpeaking || isPaused) ? (
                           textSegments.map((segment, index) => (
                             <span key={index} className={cn(
@@ -1193,7 +1213,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
             {/* TXT Content */}
             {activeDoc?.type === 'txt' && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
-                  <div ref={highlightedContentRef} className="w-full flex-grow whitespace-pre-wrap select-text px-3 py-2 text-sm min-h-[80px]">
+                  <div ref={mainHighlightedContentRef} className="w-full flex-grow whitespace-pre-wrap select-text px-3 py-2 text-sm min-h-[80px]">
                       {(isSpeaking || isPaused) ? (
                           textSegments.map((segment, index) => (
                             <span key={index} className={cn(
@@ -1232,7 +1252,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                     </CardHeader>
                     <CardContent className="pt-0">
                         {(isSpeaking || isPaused) ? (
-                            <div ref={highlightedContentRef} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 overflow-y-auto whitespace-pre-wrap select-text text-sm">
+                            <div ref={ttsBoxHighlightedContentRef} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 overflow-y-auto whitespace-pre-wrap select-text text-sm">
                                 {textSegments.map((segment, index) => (
                                     <span key={index} className={cn(
                                         "transition-colors duration-200",
@@ -1381,6 +1401,3 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
     </div>
   );
 }
-
-
-
