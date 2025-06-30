@@ -70,7 +70,6 @@ export default function ReaderPage() {
   const [isEpubLoading, setIsEpubLoading] = useState(false);
   const [epubPageIsImage, setEpubPageIsImage] = useState(false);
   const epubImageForOcrRef = useRef<string | null>(null);
-  const epubCurrentLocationRef = useRef<string | null>(null);
 
 
   // TXT and Image states
@@ -216,18 +215,79 @@ export default function ReaderPage() {
     }
   }, []);
 
+  const updateOcrSourceFromImage = useCallback((imageElement: HTMLImageElement) => {
+    if (!isMountedRef.current) return;
+    try {
+        const canvas = document.createElement('canvas');
+        canvas.width = imageElement.naturalWidth;
+        canvas.height = imageElement.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+            ctx.drawImage(imageElement, 0, 0);
+            epubImageForOcrRef.current = canvas.toDataURL('image/png');
+            setCurrentTextForTTS("This page is an image. Use OCR to extract text.");
+        } else {
+            throw new Error("Could not get canvas context.");
+        }
+    } catch (e) {
+        console.error("Error creating OCR source from image:", e);
+        epubImageForOcrRef.current = null;
+        setCurrentTextForTTS("Could not prepare image for OCR.");
+    } finally {
+        if (isMountedRef.current) {
+            setEpubPageIsImage(true);
+        }
+    }
+  }, []);
+
+  const processEpubView = useCallback(async (view: any) => {
+    if (!isMountedRef.current || !view?.document?.body) {
+        return;
+    }
+
+    try {
+        const contentBody = view.document.body;
+        const pageText = (contentBody.innerText || "").trim();
+        const imageElement = contentBody.querySelector('img') || contentBody.querySelector('image');
+        const isImagePage = imageElement && pageText.length < 150; 
+
+        if (isImagePage) {
+            imageElement.crossOrigin = "anonymous";
+            if (imageElement.complete) {
+                updateOcrSourceFromImage(imageElement);
+            } else {
+                setCurrentTextForTTS("Loading image for OCR...");
+                imageElement.onload = () => updateOcrSourceFromImage(imageElement);
+                imageElement.onerror = () => {
+                    if (!isMountedRef.current) return;
+                    epubImageForOcrRef.current = null;
+                    setCurrentTextForTTS("Could not load image on this page.");
+                    setEpubPageIsImage(true);
+                }
+            }
+        } else {
+            epubImageForOcrRef.current = null;
+            if (isMountedRef.current) {
+                setCurrentTextForTTS(pageText || "This page has no text content.");
+                setEpubPageIsImage(false);
+            }
+        }
+    } catch (error) {
+        console.error("Error processing EPUB view:", error);
+        if (isMountedRef.current) {
+            setCurrentTextForTTS("Error analyzing page content.");
+        }
+    }
+  }, [updateOcrSourceFromImage]);
+
   // Main Effect for loading and cleaning up any document type
   useEffect(() => {
     const docId = searchParams.get('docId');
     let isStale = false;
     
-    // This is the single source of truth for cleanup.
-    // It runs before the effect body for a new docId, and on component unmount.
     const cleanup = () => {
       console.log("[Cleanup] Running cleanup for previous document.");
       stopSpeech(true);
-
-      // Cleanup PDF
       if (pdfDocProxy) {
         try { pdfDocProxy.destroy(); } catch (e) { console.log("Non-critical error destroying PDF proxy", e); }
         setPdfDocProxy(null);
@@ -235,13 +295,11 @@ export default function ReaderPage() {
       setPdfTextContent(null);
       setIsPdfTextView(false);
       
-      // Cleanup Image
       if (currentImageObjectUrlRef.current) {
         URL.revokeObjectURL(currentImageObjectUrlRef.current);
         currentImageObjectUrlRef.current = null;
       }
       
-      // Cleanup EPUB
       if (epubBookRef.current) {
         try { epubBookRef.current.destroy(); } catch (e) { console.log("Non-critical error destroying EPUB book", e); }
         epubBookRef.current = null;
@@ -255,7 +313,6 @@ export default function ReaderPage() {
       }
       setEpubPageIsImage(false);
       epubImageForOcrRef.current = null;
-      epubCurrentLocationRef.current = null;
     };
 
     const loadDocument = async () => {
@@ -265,7 +322,6 @@ export default function ReaderPage() {
         if (lastActiveId) {
             router.replace(`/reader?docId=${lastActiveId}`, { scroll: false }); 
         } else {
-            // No docId and no last active doc, so enter Scratchpad mode.
             setActiveDoc(null);
             setIsLoadingDoc(false);
             const savedText = LocalStorageService.loadScratchpadText();
@@ -289,7 +345,6 @@ export default function ReaderPage() {
         setActiveDoc(doc as ActiveMangaDocument);
         await IndexedDBService.saveLastActiveDocId(docId);
         
-        // Handle loading based on type
         switch (doc.type) {
           case 'pdf':
             setIsLoadingDoc(true);
@@ -297,13 +352,12 @@ export default function ReaderPage() {
               const pdf = await getDocument({ data: doc.fileData.slice(0) }).promise;
               if (isStale) { try { pdf.destroy(); } catch(e){} return; }
 
-              // Try to extract all text to determine view mode
               const pagePromises = [];
               for (let i = 1; i <= pdf.numPages; i++) {
                 pagePromises.push(
                   pdf.getPage(i).then(page => 
                     page.getTextContent().then(textContent => {
-                      page.cleanup(); // Essential for memory management
+                      page.cleanup();
                       return textContent.items.map(item => ('str' in item ? item.str : '')).join(' ');
                     })
                   )
@@ -314,19 +368,17 @@ export default function ReaderPage() {
 
               if (isStale) { pdf.destroy(); return; }
 
-              if (allText.length > 0) { // If any text is found, use text view.
+              if (allText.length > 0) {
                 setPdfTextContent(allText);
                 setCurrentTextForTTS(allText);
                 setIsPdfTextView(true);
-                pdf.destroy(); // We don't need the proxy anymore
+                pdf.destroy(); 
               } else {
-                // Fallback to image-based view
                 setIsPdfTextView(false);
                 setPdfDocProxy(pdf);
                 setPdfTotalPages(pdf.numPages);
                 const savedPageIndex = LocalStorageService.loadCurrentPdfPageIndexForDoc(doc.id);
                 setCurrentPdfPageNum((savedPageIndex > 0 && savedPageIndex <= pdf.numPages) ? savedPageIndex : 1);
-                // The other useEffect will handle rendering the page image
               }
             } catch (pdfError: any) {
               if (isStale) return;
@@ -355,57 +407,20 @@ export default function ReaderPage() {
                   const rendition = book.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
                   epubRenditionRef.current = rendition;
 
-                  rendition.on('rendered', async (section: any, view: any) => {
-                      if (!isMountedRef.current || !epubBookRef.current || !epubCurrentLocationRef.current) return;
-                      
-                      const currentLocationCfi = epubRenditionRef.current?.location?.start?.cfi;
-                      if (!currentLocationCfi || currentLocationCfi !== epubCurrentLocationRef.current) {
-                          console.log(`[EPUB] Stale 'rendered' event ignored. Expected: ${epubCurrentLocationRef.current}, Got: ${currentLocationCfi}`);
-                          return;
-                      }
-
-                      const contentBody = view.document.body;
-                      const pageText = (contentBody.innerText || "").trim();
-                      const imageElement = contentBody.querySelector('img') || contentBody.querySelector('image');
-                      const isImagePage = imageElement && pageText.length < 150;
-
-                      if (isImagePage) {
-                          try {
-                            const canvas = document.createElement('canvas');
-                            canvas.width = imageElement.naturalWidth;
-                            canvas.height = imageElement.naturalHeight;
-                            const ctx = canvas.getContext('2d');
-                            if (ctx) {
-                                ctx.drawImage(imageElement, 0, 0);
-                                epubImageForOcrRef.current = canvas.toDataURL('image/png');
-                            } else {
-                                epubImageForOcrRef.current = null;
-                            }
-                          } catch (e) {
-                            epubImageForOcrRef.current = null;
-                          }
-                          
-                          if (isMountedRef.current) {
-                            setCurrentTextForTTS(epubImageForOcrRef.current ? "This page is an image. Use OCR to extract text." : "Could not prepare image for OCR.");
-                            setEpubPageIsImage(true);
-                          }
-
-                      } else {
-                          epubImageForOcrRef.current = null;
-                          if (isMountedRef.current) {
-                            setCurrentTextForTTS(pageText || "This page has no text content.");
-                            setEpubPageIsImage(false);
-                          }
-                      }
+                  rendition.on('rendered', (section: any, view: any) => {
+                      if (!isMountedRef.current) return;
+                      processEpubView(view);
                   });
                   
                   rendition.on('relocated', (location: any) => {
                       if (!isMountedRef.current || !epubRenditionRef.current) return;
-                      epubCurrentLocationRef.current = location.start.cfi;
                       if (activeDoc?.id) {
                           LocalStorageService.saveCurrentEpubCfiForDoc(activeDoc.id, location.start.cfi);
                       }
-                      rendition.emit('rendered', location.start.cfi, rendition.getContents()[0]);
+                      const currentView = rendition.getContents()?.[0];
+                      if(currentView) {
+                        processEpubView(currentView);
+                      }
                   });
 
                   const lastLocation = LocalStorageService.loadCurrentEpubCfiForDoc(doc.id); 
@@ -458,7 +473,6 @@ export default function ReaderPage() {
       }
     };
     
-    // Reset state before loading a new document
     cleanup();
     setDocErrorMessage(null);
     setActiveDoc(null);
@@ -474,7 +488,7 @@ export default function ReaderPage() {
       isStale = true;
       cleanup();
     };
-  }, [searchParams, router]);
+  }, [searchParams, router, processEpubView]);
 
 
   // PDF Page Rendering Effect
