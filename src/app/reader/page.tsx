@@ -687,45 +687,41 @@ export default function ReaderPage() {
   }, [populateVoiceList, stopSpeech]);
   
   useEffect(() => {
-    if (!isMountedRef.current) return;
+    if (!isMountedRef.current || ttsSettings.engine !== 'local') return;
+
     const currentSettings = ttsSettings;
-    let newVoiceURI = currentSettings.voiceURI;
-    let newLanguage = currentSettings.language;
-    let derivedSettingsChanged = false;
+    if (availableVoices.length === 0) return;
 
-    if (currentSettings.engine === 'local') {
-        const systemVoices = availableVoices;
-        if (systemVoices.length > 0) {
-            const currentVoice = systemVoices.find(v => v.voiceURI === currentSettings.voiceURI);
-            const currentVoiceIsValidForLanguage = currentVoice && currentVoice.lang && (currentVoice.lang === currentSettings.language || currentVoice.lang.startsWith(currentSettings.language.split('-')[0]));
+    const currentVoice = availableVoices.find(v => v.voiceURI === currentSettings.voiceURI);
+    const currentVoiceIsValidForLanguage = currentVoice && currentVoice.lang && (currentVoice.lang === currentSettings.language || currentVoice.lang.startsWith(currentSettings.language.split('-')[0]));
             
-            if (!currentVoice || !currentVoiceIsValidForLanguage) {
-                const defaultForLang = systemVoices.find(v => v.lang === currentSettings.language && v.default) ||
-                                     systemVoices.find(v => v.lang === currentSettings.language) ||
-                                     systemVoices.find(v => v.lang?.startsWith(currentSettings.language.split('-')[0]) && v.default) ||
-                                     systemVoices.find(v => v.lang?.startsWith(currentSettings.language.split('-')[0]));
-                if (defaultForLang) { newVoiceURI = defaultForLang.voiceURI; newLanguage = defaultForLang.lang;
-                } else {
-                    const absoluteFallback = systemVoices.find(v => v.default && v.lang) || (systemVoices.length > 0 ? systemVoices[0] : undefined);
-                    if (absoluteFallback) { newVoiceURI = absoluteFallback.voiceURI; newLanguage = absoluteFallback.lang; }
-                }
-            }
-        } else { newVoiceURI = undefined; }
-    } else if (currentSettings.engine === 'cloud') {
-        newVoiceURI = undefined;
-    }
-
-    if (newVoiceURI !== currentSettings.voiceURI || newLanguage !== currentSettings.language) {
-        derivedSettingsChanged = true;
+    if (currentVoice && currentVoiceIsValidForLanguage) {
+        return; // Current voice is valid for the selected language, no changes needed.
     }
     
-    const finalSettingsToSave = { ...currentSettings, voiceURI: newVoiceURI, language: newLanguage };
-    LocalStorageService.saveTTSSettings(finalSettingsToSave);
+    // Voice is invalid or not set, find a new default
+    const defaultForLang = 
+        availableVoices.find(v => v.lang === currentSettings.language && v.default) ||
+        availableVoices.find(v => v.lang === currentSettings.language) ||
+        availableVoices.find(v => v.lang?.startsWith(currentSettings.language.split('-')[0]) && v.default) ||
+        availableVoices.find(v => v.lang?.startsWith(currentSettings.language.split('-')[0]));
 
-    if (derivedSettingsChanged && isMountedRef.current) {
-        setTtsSettings(finalSettingsToSave);
+    if (defaultForLang) {
+        if (defaultForLang.voiceURI !== currentSettings.voiceURI || defaultForLang.lang !== currentSettings.language) {
+            setTtsSettings(prev => ({ ...prev, voiceURI: defaultForLang.voiceURI, language: defaultForLang.lang }));
+        }
+    } else {
+        const absoluteFallback = availableVoices.find(v => v.default && v.lang) || availableVoices[0];
+        if (absoluteFallback && (absoluteFallback.voiceURI !== currentSettings.voiceURI || absoluteFallback.lang !== currentSettings.language)) {
+            setTtsSettings(prev => ({...prev, voiceURI: absoluteFallback.voiceURI, language: absoluteFallback.lang }));
+        }
     }
-  }, [ttsSettings.engine, ttsSettings.language, availableVoices]);
+  }, [ttsSettings.language, ttsSettings.engine, availableVoices]);
+
+  // Persist settings whenever they change
+  useEffect(() => {
+      LocalStorageService.saveTTSSettings(ttsSettings);
+  }, [ttsSettings]);
 
 
   useEffect(() => {
@@ -986,14 +982,22 @@ export default function ReaderPage() {
   };
 
   const handleSettingChange = <K extends keyof TTSSettings>(key: K, value: TTSSettings[K]) => {
-    if(!isMountedRef.current) return; stopSpeech(true); 
-    setTtsSettings(prevSettings => {
-        const newSettings = { ...prevSettings, [key]: value };
-        if (key === 'engine') newSettings.type = value as 'local' | 'cloud';
-        if (key === 'type') newSettings.engine = value as 'local' | 'cloud';
-        LocalStorageService.saveTTSSettings(newSettings);
-        return newSettings;
-    });
+    if(!isMountedRef.current) return;
+    stopSpeech(true);
+
+    if (key === 'voiceURI') {
+        const selectedVoice = availableVoices.find(v => v.voiceURI === value);
+        if (selectedVoice) {
+            setTtsSettings(prev => ({ ...prev, voiceURI: selectedVoice.voiceURI, language: selectedVoice.lang }));
+        }
+    } else {
+        setTtsSettings(prevSettings => {
+            const newSettings = { ...prevSettings, [key]: value };
+            if (key === 'engine') newSettings.type = value as 'local' | 'cloud';
+            if (key === 'type') newSettings.engine = value as 'local' | 'cloud';
+            return newSettings;
+        });
+    }
   };
 
   const handleFavoriteSelection = () => {
@@ -1360,7 +1364,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                 <div className="space-y-1"><Label htmlFor="tts-rate" className="text-xs">Rate: {ttsSettings.rate.toFixed(1)}</Label><Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isSpeaking && !isPaused}/></div>
                 <div className="space-y-1"><Label htmlFor="tts-pitch" className="text-xs">Pitch: {ttsSettings.pitch.toFixed(1)}</Label><Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isSpeaking && !isPaused}/></div>
                 
-                <Button onClick={playPauseSpeech} disabled={mainButtonState.disabled} variant={mainButtonState.variant} className="w-full h-9 text-sm">{mainButtonState.icon} {mainButtonState.text}</Button>
+                <Button onMouseDown={(e) => e.preventDefault()} onClick={playPauseSpeech} disabled={mainButtonState.disabled} variant={mainButtonState.variant} className="w-full h-9 text-sm">{mainButtonState.icon} {mainButtonState.text}</Button>
                 
                 <div className="grid grid-cols-2 gap-2 mt-2">
                     <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full text-xs"> <Star className="mr-2 h-3 w-3" /> Favorite Text </Button>
