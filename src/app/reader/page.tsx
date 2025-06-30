@@ -725,7 +725,7 @@ export default function ReaderPage() {
     if (derivedSettingsChanged && isMountedRef.current) {
         setTtsSettings(finalSettingsToSave);
     }
-  }, [ttsSettings.engine, ttsSettings.language, availableVoices, ttsSettings.voiceURI]);
+  }, [ttsSettings.engine, ttsSettings.language, availableVoices]);
 
 
   useEffect(() => {
