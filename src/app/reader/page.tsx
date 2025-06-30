@@ -129,7 +129,26 @@ export default function ReaderPage() {
       return { text: '', startIndex: null };
     }
   
-    // Priority 1: Main content text area (Scratchpad, TXT, PDF-Text)
+    // Helper function to calculate start index from a selection and a container
+    // It's robust and finds the precise character index of the selection start.
+    const getIndexFromSelection = (selection: Selection, container: HTMLElement): { text: string, startIndex: number } | null => {
+        if (!selection.rangeCount || selection.isCollapsed) return null;
+
+        const range = selection.getRangeAt(0);
+        // Ensure the selection is actually within the designated container
+        if (!container.contains(range.startContainer)) return null;
+
+        const selectionText = range.toString();
+
+        const preSelectionRange = range.cloneRange();
+        preSelectionRange.selectNodeContents(container);
+        preSelectionRange.setEnd(range.startContainer, range.startOffset);
+        const startIndex = preSelectionRange.toString().length;
+
+        return { text: selectionText, startIndex };
+    };
+
+    // Priority 1: Textareas (most reliable via selectionStart)
     const mainTextarea = mainTextAreaRef.current;
     if (mainTextarea && mainTextarea.selectionStart !== mainTextarea.selectionEnd) {
       return {
@@ -137,8 +156,6 @@ export default function ReaderPage() {
         startIndex: mainTextarea.selectionStart
       };
     }
-    
-    // Priority 2: Bottom TTS text area (Image, PDF-Image)
     const ttsTextarea = ttsBoxTextAreaRef.current;
     if (ttsTextarea && ttsTextarea.selectionStart !== ttsTextarea.selectionEnd) {
       return {
@@ -147,32 +164,46 @@ export default function ReaderPage() {
       };
     }
   
-    // Priority 3: EPUB iframe
+    // Priority 2: EPUB iframe (now uses robust index calculation)
     if (activeDoc?.type === 'epub' && epubRenditionRef.current) {
       try {
         const epubWindow = epubRenditionRef.current.getContents()?.[0]?.window;
         if (epubWindow) {
-          const selection = epubWindow.getSelection();
-          const selectionText = selection?.toString();
-          if (selectionText) {
-             // For EPUB, we can only reliably get the text, not a numeric index into a larger string.
-             // The search logic will be handled by the caller.
-            return { text: selectionText, startIndex: null };
-          }
+            const selection = epubWindow.getSelection();
+            if (selection) {
+                const result = getIndexFromSelection(selection, epubWindow.document.body);
+                if (result) return result;
+            }
         }
       } catch (e) {
         console.warn("Could not get selection from EPUB iframe", e);
       }
     }
     
-    // Priority 4: General page selection (fallback)
-    const pageSelection = window.getSelection()?.toString();
-    if (pageSelection) {
-      return { text: pageSelection, startIndex: null };
+    // Priority 3: General page selection (e.g., in the highlighted text display during playback)
+    const pageSelection = window.getSelection();
+    if (pageSelection && !pageSelection.isCollapsed) {
+        // Check if selection is within our known display containers
+        const mainContainer = mainContentDisplayRef.current;
+        if (mainContainer) {
+            const result = getIndexFromSelection(pageSelection, mainContainer);
+            if(result) return result;
+        }
+
+        const ttsContainer = ttsDisplayRef.current;
+        if (ttsContainer) {
+            const result = getIndexFromSelection(pageSelection, ttsContainer);
+            if(result) return result;
+        }
+
+        // Fallback for any other selection on the page: return text but no reliable index.
+        // The calling function will have to use `indexOf`, which may be inaccurate for repeated text.
+        return { text: pageSelection.toString(), startIndex: null };
     }
   
     return { text: '', startIndex: null };
-  }, [activeDoc]);
+  }, [activeDoc?.type]);
+
 
   useEffect(() => {
     isMountedRef.current = true;
