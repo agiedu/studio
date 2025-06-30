@@ -139,7 +139,7 @@ export default function ReaderPage() {
     return (
       <>
         {preText}
-        <span className="bg-primary/20 rounded">{highlightedText}</span>
+        <span className="text-green-600">{highlightedText}</span>
         {postText}
       </>
     );
