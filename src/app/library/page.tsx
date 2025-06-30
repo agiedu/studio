@@ -162,33 +162,20 @@ export default function LibraryPage() {
     try {
       const blob = arrayBufferToBlob(doc.fileData, doc.originalType);
       
-      if (typeof window.showSaveFilePicker === 'function') {
-        const suggestedName = doc.title;
-        const fileHandle = await window.showSaveFilePicker({
-          suggestedName: suggestedName,
-          types: [ { description: 'Document File', accept: { [doc.originalType]: [`.${doc.title.split('.').pop() || 'bin'}`] } } ],
-        });
-        const writable = await fileHandle.createWritable();
-        await writable.write(blob);
-        await writable.close();
-        toast({ title: "Saved to Device", description: `"${doc.title}" successfully saved.` });
-      } else {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = doc.title;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        toast({ title: "Download Started", description: `"${doc.title}" is downloading.` });
-      }
+      // Fallback method: create a temporary URL and trigger a download link.
+      // This is more compatible, especially in iframe environments where showSaveFilePicker is restricted.
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = doc.title;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({ title: "Download Started", description: `"${doc.title}" is downloading.` });
+      
     } catch (error: any) {
-        if (error.name === 'AbortError') {
-          toast({ variant: "default", title: "Save Cancelled", description: "File saving was cancelled." });
-        } else {
-          toast({ variant: "destructive", title: "Save to Device Failed", description: `Could not save "${doc.title}". ${error.message}` });
-        }
+      toast({ variant: "destructive", title: "Save to Device Failed", description: `Could not save "${doc.title}". ${error.message}` });
     } finally {
         setIsSavingToDevice(null);
     }
@@ -211,7 +198,7 @@ export default function LibraryPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><UploadCloud className="text-primary" /> Add Document to Browser Storage</CardTitle>
           <CardDescription>
-            Upload EPUB, MOBI, PDF, TXT, or Image files. They will be stored in **this browser&apos;s internal storage (IndexedDB)**.
+            Upload EPUB, MOBI, PDF, TXT, or Image files. They will be stored in **this browser's internal storage (IndexedDB)**.
             Use &quot;Save to Device&quot; to save a copy to your computer.
           </CardDescription>
         </CardHeader>
@@ -293,7 +280,7 @@ export default function LibraryPage() {
         </CardContent>
         {storedDocuments.length > 0 && (
           <CardFooter>
-            <p className="text-xs text-muted-foreground">Documents are stored in your browser&apos;s IndexedDB. Clearing site data will remove them.</p>
+            <p className="text-xs text-muted-foreground">Documents are stored in your browser's IndexedDB. Clearing site data will remove them.</p>
           </CardFooter>
         )}
       </Card>
@@ -307,7 +294,7 @@ export default function LibraryPage() {
                 &quot;Save to Device&quot; saves a copy of your browser-stored document to your computer.
             </p>
             <p>
-                Modern browsers use the File System Access API for a &quot;Save As&quot; dialog. Older browsers use a standard download.
+                This will trigger a standard browser download for the selected file.
             </p>
         </CardContent>
       </Card>
