@@ -80,6 +80,7 @@ export default function ReaderPage() {
   // Scratchpad state
   const [scratchpadText, setScratchpadText] = useState<string>(LocalStorageService.loadScratchpadText());
   const scrollPositionRef = useRef(0);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
   // OCR and TTS states
   const [isPerformingOcr, setIsPerformingOcr] = useState(false);
@@ -95,8 +96,7 @@ export default function ReaderPage() {
 
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
-  const ttsDisplayRef = useRef<HTMLDivElement | null>(null);
-  const mainContentDisplayRef = useRef<HTMLDivElement | null>(null);
+  const highlightedContentRef = useRef<HTMLDivElement | null>(null);
 
 
   const isMountedRef = useRef(false);
@@ -185,13 +185,13 @@ export default function ReaderPage() {
     // Priority 3: General page selection (e.g., in the main display divs)
     const pageSelection = window.getSelection();
     if (pageSelection && !pageSelection.isCollapsed) {
-        const mainContainer = mainContentDisplayRef.current;
-        if (mainContainer) {
-            const result = getIndexFromSelection(pageSelection, mainContainer);
+        const scrollContainer = scrollContainerRef.current;
+        if (scrollContainer) {
+            const result = getIndexFromSelection(pageSelection, scrollContainer);
             if(result) return result;
         }
 
-        const ttsContainer = ttsDisplayRef.current;
+        const ttsContainer = highlightedContentRef.current;
         if (ttsContainer) {
             const result = getIndexFromSelection(pageSelection, ttsContainer);
             if(result) return result;
@@ -222,10 +222,10 @@ export default function ReaderPage() {
     }
   }, [scratchpadText, activeDoc, isLoadingDoc]);
 
-  // Sync scroll position for scratchpad view when switching to highlight mode
+  // Effect to restore scroll position when switching to speaking view to prevent jump-to-top
   useEffect(() => {
-    if (isSpeaking && mainContentDisplayRef.current) {
-        mainContentDisplayRef.current.scrollTop = scrollPositionRef.current;
+    if (isSpeaking && scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = scrollPositionRef.current;
     }
   }, [isSpeaking])
 
@@ -750,13 +750,14 @@ export default function ReaderPage() {
   // Effect for auto-scrolling the highlighted text
   useEffect(() => {
     if (isSpeaking && !isPaused && highlightedSegmentIndex > -1) {
-      const activeDisplayRef = mainContentDisplayRef;
+      const scrollContainer = scrollContainerRef.current;
+      const contentContainer = highlightedContentRef.current;
 
-      if (activeDisplayRef.current) {
-          const element = activeDisplayRef.current.children[highlightedSegmentIndex] as HTMLElement;
+      if (scrollContainer && contentContainer) {
+          const element = contentContainer.children[highlightedSegmentIndex] as HTMLElement;
           if (element) {
               const elementRect = element.getBoundingClientRect();
-              const containerRect = activeDisplayRef.current.getBoundingClientRect();
+              const containerRect = scrollContainer.getBoundingClientRect();
               // Check if the element is not fully visible
               if (elementRect.top < containerRect.top || elementRect.bottom > containerRect.bottom) {
                 element.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -903,7 +904,12 @@ export default function ReaderPage() {
         return;
     }
     
-    stopSpeech(true); // Ensure any other speech is stopped.
+    stopSpeech(true); 
+
+    if (ttsSettings.engine === 'cloud') {
+      toast({ title: "Info", description: "Repeating selection with Cloud TTS is not yet implemented." });
+      return;
+    }
 
     const cleanedText = text.replace(PUNCTUATION_REGEX, ' ').trim();
     if (!cleanedText) {
@@ -937,27 +943,23 @@ export default function ReaderPage() {
   const playPauseSpeech = () => {
     if (!isMountedRef.current) return;
     
-    const selectionInfo = selectionInfoRef.current;
-
-    // SCENARIO 1: User has selected text. Play ONLY the selection, then stop.
-    if (selectionInfo && selectionInfo.text.trim().length > 0) {
-        speakTextOnce(selectionInfo.text);
-        return;
-    }
-
-    // SCENARIO 2: No selection. Toggle play/pause for the whole document.
     if (isSpeaking) {
-        if (isPaused) {
-            if (ttsSettings.engine === 'local' && window.speechSynthesis) { window.speechSynthesis.resume(); } 
-            else { audioPlayerRef.current?.play().catch(() => stopSpeech(true)); }
-            setIsPaused(false);
-        } else {
-            if (ttsSettings.engine === 'local' && window.speechSynthesis) { window.speechSynthesis.pause(); } 
-            else { audioPlayerRef.current?.pause(); }
-            setIsPaused(true);
-        }
+      // It's already playing, so toggle pause/resume
+      if (isPaused) {
+        if (ttsSettings.engine === 'local' && window.speechSynthesis) { window.speechSynthesis.resume(); } 
+        else { audioPlayerRef.current?.play().catch(() => stopSpeech(true)); }
+        setIsPaused(false);
+      } else {
+        if (ttsSettings.engine === 'local' && window.speechSynthesis) { window.speechSynthesis.pause(); } 
+        else { audioPlayerRef.current?.pause(); }
+        setIsPaused(true);
+      }
     } else {
-        _startSpeech('main', 0);
+      // Not speaking, so start a new playback
+      const selectionInfo = selectionInfoRef.current;
+      // Use selection start index if available, otherwise start from beginning.
+      const startIndex = selectionInfo?.startIndex ?? 0;
+      _startSpeech('main', startIndex);
     }
   };
   
@@ -1055,9 +1057,9 @@ export default function ReaderPage() {
     if (isLoadingTTS && speechOrigin === 'main') {
       return { text: "Loading...", icon: <Loader2 className="mr-1 h-4 w-4 animate-spin" />, disabled: true, variant: "outline" as const };
     }
-    // If a selection exists, the button is always "Play Selection"
-    if (selectionInfoRef.current && selectionInfoRef.current.text.trim().length > 0) {
-        return { text: "Play Selection", icon: <Play className="mr-1 h-4 w-4" />, disabled: false, variant: "default" as const }
+    // If a selection exists, the button text can be more specific
+    if (selectionInfoRef.current && selectionInfoRef.current.text.trim().length > 0 && !isSpeaking) {
+        return { text: "Play from Selection", icon: <Play className="mr-1 h-4 w-4" />, disabled: false, variant: "default" as const }
     }
     // Otherwise, it's a toggle for the whole document
     if (isSpeaking && speechOrigin === 'main') {
@@ -1091,7 +1093,7 @@ export default function ReaderPage() {
       <div className="flex-grow flex flex-col bg-muted/20 p-2 md:p-4 min-w-0">
         
         {/* Top part: Scrollable Content Area */}
-        <div className="flex-grow overflow-y-auto rounded-lg bg-background shadow-inner relative flex flex-col items-center justify-start">
+        <div ref={scrollContainerRef} onScroll={(e) => scrollPositionRef.current = e.currentTarget.scrollTop} className="flex-grow overflow-y-auto rounded-lg bg-background shadow-inner relative flex flex-col items-center justify-start">
             {(isLoadingDoc || isEpubLoading || isRenderingPdfPage) && (
                 <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
                     <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -1112,23 +1114,23 @@ export default function ReaderPage() {
             {/* Scratchpad View */}
             {!activeDoc && !isLoadingDoc && !docErrorMessage && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
-                <div ref={mainContentDisplayRef} className={cn("w-full flex-grow whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 text-sm min-h-[80px]", { 'hidden': !(isSpeaking || isPaused) })} onScroll={e => scrollPositionRef.current = e.currentTarget.scrollTop}>
-                    <Textarea
-                        ref={mainTextAreaRef}
-                        id="scratchpad-input"
-                        placeholder="Welcome to the Scratchpad!
+                <div className={cn("w-full flex-grow", { 'hidden': (isSpeaking || isPaused) })}>
+                  <Textarea
+                      ref={mainTextAreaRef}
+                      id="scratchpad-input"
+                      placeholder="Welcome to the Scratchpad!
 
 Type or paste any text here to have it read aloud or to save snippets to your favorites."
-                        className="w-full h-full text-sm resize-none border-none focus-visible:ring-0 p-0 shadow-none bg-transparent"
-                        value={scratchpadText}
-                        onChange={(e) => {
-                            setScratchpadText(e.target.value);
-                            setCurrentTextForTTS(e.target.value);
-                        }}
-                        aria-label="Scratchpad for custom text input"
-                    />
+                      className="w-full h-full text-sm resize-none border-none focus-visible:ring-0 p-0 shadow-none bg-transparent"
+                      value={scratchpadText}
+                      onChange={(e) => {
+                          setScratchpadText(e.target.value);
+                          setCurrentTextForTTS(e.target.value);
+                      }}
+                      aria-label="Scratchpad for custom text input"
+                  />
                 </div>
-                <div className={cn("w-full flex-grow whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 text-sm min-h-[80px]", { 'hidden': (isSpeaking || isPaused) })} ref={mainContentDisplayRef}>
+                <div ref={highlightedContentRef} className={cn("w-full flex-grow whitespace-pre-wrap select-text", { 'hidden': !(isSpeaking || isPaused) })}>
                     {textSegments.map((segment, index) => (
                       <span key={index} className={cn(
                           "transition-colors duration-200",
@@ -1144,7 +1146,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
             {/* PDF Text View */}
             {activeDoc?.type === 'pdf' && isPdfTextView && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
-                  <div ref={mainContentDisplayRef} className="w-full flex-grow whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 text-sm min-h-[80px]">
+                  <div ref={highlightedContentRef} className="w-full flex-grow whitespace-pre-wrap select-text px-3 py-2 text-sm min-h-[80px]">
                       {(isSpeaking || isPaused) ? (
                           textSegments.map((segment, index) => (
                             <span key={index} className={cn(
@@ -1191,7 +1193,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
             {/* TXT Content */}
             {activeDoc?.type === 'txt' && (
               <div className="w-full h-full p-2 md:p-4 flex flex-col">
-                  <div ref={mainContentDisplayRef} className="w-full flex-grow whitespace-pre-wrap select-text overflow-y-auto border rounded-md bg-background px-3 py-2 text-sm min-h-[80px]">
+                  <div ref={highlightedContentRef} className="w-full flex-grow whitespace-pre-wrap select-text px-3 py-2 text-sm min-h-[80px]">
                       {(isSpeaking || isPaused) ? (
                           textSegments.map((segment, index) => (
                             <span key={index} className={cn(
@@ -1230,7 +1232,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                     </CardHeader>
                     <CardContent className="pt-0">
                         {(isSpeaking || isPaused) ? (
-                            <div ref={ttsDisplayRef} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 overflow-y-auto whitespace-pre-wrap select-text text-sm">
+                            <div ref={highlightedContentRef} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 overflow-y-auto whitespace-pre-wrap select-text text-sm">
                                 {textSegments.map((segment, index) => (
                                     <span key={index} className={cn(
                                         "transition-colors duration-200",
@@ -1352,8 +1354,25 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                   {mainButtonState.icon} {mainButtonState.text}
                 </Button>
                 
-                <div className="grid grid-cols-1 gap-2 mt-2">
+                <div className="grid grid-cols-2 gap-2 mt-2">
                     <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full text-xs"> <Star className="mr-2 h-3 w-3" /> Favorite Text </Button>
+                    <Button 
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        const selection = getSelectedText();
+                        if (selection.text.trim()) {
+                          speakTextOnce(selection.text);
+                        } else {
+                          toast({ title: "No Selection", description: "Please select text to repeat." });
+                        }
+                      }}
+                      variant="outline" 
+                      size="sm" 
+                      className="w-full text-xs" 
+                      disabled={isLoadingTTS || isSpeaking}
+                    > 
+                      <Repeat className="mr-2 h-3 w-3" /> Repeat Selection
+                    </Button>
                 </div>
               </CardContent>
             </Card>
@@ -1362,4 +1381,5 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
     </div>
   );
 }
+
 
