@@ -1369,7 +1369,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                       variant="outline" 
                       size="sm" 
                       className="w-full text-xs" 
-                      disabled={isLoadingTTS || isSpeaking}
+                      disabled={isLoadingTTS}
                     > 
                       <Repeat className="mr-2 h-3 w-3" /> Repeat Selection
                     </Button>
@@ -1381,5 +1381,6 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
     </div>
   );
 }
+
 
 
