@@ -506,10 +506,15 @@ export default function ReaderPage() {
                       if (!isMountedRef.current || !epubBookRef.current || !epubRenditionRef.current) return;
                       setEpubTotalPages(epubBookRef.current.locations.length());
                       
-                      const cfi = rendition.currentLocation().start.cfi;
-                      // Use the method from the rendition's locations object, not the book's.
-                      const currentPageNum = rendition.locations.pageFromCfi(cfi);
-                      setEpubCurrentPageNum(currentPageNum);
+                      // It's possible for currentLocation to be null if the rendition hasn't settled.
+                      // The 'relocated' event handler is the primary source of truth for the current page.
+                      // This block just attempts to set an initial page number after pagination is complete.
+                      const currentLocation = epubRenditionRef.current.currentLocation();
+                      if (currentLocation && currentLocation.start && epubRenditionRef.current.locations) {
+                        const cfi = currentLocation.start.cfi;
+                        const currentPageNum = epubRenditionRef.current.locations.pageFromCfi(cfi);
+                        setEpubCurrentPageNum(currentPageNum);
+                      }
                       
                       setIsEpubPaginating(false);
                   }).catch(err => {
