@@ -506,11 +506,8 @@ export default function ReaderPage() {
                       if (!isMountedRef.current || !epubBookRef.current || !epubRenditionRef.current) return;
                       setEpubTotalPages(epubBookRef.current.locations.length());
                       
-                      // It's possible for currentLocation to be null if the rendition hasn't settled.
-                      // The 'relocated' event handler is the primary source of truth for the current page.
-                      // This block just attempts to set an initial page number after pagination is complete.
                       const currentLocation = epubRenditionRef.current.currentLocation();
-                      if (currentLocation && currentLocation.start && epubRenditionRef.current.locations) {
+                      if (currentLocation && currentLocation.start && currentLocation.start.cfi && epubRenditionRef.current.locations) {
                         const cfi = currentLocation.start.cfi;
                         const currentPageNum = epubRenditionRef.current.locations.pageFromCfi(cfi);
                         setEpubCurrentPageNum(currentPageNum);
@@ -1169,8 +1166,11 @@ export default function ReaderPage() {
             setCurrentPdfPageNum(pageNum);
         }
     } else if (jumpDialogInfo.type === 'epub') {
-        if (epubRenditionRef.current?.locations && pageNum !== epubCurrentPageNum) {
-            const cfi = epubRenditionRef.current.locations.cfiFromPage(pageNum);
+        // The user-facing page number is 1-indexed. The internal epubCurrentPageNum is 0-indexed.
+        // We check if the target 0-indexed page is different from the current 0-indexed page.
+        if (epubRenditionRef.current?.locations && (pageNum - 1) !== epubCurrentPageNum) {
+            // cfiFromPage expects a 0-indexed page number.
+            const cfi = epubRenditionRef.current.locations.cfiFromPage(pageNum - 1);
             if (cfi) {
                 stopSpeech(true);
                 epubRenditionRef.current?.display(cfi);
@@ -1399,8 +1399,8 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                     {isEpubPaginating ? (
                       <span className="text-sm text-muted-foreground px-2">Page info loading...</span>
                     ) : epubTotalPages > 0 ? (
-                      <Button variant="ghost" className="h-9 tabular-nums" onClick={() => openJumpDialog('epub', epubCurrentPageNum, epubTotalPages)}>
-                          {epubCurrentPageNum} / {epubTotalPages}
+                      <Button variant="ghost" className="h-9 tabular-nums" onClick={() => openJumpDialog('epub', epubCurrentPageNum + 1, epubTotalPages)}>
+                          {epubCurrentPageNum + 1} / {epubTotalPages}
                       </Button>
                     ) : (
                       <span className="text-sm text-muted-foreground px-2">No page info</span>
