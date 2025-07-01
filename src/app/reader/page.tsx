@@ -27,6 +27,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
 
@@ -70,6 +71,9 @@ export default function ReaderPage() {
   const [isEpubLoading, setIsEpubLoading] = useState(false);
   const [epubPageIsImage, setEpubPageIsImage] = useState(false);
   const epubImageForOcrRef = useRef<string | null>(null);
+  const [epubTotalPages, setEpubTotalPages] = useState(0);
+  const [epubCurrentPageNum, setEpubCurrentPageNum] = useState(0);
+  const [isEpubPaginating, setIsEpubPaginating] = useState(false);
 
 
   // TXT and Image states
@@ -108,6 +112,16 @@ export default function ReaderPage() {
   // Refs for text selection
   const mainTextAreaRef = useRef<HTMLTextAreaElement | null>(null); // For Scratchpad
   const ttsBoxTextAreaRef = useRef<HTMLTextAreaElement | null>(null); // For the box at the bottom
+
+  // Jump to page dialog state
+  const [jumpDialogInfo, setJumpDialogInfo] = useState<{
+    open: boolean;
+    type: 'pdf' | 'epub' | null;
+    currentPage: number;
+    totalPages: number;
+  }>({ open: false, type: null, currentPage: 0, totalPages: 0 });
+  const [jumpToPageInput, setJumpToPageInput] = useState("");
+
 
   const textSegments = useMemo(() => {
     if (!currentTextForTTS) return [];
@@ -370,6 +384,9 @@ export default function ReaderPage() {
       }
       setEpubPageIsImage(false);
       epubImageForOcrRef.current = null;
+      setEpubTotalPages(0);
+      setEpubCurrentPageNum(0);
+      setIsEpubPaginating(false);
     };
 
     const loadDocument = async () => {
@@ -456,7 +473,6 @@ export default function ReaderPage() {
                   const book = ePub(doc.fileData);
                   epubBookRef.current = book;
             
-                  await book.ready;
                   if (isStale) { book.destroy(); return; }
                   
                   if (!epubViewerRef.current) throw new Error("EPUB viewer element not ready.");
@@ -464,24 +480,43 @@ export default function ReaderPage() {
                   const rendition = book.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
                   epubRenditionRef.current = rendition;
 
+                  const onRelocated = (location: any) => {
+                    if (!isMountedRef.current || !epubRenditionRef.current?.locations) return;
+                    if (activeDoc?.id) {
+                        LocalStorageService.saveCurrentEpubCfiForDoc(activeDoc.id, location.start.cfi);
+                    }
+                    const currentPage = epubRenditionRef.current.locations.pageFromCfi(location.start.cfi);
+                    setEpubCurrentPageNum(currentPage);
+                    processEpubView(rendition.getContents()?.[0]);
+                  };
+
                   rendition.on('rendered', (section: any, view: any) => {
                       if (!isMountedRef.current) return;
                       processEpubView(view);
                   });
                   
-                  rendition.on('relocated', (location: any) => {
-                      if (!isMountedRef.current || !epubRenditionRef.current) return;
-                      if (activeDoc?.id) {
-                          LocalStorageService.saveCurrentEpubCfiForDoc(activeDoc.id, location.start.cfi);
-                      }
-                      const currentView = rendition.getContents()?.[0];
-                      if(currentView) {
-                        processEpubView(currentView);
-                      }
-                  });
+                  rendition.on('relocated', onRelocated);
 
                   const lastLocation = LocalStorageService.loadCurrentEpubCfiForDoc(doc.id); 
                   await rendition.display(lastLocation || undefined);
+
+                  // Start pagination in the background
+                  setIsEpubPaginating(true);
+                  book.locations.generate(1650).then(() => {
+                      if (!isMountedRef.current || !epubBookRef.current || !epubRenditionRef.current) return;
+                      setEpubTotalPages(epubBookRef.current.locations.length());
+                      
+                      const cfi = rendition.currentLocation().start.cfi;
+                      // Use the method from the rendition's locations object, not the book's.
+                      const currentPageNum = rendition.locations.pageFromCfi(cfi);
+                      setEpubCurrentPageNum(currentPageNum);
+                      
+                      setIsEpubPaginating(false);
+                  }).catch(err => {
+                      console.error("Error generating EPUB locations:", err);
+                      if(isMountedRef.current) setIsEpubPaginating(false);
+                  });
+
                   if (isStale) return;
             
               } catch (e: any) {
@@ -1107,6 +1142,46 @@ export default function ReaderPage() {
     return { text: "Play Text", icon: <Play className="mr-1 h-4 w-4" />, disabled: false, variant: "default" as const };
   };
 
+  const openJumpDialog = (type: 'pdf' | 'epub', currentPage: number, totalPages: number) => {
+    setJumpDialogInfo({ open: true, type, currentPage, totalPages });
+    setJumpToPageInput(String(currentPage));
+  };
+
+  const handleConfirmJump = () => {
+    const pageNum = parseInt(jumpToPageInput, 10);
+    if (!jumpDialogInfo.type || isNaN(pageNum) || pageNum < 1 || pageNum > jumpDialogInfo.totalPages) {
+        toast({
+            variant: "destructive",
+            title: "Invalid Page Number",
+            description: `Please enter a number between 1 and ${jumpDialogInfo.totalPages}.`,
+        });
+        return;
+    }
+
+    if (jumpDialogInfo.type === 'pdf') {
+        if (pageNum !== currentPdfPageNum) {
+            stopSpeech(true);
+            setCurrentPdfPageNum(pageNum);
+        }
+    } else if (jumpDialogInfo.type === 'epub') {
+        if (epubRenditionRef.current?.locations && pageNum !== epubCurrentPageNum) {
+            const cfi = epubRenditionRef.current.locations.cfiFromPage(pageNum);
+            if (cfi) {
+                stopSpeech(true);
+                epubRenditionRef.current?.display(cfi);
+            }
+        }
+    }
+    setJumpToPageInput("");
+    setJumpDialogInfo({ open: false, type: null, currentPage: 0, totalPages: 0 });
+  };
+
+  const handleCancelJump = () => {
+    setJumpToPageInput("");
+    setJumpDialogInfo({ open: false, type: null, currentPage: 0, totalPages: 0 });
+  };
+
+
   const mainButtonState = getMainButtonState();
   
   const showInitialLoader = isLoadingDoc && !activeDoc && !docErrorMessage;
@@ -1130,7 +1205,7 @@ export default function ReaderPage() {
       <div className="flex-grow flex flex-col bg-muted/20 p-2 md:p-4 min-w-0">
         
         {/* Top part: Scrollable Content Area */}
-        <div ref={scrollContainerRef} onScroll={(e) => scrollPositionRef.current = e.currentTarget.scrollTop} className="flex-grow overflow-y-auto rounded-lg bg-background shadow-inner relative flex flex-col items-center justify-start">
+        <div ref={scrollContainerRef} onScroll={(e) => scrollPositionRef.current = e.currentTarget.scrollTop} className="flex-grow overflow-y-auto rounded-lg bg-background shadow-inner relative flex flex-col justify-start">
             {(isLoadingDoc || isEpubLoading || isRenderingPdfPage) && (
                 <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
                     <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -1195,7 +1270,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
             )}
             
             {/* EPUB Content */}
-            <div id="epub-container" className={cn("w-full h-full flex flex-col", activeDoc?.type !== 'epub' && "hidden")}>
+            <div id="epub-container" className={cn("w-full h-full flex flex-col items-center", activeDoc?.type !== 'epub' && "hidden")}>
                 <div
                     key={activeDoc?.id || 'epub-placeholder'}
                     id="epub-viewer"
@@ -1296,7 +1371,9 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                 <CardContent className="space-y-2 pt-0">
                   <div className="flex items-center justify-between">
                     <Button onClick={() => navigatePdf('prev')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum <= 1} size="sm" variant="outline"><ChevronLeft /> Prev</Button>
-                    <span className="text-sm tabular-nums"> {currentPdfPageNum} / {pdfTotalPages}</span>
+                    <Button variant="ghost" className="h-9 tabular-nums" onClick={() => openJumpDialog('pdf', currentPdfPageNum, pdfTotalPages)}>
+                        {currentPdfPageNum} / {pdfTotalPages}
+                    </Button>
                     <Button onClick={() => navigatePdf('next')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum >= pdfTotalPages} size="sm" variant="outline">Next <ChevronRight /></Button>
                   </div>
                   <div className="flex items-center gap-2">
@@ -1313,6 +1390,17 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                 <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">EPUB Navigation</CardTitle></CardHeader>
                 <CardContent className="flex items-center justify-between pt-0">
                     <Button onClick={() => navigateEpub('prev')} size="sm" variant="outline" disabled={isEpubLoading || isLoadingDoc}> <ChevronLeft /> Previous </Button>
+                    
+                    {isEpubPaginating ? (
+                      <span className="text-sm text-muted-foreground px-2">Page info loading...</span>
+                    ) : epubTotalPages > 0 ? (
+                      <Button variant="ghost" className="h-9 tabular-nums" onClick={() => openJumpDialog('epub', epubCurrentPageNum, epubTotalPages)}>
+                          {epubCurrentPageNum} / {epubTotalPages}
+                      </Button>
+                    ) : (
+                      <span className="text-sm text-muted-foreground px-2">No page info</span>
+                    )}
+                    
                     <Button onClick={() => navigateEpub('next')} size="sm" variant="outline" disabled={isEpubLoading || isLoadingDoc}> Next <ChevronRight /> </Button>
                 </CardContent>
               </Card>
@@ -1382,6 +1470,34 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
             </Card>
         </div>
       </aside>
+
+      <AlertDialog open={jumpDialogInfo.open} onOpenChange={(isOpen) => !isOpen && handleCancelJump()}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Jump to Page</AlertDialogTitle>
+            <AlertDialogDescription>
+              Enter a page number between 1 and {jumpDialogInfo.totalPages}.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-2">
+            <Input
+              type="number"
+              value={jumpToPageInput}
+              onChange={(e) => setJumpToPageInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleConfirmJump()}
+              placeholder={`Page (1-${jumpDialogInfo.totalPages})`}
+              className="text-center"
+              autoFocus
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleCancelJump}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmJump}>Jump</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
+
+    
