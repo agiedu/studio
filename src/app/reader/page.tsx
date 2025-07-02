@@ -484,12 +484,12 @@ export default function ReaderPage() {
                   epubRenditionRef.current = rendition;
 
                   const onRelocated = (location: any) => {
-                    if (!isMountedRef.current || !epubRenditionRef.current?.locations) return;
+                    if (!isMountedRef.current || !epubRenditionRef.current) return;
                     try {
                       if (activeDoc?.id) {
                           LocalStorageService.saveCurrentEpubCfiForDoc(activeDoc.id, location.start.cfi);
                       }
-                      if (epubBookRef.current?.locations) {
+                      if (epubBookRef.current?.locations && typeof epubBookRef.current.locations.pageFromCfi === 'function') {
                         const currentPage = epubBookRef.current.locations.pageFromCfi(location.start.cfi);
                         setEpubCurrentPageNum(currentPage);
                       }
@@ -512,7 +512,7 @@ export default function ReaderPage() {
                   // Start pagination in the background
                   setIsEpubPaginating(true);
                   book.locations.generate(1650).then((generatedLocations) => {
-                      if (!isMountedRef.current || !epubBookRef.current || !epubRenditionRef.current) return;
+                      if (!isMountedRef.current || !book || !epubRenditionRef.current) return;
                       
                       // Now that locations are generated, we can set the total pages.
                       if (generatedLocations) {
@@ -521,9 +521,9 @@ export default function ReaderPage() {
                       
                       // Re-sync current page number after locations are ready.
                       const currentLocation = epubRenditionRef.current.currentLocation();
-                      if (currentLocation?.start?.cfi && epubBookRef.current?.locations) {
+                      if (currentLocation?.start?.cfi && book.locations && typeof book.locations.pageFromCfi === 'function') {
                         const cfi = currentLocation.start.cfi;
-                        const currentPageNum = epubBookRef.current.locations.pageFromCfi(cfi);
+                        const currentPageNum = book.locations.pageFromCfi(cfi);
                         setEpubCurrentPageNum(currentPageNum);
                       }
                       
