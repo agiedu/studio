@@ -318,28 +318,30 @@ export default function ReaderPage() {
 
     try {
         const contentBody = view.document.body;
-        const pageText = (contentBody.innerText || "").trim();
         const imageElement = contentBody.querySelector('img') || contentBody.querySelector('image');
-        const isImagePage = imageElement && pageText.length < 150; 
 
-        if (isImagePage) {
+        if (imageElement) { // If an image exists, we prioritize it for OCR.
             imageElement.crossOrigin = "anonymous";
-            if (imageElement.complete) {
+            // Check if image is loaded and has dimensions.
+            if (imageElement.complete && imageElement.naturalWidth > 0) {
                 updateOcrSourceFromImage(imageElement);
             } else {
                 setCurrentTextForTTS("Loading image for OCR...");
+                setEpubPageIsImage(true); // Show OCR button while image loads
                 imageElement.onload = () => updateOcrSourceFromImage(imageElement);
                 imageElement.onerror = () => {
                     if (!isMountedRef.current) return;
                     epubImageForOcrRef.current = null;
-                    setCurrentTextForTTS("Could not load image on this page.");
-                    setEpubPageIsImage(true);
-                }
+                    const pageText = (contentBody.innerText || "").trim();
+                    setCurrentTextForTTS(pageText || "Could not load image. No fallback text found.");
+                    setEpubPageIsImage(false);
+                };
             }
-        } else {
+        } else { // No image found, fall back to text content.
             epubImageForOcrRef.current = null;
+            const pageText = (contentBody.innerText || "").trim();
             if (isMountedRef.current) {
-                setCurrentTextForTTS(pageText || "This page has no text content.");
+                setCurrentTextForTTS(pageText || "This page has no text or image content.");
                 setEpubPageIsImage(false);
             }
         }
@@ -347,6 +349,7 @@ export default function ReaderPage() {
         console.error("Error processing EPUB view:", error);
         if (isMountedRef.current) {
             setCurrentTextForTTS("Error analyzing page content.");
+            setEpubPageIsImage(false); // Reset state on error
         }
     }
   }, [updateOcrSourceFromImage]);
@@ -482,12 +485,18 @@ export default function ReaderPage() {
 
                   const onRelocated = (location: any) => {
                     if (!isMountedRef.current || !epubRenditionRef.current?.locations) return;
-                    if (activeDoc?.id) {
-                        LocalStorageService.saveCurrentEpubCfiForDoc(activeDoc.id, location.start.cfi);
+                    try {
+                      if (activeDoc?.id) {
+                          LocalStorageService.saveCurrentEpubCfiForDoc(activeDoc.id, location.start.cfi);
+                      }
+                      if (epubBookRef.current?.locations) {
+                        const currentPage = epubBookRef.current.locations.pageFromCfi(location.start.cfi);
+                        setEpubCurrentPageNum(currentPage);
+                      }
+                      processEpubView(rendition.getContents()?.[0]);
+                    } catch (e) {
+                       console.warn("Error in onRelocated (safe to ignore):", e);
                     }
-                    const currentPage = epubRenditionRef.current.locations.pageFromCfi(location.start.cfi);
-                    setEpubCurrentPageNum(currentPage);
-                    processEpubView(rendition.getContents()?.[0]);
                   };
 
                   rendition.on('rendered', (section: any, view: any) => {
@@ -502,14 +511,19 @@ export default function ReaderPage() {
 
                   // Start pagination in the background
                   setIsEpubPaginating(true);
-                  book.locations.generate(1650).then(() => {
+                  book.locations.generate(1650).then((generatedLocations) => {
                       if (!isMountedRef.current || !epubBookRef.current || !epubRenditionRef.current) return;
-                      setEpubTotalPages(epubBookRef.current.locations.length());
                       
+                      // Now that locations are generated, we can set the total pages.
+                      if (generatedLocations) {
+                        setEpubTotalPages(generatedLocations.length);
+                      }
+                      
+                      // Re-sync current page number after locations are ready.
                       const currentLocation = epubRenditionRef.current.currentLocation();
-                      if (currentLocation && currentLocation.start && currentLocation.start.cfi && epubRenditionRef.current.locations) {
+                      if (currentLocation?.start?.cfi && epubBookRef.current?.locations) {
                         const cfi = currentLocation.start.cfi;
-                        const currentPageNum = epubRenditionRef.current.locations.pageFromCfi(cfi);
+                        const currentPageNum = epubBookRef.current.locations.pageFromCfi(cfi);
                         setEpubCurrentPageNum(currentPageNum);
                       }
                       
@@ -1504,5 +1518,3 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
     </div>
   );
 }
-
-    
