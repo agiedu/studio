@@ -596,7 +596,7 @@ export default function ReaderPage() {
       isStale = true;
       cleanup();
     };
-  }, [searchParams, router, processEpubView]);
+  }, [searchParams, router, processEpubView, stopSpeech]);
 
 
   // PDF Page Rendering Effect
@@ -653,7 +653,7 @@ export default function ReaderPage() {
 
     renderPage();
     return () => { isStale = true; };
-  }, [pdfDocProxy, currentPdfPageNum, pdfScale, activeDoc?.id, isPdfTextView, stopSpeech]);
+  }, [pdfDocProxy, currentPdfPageNum, pdfScale, activeDoc, isPdfTextView, stopSpeech]);
 
 
   const handlePerformOcr = useCallback(async () => {
@@ -1091,7 +1091,7 @@ export default function ReaderPage() {
     }
   };
 
-  const navigatePdf = useCallback((direction: 'prev' | 'next') => {
+  const navigatePdf = (direction: 'prev' | 'next') => {
     if (isRenderingPdfPage || isLoadingDoc) return;
     
     setCurrentPdfPageNum(prevPageNum => {
@@ -1109,7 +1109,7 @@ export default function ReaderPage() {
         }
         return newPage;
     });
-  }, [isRenderingPdfPage, isLoadingDoc, pdfDocProxy, pdfTotalPages, stopSpeech]);
+  };
 
   const handlePdfScaleChange = (newScale: number) => { 
       if (isRenderingPdfPage || isLoadingDoc) return; 
@@ -1169,18 +1169,18 @@ export default function ReaderPage() {
     return { text: "Play Text", icon: <Play className="mr-1 h-4 w-4" />, disabled: false, variant: "default" as const };
   };
 
-  const handleCancelJump = useCallback(() => {
-    setJumpToPageInput("");
-    setJumpDialogInfo({ open: false, type: null, currentPage: 0, totalPages: 0 });
-  }, []);
-
-  const openJumpDialog = useCallback((type: 'pdf' | 'epub', currentPage: number, totalPages: number) => {
+  const openJumpDialog = (type: 'pdf' | 'epub', currentPage: number, totalPages: number) => {
     if (totalPages <= 0) return;
     setJumpDialogInfo({ open: true, type, currentPage, totalPages });
     setJumpToPageInput(String(currentPage));
-  }, []);
+  };
+  
+  const handleCancelJump = () => {
+    setJumpToPageInput("");
+    setJumpDialogInfo({ open: false, type: null, currentPage: 0, totalPages: 0 });
+  };
 
-  const handleConfirmJump = useCallback(() => {
+  const handleConfirmJump = () => {
     const pageNum = parseInt(jumpToPageInput, 10);
     const { type, totalPages } = jumpDialogInfo;
 
@@ -1208,7 +1208,7 @@ export default function ReaderPage() {
         }
     }
     handleCancelJump();
-  }, [jumpToPageInput, jumpDialogInfo, currentPdfPageNum, epubCurrentPageNum, stopSpeech, toast, handleCancelJump]);
+  };
 
   const mainButtonState = getMainButtonState();
   
