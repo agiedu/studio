@@ -1091,14 +1091,25 @@ export default function ReaderPage() {
     }
   };
 
-  const navigatePdf = (direction: 'prev' | 'next') => {
-    if (!pdfDocProxy || isRenderingPdfPage || isLoadingDoc) return;
-    let newPage = currentPdfPageNum;
-    if (direction === 'prev' && currentPdfPageNum > 1) newPage--;
-    else if (direction === 'next' && currentPdfPageNum < pdfTotalPages) newPage++;
-    else return; 
-    if (newPage !== currentPdfPageNum) { stopSpeech(true); setCurrentPdfPageNum(newPage); }
-  };
+  const navigatePdf = useCallback((direction: 'prev' | 'next') => {
+    if (isRenderingPdfPage || isLoadingDoc) return;
+    
+    setCurrentPdfPageNum(prevPageNum => {
+        if (!pdfDocProxy) return prevPageNum;
+
+        let newPage = prevPageNum;
+        if (direction === 'prev' && prevPageNum > 1) {
+            newPage = prevPageNum - 1;
+        } else if (direction === 'next' && prevPageNum < pdfTotalPages) {
+            newPage = prevPageNum + 1;
+        }
+
+        if (newPage !== prevPageNum) {
+            stopSpeech(true);
+        }
+        return newPage;
+    });
+  }, [isRenderingPdfPage, isLoadingDoc, pdfDocProxy, pdfTotalPages, stopSpeech]);
 
   const handlePdfScaleChange = (newScale: number) => { 
       if (isRenderingPdfPage || isLoadingDoc) return; 
@@ -1158,48 +1169,46 @@ export default function ReaderPage() {
     return { text: "Play Text", icon: <Play className="mr-1 h-4 w-4" />, disabled: false, variant: "default" as const };
   };
 
-  const openJumpDialog = (type: 'pdf' | 'epub', currentPage: number, totalPages: number) => {
+  const handleCancelJump = useCallback(() => {
+    setJumpToPageInput("");
+    setJumpDialogInfo({ open: false, type: null, currentPage: 0, totalPages: 0 });
+  }, []);
+
+  const openJumpDialog = useCallback((type: 'pdf' | 'epub', currentPage: number, totalPages: number) => {
+    if (totalPages <= 0) return;
     setJumpDialogInfo({ open: true, type, currentPage, totalPages });
     setJumpToPageInput(String(currentPage));
-  };
+  }, []);
 
-  const handleConfirmJump = () => {
+  const handleConfirmJump = useCallback(() => {
     const pageNum = parseInt(jumpToPageInput, 10);
-    if (!jumpDialogInfo.type || isNaN(pageNum) || pageNum < 1 || pageNum > jumpDialogInfo.totalPages) {
+    const { type, totalPages } = jumpDialogInfo;
+
+    if (!type || isNaN(pageNum) || pageNum < 1 || pageNum > totalPages) {
         toast({
             variant: "destructive",
             title: "Invalid Page Number",
-            description: `Please enter a number between 1 and ${jumpDialogInfo.totalPages}.`,
+            description: `Please enter a number between 1 and ${totalPages}.`,
         });
         return;
     }
 
-    if (jumpDialogInfo.type === 'pdf') {
+    if (type === 'pdf') {
         if (pageNum !== currentPdfPageNum) {
             stopSpeech(true);
             setCurrentPdfPageNum(pageNum);
         }
-    } else if (jumpDialogInfo.type === 'epub') {
-        // The user-facing page number is 1-indexed. The internal epubCurrentPageNum is 0-indexed.
-        // We check if the target 0-indexed page is different from the current 0-indexed page.
+    } else if (type === 'epub') {
         if (epubRenditionRef.current?.locations && (pageNum - 1) !== epubCurrentPageNum) {
-            // cfiFromPage expects a 0-indexed page number.
             const cfi = epubRenditionRef.current.locations.cfiFromPage(pageNum - 1);
             if (cfi) {
                 stopSpeech(true);
-                epubRenditionRef.current?.display(cfi);
+                epubRenditionRef.current.display(cfi);
             }
         }
     }
-    setJumpToPageInput("");
-    setJumpDialogInfo({ open: false, type: null, currentPage: 0, totalPages: 0 });
-  };
-
-  const handleCancelJump = () => {
-    setJumpToPageInput("");
-    setJumpDialogInfo({ open: false, type: null, currentPage: 0, totalPages: 0 });
-  };
-
+    handleCancelJump();
+  }, [jumpToPageInput, jumpDialogInfo, currentPdfPageNum, epubCurrentPageNum, stopSpeech, toast, handleCancelJump]);
 
   const mainButtonState = getMainButtonState();
   
