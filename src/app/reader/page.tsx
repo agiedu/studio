@@ -27,7 +27,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
 
@@ -496,8 +495,8 @@ export default function ReaderPage() {
                       if (activeDoc?.id) {
                           LocalStorageService.saveCurrentEpubCfiForDoc(activeDoc.id, location.start.cfi);
                       }
-                      if (epubBookRef.current?.locations && typeof epubBookRef.current.locations.pageFromCfi === 'function') {
-                        const currentPage = epubBookRef.current.locations.pageFromCfi(location.start.cfi);
+                      if (book.locations && book.locations.length > 0 && typeof book.locations.pageFromCfi === 'function') {
+                        const currentPage = book.locations.pageFromCfi(location.start.cfi);
                         setEpubCurrentPageNum(currentPage);
                       }
                       processEpubView(rendition.getContents()?.[0]);
@@ -516,40 +515,48 @@ export default function ReaderPage() {
                   await book.ready;
                   if(isStale) { book.destroy(); return; }
                   
+                  // First, display the book. This is crucial for the library to get context.
+                  const lastLocation = LocalStorageService.loadCurrentEpubCfiForDoc(doc.id); 
+                  await rendition.display(lastLocation || undefined);
+
+                  if (isStale) { return; }
+
+                  // Now, attempt to generate page locations.
                   setIsEpubPaginating(true);
                   try {
                     if (book.locations && typeof book.locations.generate === 'function') {
-                      await book.locations.generate(1650);
+                      await book.locations.generate(1650); // This generates the page list
                     } else {
-                      throw new Error("This book does not support generating page locations.");
+                       throw new Error("This book does not support the location generation feature.");
+                    }
+                    
+                    if (isMountedRef.current && book.locations.length > 0) {
+                        console.log(`[EPUB] Pagination successful. Total pages: ${book.locations.length}`);
+                        setEpubTotalPages(book.locations.length);
+                        // Now that we have the page map, update the current page number
+                        if (typeof book.locations.pageFromCfi === 'function') {
+                            const cfi = rendition.currentLocation().start.cfi;
+                            const pageNum = book.locations.pageFromCfi(cfi);
+                            setEpubCurrentPageNum(pageNum);
+                        }
+                    } else if (isMountedRef.current) {
+                        throw new Error("Pagination process did not yield any pages.");
                     }
                   } catch (paginationError: any) {
-                    console.warn("EPUB pagination failed:", paginationError.message);
-                    toast({
-                      variant: "default",
-                      title: "EPUB Info",
-                      description: "Page numbering is not available for this book. Navigation is limited to Previous/Next."
-                    });
-                    setEpubTotalPages(0);
+                    if (isMountedRef.current) {
+                        console.warn("EPUB pagination failed:", paginationError.message);
+                        toast({
+                          variant: "default",
+                          title: "EPUB Info",
+                          description: "Page numbering is not available for this book. Navigation is limited to Previous/Next."
+                        });
+                        setEpubTotalPages(0);
+                    }
                   } finally {
-                     if (!isMountedRef.current) { if(book) book.destroy(); return; };
-                     setIsEpubPaginating(false);
+                     if (isMountedRef.current) {
+                        setIsEpubPaginating(false);
+                     }
                   }
-
-                  if (!isMountedRef.current || !book || !epubRenditionRef.current) return;
-                  
-                  const lastLocation = LocalStorageService.loadCurrentEpubCfiForDoc(doc.id); 
-                  await rendition.display(lastLocation || undefined);
-                  
-                  if (book.locations && book.locations.length > 0) {
-                      setEpubTotalPages(book.locations.length);
-                      if (typeof book.locations.pageFromCfi === 'function') {
-                          const cfi = rendition.currentLocation().start.cfi;
-                          const pageNum = book.locations.pageFromCfi(cfi);
-                          setEpubCurrentPageNum(pageNum);
-                      }
-                  }
-
               } catch (e: any) {
                   if (isStale) return;
                   console.error("Error processing EPUB:", e);
