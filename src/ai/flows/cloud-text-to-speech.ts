@@ -14,6 +14,7 @@ import {z} from 'genkit';
 
 const CloudTTSInputSchema = z.object({
   text: z.string().describe('The text to convert to speech.'),
+  voice: z.string().optional().describe('The voice for TTS, e.g., "en-US-JennyNeural".'),
 });
 export type CloudTTSInput = z.infer<typeof CloudTTSInputSchema>;
 
@@ -35,7 +36,9 @@ const cloudTTSFlow = ai.defineFlow(
   async input => {
     // TODO: Implement the actual API call to https://1234.org/ here.
     // This is a placeholder implementation.
-    const audioUrl = `https://example.com/tts?text=${encodeURIComponent(input.text)}`;
+    const audioUrl = `https://example.com/tts?text=${encodeURIComponent(
+      input.text
+    )}${input.voice ? `&voice=${encodeURIComponent(input.voice)}` : ''}`;
     return {audioUrl};
   }
 );

@@ -26,13 +26,14 @@ export async function performOCR(
 
 export async function getCloudSpeech(
   text: string,
-  language: string 
+  language: string, // Kept for backward compatibility with Reader page
+  voice?: string // Optional voice name for specific voice selection
 ): Promise<{ audioUrl: string } | { error: string }> {
   if (!text) {
     return { error: "No text provided for Cloud TTS." };
   }
   try {
-    const input: CloudTTSInput = { text }; // Language is not used by cloudTTS flow definition
+    const input: CloudTTSInput = { text, voice };
     const result = await cloudTTS(input);
     return { audioUrl: result.audioUrl };
   } catch (e: any) {
