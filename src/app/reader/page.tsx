@@ -522,7 +522,13 @@ export default function ReaderPage() {
                     console.log("[EPUB] First display complete. Attempting to generate locations.");
                     setIsEpubPaginating(true);
                     try {
-                      await currentBook.locations.generate(1650);
+                      // Check if locations.generate exists and is a function before calling it.
+                      if (currentBook.locations && typeof currentBook.locations.generate === 'function') {
+                          await currentBook.locations.generate(1650);
+                      } else {
+                          // If not available, we can't generate pages.
+                          throw new Error("Pagination (locations.generate) is not supported by this EPUB file or library version.");
+                      }
                       
                       if (isMountedRef.current && currentBook.locations.length > 0) {
                           console.log(`[EPUB] Pagination successful. Total pages: ${currentBook.locations.length}`);
