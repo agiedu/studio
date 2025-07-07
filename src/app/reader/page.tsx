@@ -153,7 +153,7 @@ export default function ReaderPage() {
     return (
       <>
         {preText}
-        <span className="text-green-600">{highlightedText}</span>
+        <span className="text-primary">{highlightedText}</span>
         {postText}
       </>
     );
@@ -1300,7 +1300,6 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
             {activeDoc?.type === 'pdf' && !isPdfTextView && (
                 <div className="w-full text-center p-4 space-y-4">
                     {pdfPageImage && <NextImage src={pdfPageImage} alt={`Page ${currentPdfPageNum}`} width={0} height={0} style={{ width: 'auto', height: 'auto', maxHeight: '100%', maxWidth: '100%', objectFit: 'contain', transform: `scale(${pdfScale})`, transformOrigin: 'top center' }} className="shadow-lg border rounded-md" />}
-                    {showOcrButtonForPdfPage && (<Button onClick={handlePerformOcr} disabled={isPerformingOcr} className="mt-4"> {isPerformingOcr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />} Perform OCR on PDF Page </Button> )}
                 </div>
             )}
             
@@ -1312,14 +1311,6 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                     ref={epubViewerRef}
                     className="w-full flex-grow"
                 />
-                {showOcrButtonForEpubPage && (
-                    <div className="p-2 text-center flex-shrink-0 bg-background border-t">
-                        <Button onClick={handlePerformOcr} disabled={isPerformingOcr}>
-                            {isPerformingOcr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />}
-                            Perform OCR on Page
-                        </Button>
-                    </div>
-                )}
             </div>
 
             {/* TXT Content */}
@@ -1336,12 +1327,23 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
             {activeDoc?.type === 'image' && displayedImageSrc && (
                 <div className="w-full text-center p-4 space-y-4">
                     <NextImage src={displayedImageSrc} alt={activeDoc.title || 'Uploaded Image'} width={800} height={600} style={{objectFit: 'contain'}} className="max-w-full max-h-[calc(100%-4rem)] shadow-lg border rounded-md inline-block" data-ai-hint="illustration abstract" />
-                    {showOcrButtonForImage && <Button onClick={handlePerformOcr} disabled={isPerformingOcr} className="mt-4"> {isPerformingOcr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />} Perform OCR on Image </Button> }
                 </div>
             )}
 
             {/* Mobi Not Supported Message */}
             {activeDoc?.type === 'mobi' && ( <div className="p-4 bg-background rounded-md shadow-inner text-center h-full flex flex-col justify-center items-center"> <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-2"/> <p className="font-semibold">MOBI Not Supported</p> <p className="text-sm text-muted-foreground">Please convert to EPUB or PDF.</p> </div> )}
+        </div>
+
+        {/* Floating OCR Button */}
+        <div className="flex-shrink-0 py-2 flex justify-center">
+            {(showOcrButtonForPdfPage || showOcrButtonForImage || showOcrButtonForEpubPage) && (
+              <Button onClick={handlePerformOcr} disabled={isPerformingOcr}>
+                {isPerformingOcr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />}
+                {activeDoc?.type === 'image' && 'Perform OCR on Image'}
+                {activeDoc?.type === 'pdf' && 'Perform OCR on PDF Page'}
+                {activeDoc?.type === 'epub' && 'Perform OCR on Page'}
+              </Button>
+            )}
         </div>
 
         {/* Bottom part: TTS Box - Fixed at the bottom of the content pane */}
