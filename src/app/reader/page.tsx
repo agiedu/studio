@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import NextImage from 'next/image';
 import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist';
-import type { PDFDocumentProxy, PDFPageProxy } from 'pdf-dist/types/src/display/api';
+import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist/types/src/display/api';
 import type Book from 'epubjs/types/book';
 import type Rendition from 'epubjs/types/rendition';
 
