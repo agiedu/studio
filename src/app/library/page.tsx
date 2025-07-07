@@ -12,7 +12,7 @@ import { UploadCloud, Info, Trash2, BookOpen, FileText, Image as ImageIcon, Refr
 import * as IndexedDBService from '@/lib/indexedDBService';
 import * as LocalStorageService from '@/lib/localStorageService';
 import type { StoredMangaDocument } from '@/types';
-import { getDocument, GlobalWorkerOptions, version as pdfjsVersion } from 'pdfjs-dist';
+import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -68,8 +68,15 @@ export default function LibraryPage() {
     // load case where localStorage is empty.
     fetchDocuments();
 
-    if (typeof window !== 'undefined' && !GlobalWorkerOptions.workerSrc) {
-       GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsVersion}/pdf.worker.mjs`;
+    if (typeof window !== 'undefined') {
+      try {
+        GlobalWorkerOptions.workerSrc = new URL(
+          'pdfjs-dist/build/pdf.worker.mjs',
+          import.meta.url
+        ).toString();
+      } catch (error) {
+        console.error("Failed to set pdf.js worker source:", error);
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty dependency array ensures this runs only once on mount

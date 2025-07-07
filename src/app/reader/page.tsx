@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import NextImage from 'next/image';
-import { GlobalWorkerOptions, getDocument, version as pdfjsVersion } from 'pdfjs-dist';
+import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdf-dist/types/src/display/api';
 import type Book from 'epubjs/types/book';
 import type Rendition from 'epubjs/types/rendition';
@@ -240,8 +240,15 @@ export default function ReaderPage() {
 
   useEffect(() => {
     isMountedRef.current = true;
-    if (typeof window !== 'undefined' && !GlobalWorkerOptions.workerSrc) {
-      GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsVersion}/pdf.worker.mjs`;
+    if (typeof window !== 'undefined') {
+      try {
+        GlobalWorkerOptions.workerSrc = new URL(
+          'pdfjs-dist/build/pdf.worker.mjs',
+          import.meta.url
+        ).toString();
+      } catch (error) {
+        console.error("Failed to set pdf.js worker source:", error);
+      }
     }
     return () => {
       isMountedRef.current = false;
