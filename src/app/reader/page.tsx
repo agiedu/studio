@@ -491,12 +491,12 @@ export default function ReaderPage() {
                   epubRenditionRef.current = rendition;
 
                   const onRelocated = (location: any) => {
-                    if (!isMountedRef.current || !epubRenditionRef.current) return;
+                    if (!isMountedRef.current || !epubRenditionRef.current || !epubBookRef.current?.locations) return;
                     try {
                       if (activeDoc?.id) {
                           LocalStorageService.saveCurrentEpubCfiForDoc(activeDoc.id, location.start.cfi);
                       }
-                      if (epubBookRef.current?.locations && typeof epubBookRef.current.locations.pageFromCfi === 'function') {
+                      if (epubBookRef.current.locations && typeof epubBookRef.current.locations.pageFromCfi === 'function') {
                         const currentPage = epubBookRef.current.locations.pageFromCfi(location.start.cfi);
                         setEpubCurrentPageNum(currentPage);
                       }
@@ -513,35 +513,33 @@ export default function ReaderPage() {
                   
                   rendition.on('relocated', onRelocated);
 
+                  // Await the book to be ready before pagination
+                  await book.ready;
+                  if(isStale) { book.destroy(); return; }
+                  
+                  setIsEpubPaginating(true);
+                  if (book.locations?.generate) {
+                    await book.locations.generate(1650);
+                  } else {
+                    console.warn("EPUB pagination (locations) not supported by this book.");
+                    toast({variant: "default", title: "EPUB Info", description: "This book does not support page numbering."})
+                  }
+
+                  if (!isMountedRef.current || !book || !epubRenditionRef.current) return;
+                  
                   const lastLocation = LocalStorageService.loadCurrentEpubCfiForDoc(doc.id); 
                   await rendition.display(lastLocation || undefined);
-
-                  // Start pagination in the background
-                  setIsEpubPaginating(true);
-                  book.locations.generate(1650).then((generatedLocations) => {
-                      if (!isMountedRef.current || !book || !epubRenditionRef.current) return;
-                      
-                      // Now that locations are generated, we can set the total pages.
-                      if (generatedLocations) {
-                        setEpubTotalPages(generatedLocations.length);
+                  
+                  if (book.locations && book.locations.length > 0) {
+                      setEpubTotalPages(book.locations.length);
+                      const cfi = rendition.currentLocation().start.cfi;
+                      if (typeof book.locations.pageFromCfi === 'function') {
+                          const pageNum = book.locations.pageFromCfi(cfi);
+                          setEpubCurrentPageNum(pageNum);
                       }
-                      
-                      // Re-sync current page number after locations are ready.
-                      const currentLocation = epubRenditionRef.current.currentLocation();
-                      if (currentLocation?.start?.cfi && book.locations && typeof book.locations.pageFromCfi === 'function') {
-                        const cfi = currentLocation.start.cfi;
-                        const currentPageNum = book.locations.pageFromCfi(cfi);
-                        setEpubCurrentPageNum(currentPageNum);
-                      }
-                      
-                      setIsEpubPaginating(false);
-                  }).catch(err => {
-                      console.error("Error generating EPUB locations:", err);
-                      if(isMountedRef.current) setIsEpubPaginating(false);
-                  });
+                  }
+                  setIsEpubPaginating(false);
 
-                  if (isStale) return;
-            
               } catch (e: any) {
                   if (isStale) return;
                   console.error("Error processing EPUB:", e);
@@ -603,7 +601,7 @@ export default function ReaderPage() {
       isStale = true;
       cleanup();
     };
-  }, [searchParams, router, processEpubView, stopSpeech]);
+  }, [searchParams, router, processEpubView, stopSpeech, toast]);
 
 
   // PDF Page Rendering Effect
@@ -1178,6 +1176,14 @@ export default function ReaderPage() {
 
   const openJumpDialog = (type: 'pdf' | 'epub', currentPage: number, totalPages: number) => {
     if (totalPages <= 0) return;
+    // For EPUB, we need to check if jump functionality is supported
+    if (type === 'epub' && epubRenditionRef.current?.locations) {
+        const locations = epubRenditionRef.current.locations;
+        if (typeof locations.cfiFromPage !== 'function') {
+            toast({ variant: "default", title: "EPUB Info", description: "This book does not support jumping to a specific page." });
+            return;
+        }
+    }
     setJumpDialogInfo({ open: true, type, currentPage, totalPages });
     setJumpToPageInput(String(currentPage));
   };
@@ -1207,10 +1213,15 @@ export default function ReaderPage() {
         }
     } else if (type === 'epub') {
         if (epubRenditionRef.current?.locations && (pageNum - 1) !== epubCurrentPageNum) {
-            const cfi = epubRenditionRef.current.locations.cfiFromPage(pageNum - 1);
-            if (cfi) {
-                stopSpeech(true);
-                epubRenditionRef.current.display(cfi);
+            const locations = epubRenditionRef.current.locations;
+            if (typeof locations.cfiFromPage === 'function') {
+                 const cfi = locations.cfiFromPage(pageNum - 1);
+                if (cfi) {
+                    stopSpeech(true);
+                    epubRenditionRef.current.display(cfi);
+                }
+            } else {
+                 toast({ variant: "default", title: "EPUB Info", description: "Jump function not available for this book." });
             }
         }
     }
@@ -1334,24 +1345,19 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
             {activeDoc?.type === 'mobi' && ( <div className="p-4 bg-background rounded-md shadow-inner text-center h-full flex flex-col justify-center items-center"> <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-2"/> <p className="font-semibold">MOBI Not Supported</p> <p className="text-sm text-muted-foreground">Please convert to EPUB or PDF.</p> </div> )}
         </div>
 
-        {/* Floating OCR Button */}
-        <div className="flex-shrink-0 py-2 flex justify-center">
-            {(showOcrButtonForPdfPage || showOcrButtonForImage || showOcrButtonForEpubPage) && (
-              <Button onClick={handlePerformOcr} disabled={isPerformingOcr}>
-                {isPerformingOcr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />}
-                {activeDoc?.type === 'image' && 'Perform OCR on Image'}
-                {activeDoc?.type === 'pdf' && 'Perform OCR on PDF Page'}
-                {activeDoc?.type === 'epub' && 'Perform OCR on Page'}
-              </Button>
-            )}
-        </div>
-
         {/* Bottom part: TTS Box - Fixed at the bottom of the content pane */}
         {activeDoc && !isLoadingDoc && (
             <div className="flex-shrink-0 pt-2">
                 <Card className="shadow-md">
-                    <CardHeader className="pb-1 pt-3">
+                    <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3">
                         <CardTitle className="text-sm flex items-center"><FileText className="mr-2 h-4 w-4"/> Current Text for TTS</CardTitle>
+                        {(showOcrButtonForPdfPage || showOcrButtonForImage || showOcrButtonForEpubPage) && (
+                            <Button onClick={handlePerformOcr} disabled={isPerformingOcr} size="sm" variant="outline">
+                                {isPerformingOcr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />}
+                                {activeDoc?.type === 'image' && 'OCR Image'}
+                                {(activeDoc?.type === 'pdf' || activeDoc?.type === 'epub') && 'OCR Page'}
+                            </Button>
+                        )}
                     </CardHeader>
                     <CardContent className="pt-0">
                         {(isSpeaking || isPaused) ? (
