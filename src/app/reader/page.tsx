@@ -1459,16 +1459,16 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                 </CardContent>
             </Card>
 
-            {(activeDoc?.type === 'pdf' && !isPdfTextView && pdfTotalPages > 0) && (
+            {activeDoc?.type === 'pdf' && !isPdfTextView && pdfTotalPages > 0 && (
               <Card>
                 <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">PDF Navigation</CardTitle></CardHeader>
                 <CardContent className="space-y-2 pt-0">
                   <div className="flex items-center justify-between">
-                    <Button onClick={() => navigatePdf('prev')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum <= 1} size="sm" variant="outline"><ChevronLeft /> Prev</Button>
+                    <Button onClick={() => navigatePdf('prev')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum <= 1} size="sm" variant="outline" aria-label="Previous Page"><ChevronLeft /></Button>
                     <Button variant="ghost" className="h-9 tabular-nums" onClick={() => openJumpDialog('pdf', currentPdfPageNum, pdfTotalPages)}>
                         {currentPdfPageNum} / {pdfTotalPages}
                     </Button>
-                    <Button onClick={() => navigatePdf('next')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum >= pdfTotalPages} size="sm" variant="outline">Next <ChevronRight /></Button>
+                    <Button onClick={() => navigatePdf('next')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum >= pdfTotalPages} size="sm" variant="outline" aria-label="Next Page"><ChevronRight /></Button>
                   </div>
                 </CardContent>
               </Card>
@@ -1478,7 +1478,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
               <Card>
                 <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">EPUB Navigation</CardTitle></CardHeader>
                 <CardContent className="flex items-center justify-between pt-0">
-                    <Button onClick={() => navigateEpub('prev')} size="sm" variant="outline" disabled={isEpubLoading || isLoadingDoc}> <ChevronLeft /> Previous </Button>
+                    <Button onClick={() => navigateEpub('prev')} size="sm" variant="outline" disabled={isEpubLoading || isLoadingDoc} aria-label="Previous Page"><ChevronLeft /></Button>
                     
                     {isEpubPaginating ? (
                       <span className="text-sm text-muted-foreground px-2">Page info loading...</span>
@@ -1490,7 +1490,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                       <span className="text-sm text-muted-foreground px-2">No page info</span>
                     )}
                     
-                    <Button onClick={() => navigateEpub('next')} size="sm" variant="outline" disabled={isEpubLoading || isLoadingDoc}> Next <ChevronRight /> </Button>
+                    <Button onClick={() => navigateEpub('next')} size="sm" variant="outline" disabled={isEpubLoading || isLoadingDoc} aria-label="Next Page"><ChevronRight /></Button>
                 </CardContent>
               </Card>
             )}
@@ -1510,7 +1510,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                     >
                       {mainButtonState.icon} {mainButtonState.text}
                     </Button>
-                    <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full text-xs" title="Favorite Text">
+                    <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full" title="Favorite Text">
                       <Star />
                     </Button>
                     <Button 
@@ -1525,7 +1525,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                       }}
                       variant="outline" 
                       size="sm" 
-                      className="w-full text-xs" 
+                      className="w-full" 
                       disabled={isLoadingTTS}
                       title="Repeat Selection"
                     > 
