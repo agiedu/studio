@@ -494,6 +494,7 @@ export default function ReaderPage() {
 
                   const onRelocated = async (location: any) => {
                       if (!isMountedRef.current || !epubBookRef.current || !rendition) return;
+                      const currentBook = epubBookRef.current;
 
                       // 1. Always save the current location
                       const currentDocId = (activeDoc as ActiveMangaDocument | null)?.id;
@@ -511,16 +512,16 @@ export default function ReaderPage() {
                           console.log("[EPUB] First relocation detected. Attempting to generate locations.");
                           setIsEpubPaginating(true);
                           try {
-                              await book.locations.generate(1650); // The core pagination call
+                              await currentBook.locations.generate(1650); // The core pagination call
                               
                               if (isStale) return;
 
-                              const totalPages = book.locations.length();
+                              const totalPages = currentBook.locations.length();
                               console.log(`[EPUB] Pagination successful. Total pages: ${totalPages}`);
                               
                               if (totalPages > 0) {
                                   setEpubTotalPages(totalPages);
-                                  const currentPageNum = book.locations.pageFromCfi(location.start.cfi);
+                                  const currentPageNum = currentBook.locations.pageFromCfi(location.start.cfi);
                                   setEpubCurrentPageNum(currentPageNum);
                               } else {
                                  throw new Error("Pagination process did not yield any pages.");
@@ -539,8 +540,8 @@ export default function ReaderPage() {
                           }
                       } else {
                         // Pagination is already done, just update the current page number
-                        if (book.locations && book.locations.length() > 0) {
-                            const currentPage = book.locations.pageFromCfi(location.start.cfi);
+                        if (currentBook.locations && typeof currentBook.locations.length === 'function' && currentBook.locations.length() > 0) {
+                            const currentPage = currentBook.locations.pageFromCfi(location.start.cfi);
                             setEpubCurrentPageNum(currentPage);
                         }
                       }
@@ -1130,7 +1131,7 @@ export default function ReaderPage() {
         if (direction === 'prev' && prevPageNum > 1) {
             newPage = prevPageNum - 1;
         } else if (direction === 'next' && prevPageNum < pdfTotalPages) {
-            newPage = prevPageNum + 1;
+            newPage = prevPageNum - 1;
         }
 
         if (newPage !== prevPageNum) {
@@ -1202,7 +1203,7 @@ export default function ReaderPage() {
     if (totalPages <= 0) return;
     if (type === 'epub') {
         const book = epubBookRef.current;
-        if (!book || !book.locations || book.locations.length() === 0) {
+        if (!book || !book.locations || typeof book.locations.length !== 'function' || book.locations.length() === 0) {
             toast({ variant: "default", title: "EPUB Info", description: "This book does not support jumping to a specific page." });
             return;
         }
@@ -1236,7 +1237,7 @@ export default function ReaderPage() {
         }
     } else if (type === 'epub') {
         const book = epubBookRef.current;
-        if (book?.locations && book.locations.length() > 0 && (pageNum - 1) !== epubCurrentPageNum) {
+        if (book?.locations && typeof book.locations.length === 'function' && book.locations.length() > 0 && (pageNum - 1) !== epubCurrentPageNum) {
             const cfi = book.locations.cfiFromPage(pageNum - 1);
             if (cfi && epubRenditionRef.current) {
                 stopSpeech(true);
@@ -1608,3 +1609,5 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
     </div>
   );
 }
+
+    
