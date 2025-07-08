@@ -1382,10 +1382,15 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                     <CardTitle className="text-sm flex items-center"><FileText className="mr-2 h-4 w-4"/> Current Text for TTS</CardTitle>
                     <div className="flex items-center gap-2">
                         {(showOcrButtonForPdfPage || showOcrButtonForImage || showOcrButtonForEpubPage) && (
-                            <Button onClick={handlePerformOcr} disabled={isPerformingOcr} size="sm" variant="outline">
-                                {isPerformingOcr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />}
-                                {activeDoc?.type === 'image' && 'OCR Image'}
-                                {(activeDoc?.type === 'pdf' || activeDoc?.type === 'epub') && 'OCR Page'}
+                            <Button
+                                onClick={handlePerformOcr}
+                                disabled={isPerformingOcr}
+                                size="icon"
+                                variant="outline"
+                                className="h-9 w-9"
+                                title={activeDoc?.type === 'image' ? 'OCR Image' : 'OCR Page'}
+                            >
+                                {isPerformingOcr ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanText className="h-4 w-4" />}
                             </Button>
                         )}
                          <Popover>
@@ -1562,8 +1567,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
               </CardContent>
             </Card>
             
-            {showViewControls && (
-              <Card>
+            <Card>
                 <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">View Controls</CardTitle></CardHeader>
                 <CardContent className="space-y-2 pt-0">
                   <div className="flex items-center gap-2">
@@ -1573,7 +1577,6 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                   </div>
                 </CardContent>
               </Card>
-            )}
 
         </div>
       </aside>
