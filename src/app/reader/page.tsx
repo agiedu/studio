@@ -1491,8 +1491,9 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                       size="sm" 
                       className="w-full text-xs" 
                       disabled={isLoadingTTS}
+                      title="Repeat Selection"
                     > 
-                      <Repeat className="mr-2 h-3 w-3" /> Repeat Selection
+                      <Repeat />
                     </Button>
                 </div>
 
