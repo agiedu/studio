@@ -7,6 +7,7 @@ const TTS_SETTINGS_KEY = 'mangaTalk_ttsSettings_v2';
 const FAVORITE_ITEMS_KEY = 'mangaTalk_favoriteItems_v1';
 const SCRATCHPAD_TEXT_KEY = 'mangaTalk_scratchpadText_v1';
 const DOC_METADATA_CACHE_KEY = 'mangaTalk_docMetadataCache_v1';
+const TTS_TEXT_SIZE_KEY = 'mangaTalk_ttsTextSize_v1';
 
 
 // Helper to safely access localStorage
@@ -119,5 +120,13 @@ export const saveDocumentMetadata = (metadata: MangaDocumentDisplayInfo[]): bool
   return safeLocalStorageSet(DOC_METADATA_CACHE_KEY, metadata);
 };
 
+// TTS Text Size
+export const defaultTtsTextSize = 14;
+export const loadTtsTextSize = (): number => {
+  return safeLocalStorageGet<number>(TTS_TEXT_SIZE_KEY, defaultTtsTextSize);
+};
+export const saveTtsTextSize = (size: number): boolean => {
+  return safeLocalStorageSet(TTS_TEXT_SIZE_KEY, size);
+};
 
     

@@ -17,7 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
-import { Loader2, Play, Pause, Smartphone, Cloud as CloudIcon, Star, AlertTriangle, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, BookOpen, Settings2, FileText, ScanText, Trash2, Edit, Repeat, X } from 'lucide-react';
+import { Loader2, Play, Pause, Smartphone, Cloud as CloudIcon, Star, AlertTriangle, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, BookOpen, Settings2, FileText, ScanText, Trash2, Edit, Repeat, X, CaseSensitive } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,6 +28,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 
 import { getCloudSpeech, performOCR } from '@/app/actions';
@@ -97,6 +102,7 @@ export default function ReaderPage() {
   const [isPaused, setIsPaused] = useState(false);
   const [speechOrigin, setSpeechOrigin] = useState<SpeechOrigin>(null);
   const [highlightedSegmentIndex, setHighlightedSegmentIndex] = useState<number>(-1);
+  const [ttsTextSize, setTtsTextSize] = useState<number>(LocalStorageService.loadTtsTextSize());
 
 
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
@@ -759,6 +765,10 @@ export default function ReaderPage() {
     }
   }, []);
 
+  useEffect(() => {
+    LocalStorageService.saveTtsTextSize(ttsTextSize);
+  }, [ttsTextSize]);
+
   const populateVoiceList = useCallback(() => {
     if (typeof window !== 'undefined' && window.speechSynthesis && isMountedRef.current) {
         setAvailableVoices(prevVoices => {
@@ -1375,21 +1385,44 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
             <Card className="shadow-md">
                 <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3">
                     <CardTitle className="text-sm flex items-center"><FileText className="mr-2 h-4 w-4"/> Current Text for TTS</CardTitle>
-                    {(showOcrButtonForPdfPage || showOcrButtonForImage || showOcrButtonForEpubPage) && (
-                        <Button onClick={handlePerformOcr} disabled={isPerformingOcr} size="sm" variant="outline">
-                            {isPerformingOcr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />}
-                            {activeDoc?.type === 'image' && 'OCR Image'}
-                            {(activeDoc?.type === 'pdf' || activeDoc?.type === 'epub') && 'OCR Page'}
-                        </Button>
-                    )}
+                    <div className="flex items-center gap-2">
+                        {(showOcrButtonForPdfPage || showOcrButtonForImage || showOcrButtonForEpubPage) && (
+                            <Button onClick={handlePerformOcr} disabled={isPerformingOcr} size="sm" variant="outline">
+                                {isPerformingOcr ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanText className="mr-2 h-4 w-4" />}
+                                {activeDoc?.type === 'image' && 'OCR Image'}
+                                {(activeDoc?.type === 'pdf' || activeDoc?.type === 'epub') && 'OCR Page'}
+                            </Button>
+                        )}
+                         <Popover>
+                            <PopoverTrigger asChild>
+                                <Button variant="outline" size="icon" className="h-9 w-9">
+                                    <CaseSensitive className="h-4 w-4" />
+                                    <span className="sr-only">Set font size</span>
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-56" align="end">
+                                <div className="space-y-2">
+                                    <Label htmlFor="tts-font-size" className="text-sm">Font Size: {ttsTextSize}px</Label>
+                                    <Slider
+                                        id="tts-font-size"
+                                        min={10}
+                                        max={32}
+                                        step={1}
+                                        value={[ttsTextSize]}
+                                        onValueChange={([v]) => setTtsTextSize(v)}
+                                    />
+                                </div>
+                            </PopoverContent>
+                        </Popover>
+                    </div>
                 </CardHeader>
                 <CardContent className="pt-0">
                     {(isSpeaking || isPaused) ? (
-                        <div ref={ttsBoxHighlightedContentRef} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 overflow-y-auto whitespace-pre-wrap select-text text-sm">
+                        <div ref={ttsBoxHighlightedContentRef} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 overflow-y-auto whitespace-pre-wrap select-text" style={{ fontSize: `${ttsTextSize}px` }}>
                             {speakingViewContent}
                         </div>
                     ) : (
-                        <textarea ref={ttsBoxTextAreaRef} readOnly value={currentTextForTTS} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 text-sm overflow-y-auto whitespace-pre-wrap select-text" placeholder="Text for TTS..." />
+                        <textarea ref={ttsBoxTextAreaRef} readOnly value={currentTextForTTS} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 overflow-y-auto whitespace-pre-wrap select-text" placeholder="Text for TTS..." style={{ fontSize: `${ttsTextSize}px` }} />
                     )}
                 </CardContent>
             </Card>
