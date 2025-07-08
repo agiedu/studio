@@ -17,6 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
+import { Separator } from '@/components/ui/separator';
 import { Loader2, Play, Pause, Smartphone, Cloud as CloudIcon, Star, AlertTriangle, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, BookOpen, Settings2, FileText, ScanText, Trash2, Edit, Repeat, X, CaseSensitive } from 'lucide-react';
 import {
   AlertDialog,
@@ -1515,7 +1516,42 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
 
             <Card>
               <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm flex items-center gap-1"><Settings2 className="h-4 w-4"/> Text-to-Speech</CardTitle></CardHeader>
-              <CardContent className="space-y-2 pt-0">
+              <CardContent className="space-y-3 pt-2">
+                <Button onMouseDown={(e) => {
+                    e.preventDefault();
+                    selectionInfoRef.current = getSelectedText();
+                  }} 
+                  onClick={playPauseSpeech} 
+                  disabled={mainButtonState.disabled} 
+                  variant={mainButtonState.variant} 
+                  className="w-full h-9 text-sm"
+                >
+                  {mainButtonState.icon} {mainButtonState.text}
+                </Button>
+                
+                <div className="grid grid-cols-2 gap-2">
+                    <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full text-xs"> <Star className="mr-2 h-3 w-3" /> Favorite Text </Button>
+                    <Button 
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        const selection = getSelectedText();
+                        if (selection.text.trim()) {
+                          speakTextOnce(selection.text);
+                        } else {
+                          toast({ title: "No Selection", description: "Please select text to repeat." });
+                        }
+                      }}
+                      variant="outline" 
+                      size="sm" 
+                      className="w-full text-xs" 
+                      disabled={isLoadingTTS}
+                    > 
+                      <Repeat className="mr-2 h-3 w-3" /> Repeat Selection
+                    </Button>
+                </div>
+
+                <Separator className="my-3" />
+
                 <div>
                   <Label htmlFor="tts-engine" className="text-xs">Engine</Label>
                   <Select value={ttsSettings.engine} onValueChange={(v) => handleSettingChange('engine', v as 'local' | 'cloud')} disabled={isSpeaking && !isPaused}>
@@ -1540,39 +1576,6 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                 )}
                 <div className="space-y-1"><Label htmlFor="tts-rate" className="text-xs">Rate: {ttsSettings.rate.toFixed(1)}</Label><Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isSpeaking && !isPaused}/></div>
                 <div className="space-y-1"><Label htmlFor="tts-pitch" className="text-xs">Pitch: {ttsSettings.pitch.toFixed(1)}</Label><Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isSpeaking && !isPaused}/></div>
-                
-                <Button onMouseDown={(e) => {
-                    e.preventDefault();
-                    selectionInfoRef.current = getSelectedText();
-                  }} 
-                  onClick={playPauseSpeech} 
-                  disabled={mainButtonState.disabled} 
-                  variant={mainButtonState.variant} 
-                  className="w-full h-9 text-sm"
-                >
-                  {mainButtonState.icon} {mainButtonState.text}
-                </Button>
-                
-                <div className="grid grid-cols-2 gap-2 mt-2">
-                    <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full text-xs"> <Star className="mr-2 h-3 w-3" /> Favorite Text </Button>
-                    <Button 
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => {
-                        const selection = getSelectedText();
-                        if (selection.text.trim()) {
-                          speakTextOnce(selection.text);
-                        } else {
-                          toast({ title: "No Selection", description: "Please select text to repeat." });
-                        }
-                      }}
-                      variant="outline" 
-                      size="sm" 
-                      className="w-full text-xs" 
-                      disabled={isLoadingTTS}
-                    > 
-                      <Repeat className="mr-2 h-3 w-3" /> Repeat Selection
-                    </Button>
-                </div>
               </CardContent>
             </Card>
         </div>
