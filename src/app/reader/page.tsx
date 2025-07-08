@@ -492,63 +492,26 @@ export default function ReaderPage() {
                   const rendition = book.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
                   epubRenditionRef.current = rendition;
 
-                  const onRelocated = async (location: any) => {
-                      if (!isMountedRef.current || !epubBookRef.current || !rendition) return;
-                      const currentBook = epubBookRef.current;
+                  // Event handler for subsequent page turns
+                  rendition.on('relocated', (location: any) => {
+                    if (!isMountedRef.current || !epubBookRef.current || !rendition) return;
+                    const currentBook = epubBookRef.current;
 
-                      // 1. Always save the current location
-                      const currentDocId = (activeDoc as ActiveMangaDocument | null)?.id;
-                      if (currentDocId) {
-                          LocalStorageService.saveCurrentEpubCfiForDoc(currentDocId, location.start.cfi);
-                      }
-                      
-                      // 2. Process the view content for OCR, etc.
-                      processEpubView(rendition.getContents()?.[0]);
+                    // Always save the current location
+                    const currentDocId = (activeDoc as ActiveMangaDocument | null)?.id;
+                    if (currentDocId) {
+                        LocalStorageService.saveCurrentEpubCfiForDoc(currentDocId, location.start.cfi);
+                    }
+                    
+                    // Process the view for OCR and text extraction
+                    processEpubView(rendition.getContents()?.[0]);
 
-                      // 3. Handle pagination on the first reliable relocated event
-                      if (!paginationAttemptedRef.current) {
-                          paginationAttemptedRef.current = true; // Mark that we are starting the process
-                          
-                          console.log("[EPUB] First relocation detected. Attempting to generate locations.");
-                          setIsEpubPaginating(true);
-                          try {
-                              await currentBook.locations.generate(1650); // The core pagination call
-                              
-                              if (isStale) return;
-
-                              const totalPages = currentBook.locations.length;
-                              console.log(`[EPUB] Pagination successful. Total pages: ${totalPages}`);
-                              
-                              if (totalPages > 0) {
-                                  setEpubTotalPages(totalPages);
-                                  const currentPageNum = currentBook.locations.pageFromCfi(location.start.cfi);
-                                  setEpubCurrentPageNum(currentPageNum);
-                              } else {
-                                 throw new Error("Pagination process did not yield any pages.");
-                              }
-                          } catch (paginationError: any) {
-                              if (isStale) return;
-                              console.warn("EPUB pagination failed:", paginationError.message);
-                              toast({
-                                  variant: "default",
-                                  title: "EPUB Info",
-                                  description: "Page numbering is not available for this book. Navigation is limited to Previous/Next."
-                              });
-                              setEpubTotalPages(0);
-                          } finally {
-                              if (isMountedRef.current) setIsEpubPaginating(false);
-                          }
-                      } else {
-                        // Pagination is already done, just update the current page number
-                        if (currentBook.locations && typeof currentBook.locations.length === 'number' && currentBook.locations.length > 0) {
-                            const currentPage = currentBook.locations.pageFromCfi(location.start.cfi);
-                            setEpubCurrentPageNum(currentPage);
-                        }
-                      }
-                  };
-
-
-                  rendition.on('relocated', onRelocated);
+                    // If pagination is already done, update the current page number
+                    if (paginationAttemptedRef.current && currentBook.locations && typeof currentBook.locations.length === 'number' && currentBook.locations.length > 0) {
+                        const currentPage = currentBook.locations.pageFromCfi(location.start.cfi);
+                        setEpubCurrentPageNum(currentPage);
+                    }
+                  });
 
                   rendition.on('rendered', (section: any, view: any) => {
                       if (!isMountedRef.current) return;
@@ -557,9 +520,50 @@ export default function ReaderPage() {
                   
                   await book.ready;
                   if(isStale) { book.destroy(); return; }
-                  
+
                   const lastLocation = LocalStorageService.loadCurrentEpubCfiForDoc(doc.id); 
-                  await rendition.display(lastLocation || undefined);
+                  // display() returns a promise that resolves when the section is displayed.
+                  const displayPromise = rendition.display(lastLocation || undefined);
+
+                  // Use the promise to trigger the one-time pagination after the first render.
+                  displayPromise.then(async () => {
+                    const currentBook = epubBookRef.current;
+                    if (!isMountedRef.current || !currentBook || !rendition) return;
+
+                    if (!paginationAttemptedRef.current) {
+                        paginationAttemptedRef.current = true;
+                        console.log("[EPUB] Initial view rendered. Attempting to generate locations.");
+                        setIsEpubPaginating(true);
+                        try {
+                            await currentBook.locations.generate(1650);
+                            
+                            if (isStale || !isMountedRef.current) return;
+
+                            const totalPages = currentBook.locations.length;
+                            console.log(`[EPUB] Pagination successful. Total pages: ${totalPages}`);
+                            
+                            if (totalPages > 0) {
+                                setEpubTotalPages(totalPages);
+                                const currentLocation = rendition.currentLocation();
+                                const currentPageNum = currentBook.locations.pageFromCfi(currentLocation.start.cfi);
+                                setEpubCurrentPageNum(currentPageNum);
+                            } else {
+                               throw new Error("Pagination process did not yield any pages.");
+                            }
+                        } catch (paginationError: any) {
+                            if (isStale) return;
+                            console.warn("EPUB pagination failed:", paginationError.message);
+                            toast({
+                                variant: "default",
+                                title: "EPUB Info",
+                                description: "Page numbering is not available for this book. Navigation is limited to Previous/Next."
+                            });
+                            setEpubTotalPages(0);
+                        } finally {
+                            if (isMountedRef.current) setIsEpubPaginating(false);
+                        }
+                    }
+                  });
                   
               } catch (e: any) {
                   if (isStale) return;
