@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Slider } from '@/components/ui/slider';
 import { Input } from '@/components/ui/input';
 import { edgeTTSLanguageVoices } from '@/lib/edge-tts-voices';
+import { cn } from '@/lib/utils';
 
 
 interface FavoritesTTSSettings {
@@ -411,7 +412,10 @@ export default function FavoritesPage() {
                 return (
                   <li key={item.id} className="p-3 border rounded-md flex flex-col sm:flex-row justify-between items-start gap-2 bg-card hover:shadow-md transition-shadow">
                     <div className="flex-grow">
-                      <p className="text-sm mb-1 whitespace-pre-wrap">"{item.text}"</p>
+                      <p className={cn(
+                          "text-sm mb-1 whitespace-pre-wrap transition-colors",
+                          (isCurrentlySpeaking || isCurrentlyPaused) && "text-green-600 dark:text-green-500"
+                        )}>"{item.text}"</p>
                       <p className="text-xs text-muted-foreground">
                         {item.sourceDocumentName && `From: ${item.sourceDocumentName} | `}
                         Added: {format(new Date(item.createdAt), "MMM d, yyyy HH:mm")}

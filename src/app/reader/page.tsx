@@ -46,6 +46,7 @@ export default function ReaderPage() {
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const docId = searchParams.get('docId');
 
   const [activeDoc, setActiveDoc] = useState<ActiveMangaDocument | null>(null);
   const [isLoadingDoc, setIsLoadingDoc] = useState(true);
@@ -61,6 +62,7 @@ export default function ReaderPage() {
   const [pdfPageIsTextBased, setPdfPageIsTextBased] = useState(true);
   const [isPdfTextView, setIsPdfTextView] = useState(false);
   const [pdfTextContent, setPdfTextContent] = useState<string | null>(null);
+  const [viewScale, setViewScale] = useState(1);
 
 
   // EPUB specific states and refs
@@ -362,7 +364,6 @@ export default function ReaderPage() {
 
   // Main Effect for loading and cleaning up any document type
   useEffect(() => {
-    const docId = searchParams.get('docId');
     let isStale = false;
     
     const cleanup = () => {
@@ -620,7 +621,7 @@ export default function ReaderPage() {
       isStale = true;
       cleanup();
     };
-  }, [searchParams, router, processEpubView, stopSpeech, toast]);
+  }, [docId, router, processEpubView, stopSpeech, toast]);
 
 
   // PDF Page Rendering Effect
@@ -640,7 +641,7 @@ export default function ReaderPage() {
             const page: PDFPageProxy = await pdfDocProxy.getPage(currentPdfPageNum);
             if (isStale) { if (page) page.cleanup(); return; }
             
-            const viewport = page.getViewport({ scale: pdfScale });
+            const viewport = page.getViewport({ scale: viewScale });
             const canvas = document.createElement('canvas'); const context = canvas.getContext('2d');
             canvas.height = viewport.height; canvas.width = viewport.width;
             
@@ -677,7 +678,7 @@ export default function ReaderPage() {
 
     renderPage();
     return () => { isStale = true; };
-  }, [pdfDocProxy, currentPdfPageNum, pdfScale, activeDoc, isPdfTextView, stopSpeech]);
+  }, [pdfDocProxy, currentPdfPageNum, viewScale, activeDoc, isPdfTextView, stopSpeech]);
 
 
   const handlePerformOcr = useCallback(async () => {
@@ -1135,10 +1136,10 @@ export default function ReaderPage() {
     });
   };
 
-  const handlePdfScaleChange = (newScale: number) => { 
+  const handleViewScaleChange = (newScale: number) => { 
       if (isRenderingPdfPage || isLoadingDoc) return; 
       stopSpeech(true); 
-      setPdfScale(newScale); 
+      setViewScale(newScale); 
   };
 
   const navigateEpub = async (direction: 'prev' | 'next') => {
@@ -1258,6 +1259,8 @@ export default function ReaderPage() {
   const showOcrButtonForImage = activeDoc?.type === 'image' && displayedImageSrc && !isLoadingDoc && !isPerformingOcr;
   const showOcrButtonForEpubPage = activeDoc?.type === 'epub' && epubPageIsImage && !isLoadingDoc && !isPerformingOcr;
 
+  const showViewControls = activeDoc?.type && ['pdf', 'image', 'epub', 'txt'].includes(activeDoc.type);
+
 
   return (
     <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)]">
@@ -1283,78 +1286,86 @@ export default function ReaderPage() {
                 </div>
             )}
             
-            {/* Scratchpad View */}
-            {!activeDoc && !isLoadingDoc && !docErrorMessage && (
-              <div className="w-full h-full p-2 md:p-4 flex flex-col">
-                <div className="w-full flex-grow">
-                  {(isSpeaking || isPaused) ? (
-                    <div ref={mainHighlightedContentRef} className="w-full h-full whitespace-pre-wrap select-text text-sm overflow-y-auto">
-                      {speakingViewContent}
-                    </div>
-                  ) : (
-                    <Textarea
-                        ref={mainTextAreaRef}
-                        id="scratchpad-input"
-                        placeholder="Welcome to the Scratchpad!
+            <div 
+              className="w-full h-full p-2 md:p-4 flex flex-col items-center justify-start"
+              style={{
+                transform: `scale(${viewScale})`,
+                transformOrigin: 'top center',
+                transition: 'transform 0.2s ease-out'
+              }}
+            >
+              {/* Scratchpad View */}
+              {!activeDoc && !isLoadingDoc && !docErrorMessage && (
+                <div className="w-full h-full flex flex-col">
+                  <div className="w-full flex-grow">
+                    {(isSpeaking || isPaused) ? (
+                      <div ref={mainHighlightedContentRef} className="w-full h-full whitespace-pre-wrap select-text text-sm overflow-y-auto">
+                        {speakingViewContent}
+                      </div>
+                    ) : (
+                      <Textarea
+                          ref={mainTextAreaRef}
+                          id="scratchpad-input"
+                          placeholder="Welcome to the Scratchpad!
 
 Type or paste any text here to have it read aloud or to save snippets to your favorites."
-                        className="w-full h-full text-sm resize-none border-none focus-visible:ring-0 p-0 shadow-none bg-transparent"
-                        value={scratchpadText}
-                        onChange={(e) => {
-                            setScratchpadText(e.target.value);
-                            setCurrentTextForTTS(e.target.value);
-                        }}
-                        aria-label="Scratchpad for custom text input"
-                    />
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* PDF Text View */}
-            {activeDoc?.type === 'pdf' && isPdfTextView && (
-              <div className="w-full h-full p-2 md:p-4 flex flex-col">
-                  <div ref={mainHighlightedContentRef} className="w-full flex-grow whitespace-pre-wrap select-text px-3 py-2 text-sm min-h-[80px]">
-                      {(isSpeaking || isPaused) ? speakingViewContent : <>{pdfTextContent || ''}</>}
+                          className="w-full h-full text-sm resize-none border-none focus-visible:ring-0 p-0 shadow-none bg-transparent"
+                          value={scratchpadText}
+                          onChange={(e) => {
+                              setScratchpadText(e.target.value);
+                              setCurrentTextForTTS(e.target.value);
+                          }}
+                          aria-label="Scratchpad for custom text input"
+                      />
+                    )}
                   </div>
-              </div>
-            )}
-
-
-            {/* PDF Image Content */}
-            {activeDoc?.type === 'pdf' && !isPdfTextView && (
-                <div className="w-full text-center p-4 space-y-4">
-                    {pdfPageImage && <NextImage src={pdfPageImage} alt={`Page ${currentPdfPageNum}`} width={0} height={0} style={{ width: 'auto', height: 'auto', maxHeight: '100%', maxWidth: '100%', objectFit: 'contain', transform: `scale(${pdfScale})`, transformOrigin: 'top center' }} className="shadow-lg border rounded-md" />}
                 </div>
-            )}
-            
-            {/* EPUB Content */}
-            <div id="epub-container" className={cn("w-full h-full flex flex-col items-center", activeDoc?.type !== 'epub' && "hidden")}>
-                <div
-                    key={activeDoc?.id || 'epub-placeholder'}
-                    id="epub-viewer"
-                    ref={epubViewerRef}
-                    className="w-full flex-grow"
-                />
+              )}
+
+              {/* PDF Text View */}
+              {activeDoc?.type === 'pdf' && isPdfTextView && (
+                <div className="w-full h-full flex flex-col">
+                    <div ref={mainHighlightedContentRef} className="w-full flex-grow whitespace-pre-wrap select-text px-3 py-2 text-sm min-h-[80px]">
+                        {(isSpeaking || isPaused) ? speakingViewContent : <>{pdfTextContent || ''}</>}
+                    </div>
+                </div>
+              )}
+
+
+              {/* PDF Image Content */}
+              {activeDoc?.type === 'pdf' && !isPdfTextView && (
+                  <div className="w-full text-center space-y-4">
+                      {pdfPageImage && <NextImage src={pdfPageImage} alt={`Page ${currentPdfPageNum}`} width={0} height={0} style={{ width: 'auto', height: 'auto', maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} className="shadow-lg border rounded-md" />}
+                  </div>
+              )}
+              
+              {/* EPUB Content */}
+              <div id="epub-container" className={cn("w-full h-full flex flex-col items-center", activeDoc?.type !== 'epub' && "hidden")}>
+                  <div
+                      key={activeDoc?.id || 'epub-placeholder'}
+                      id="epub-viewer"
+                      ref={epubViewerRef}
+                      className="w-full flex-grow"
+                  />
+              </div>
+
+              {/* TXT Content */}
+              {activeDoc?.type === 'txt' && (
+                <div className="w-full h-full flex flex-col">
+                    <div ref={mainHighlightedContentRef} className="w-full flex-grow whitespace-pre-wrap select-text px-3 py-2 text-sm min-h-[80px]">
+                        {(isSpeaking || isPaused) ? speakingViewContent : <>{txtContent}</>}
+                    </div>
+                </div>
+              )}
+
+
+              {/* Image Content */}
+              {activeDoc?.type === 'image' && displayedImageSrc && (
+                  <div className="w-full text-center space-y-4">
+                      <NextImage src={displayedImageSrc} alt={activeDoc.title || 'Uploaded Image'} width={800} height={600} style={{objectFit: 'contain'}} className="max-w-full max-h-[calc(100%-4rem)] shadow-lg border rounded-md inline-block" data-ai-hint="illustration abstract" />
+                  </div>
+              )}
             </div>
-
-            {/* TXT Content */}
-            {activeDoc?.type === 'txt' && (
-              <div className="w-full h-full p-2 md:p-4 flex flex-col">
-                  <div ref={mainHighlightedContentRef} className="w-full flex-grow whitespace-pre-wrap select-text px-3 py-2 text-sm min-h-[80px]">
-                      {(isSpeaking || isPaused) ? speakingViewContent : <>{txtContent}</>}
-                  </div>
-              </div>
-            )}
-
-
-            {/* Image Content */}
-            {activeDoc?.type === 'image' && displayedImageSrc && (
-                <div className="w-full text-center p-4 space-y-4">
-                    <NextImage src={displayedImageSrc} alt={activeDoc.title || 'Uploaded Image'} width={800} height={600} style={{objectFit: 'contain'}} className="max-w-full max-h-[calc(100%-4rem)] shadow-lg border rounded-md inline-block" data-ai-hint="illustration abstract" />
-                </div>
-            )}
-
             {/* Mobi Not Supported Message */}
             {activeDoc?.type === 'mobi' && ( <div className="p-4 bg-background rounded-md shadow-inner text-center h-full flex flex-col justify-center items-center"> <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-2"/> <p className="font-semibold">MOBI Not Supported</p> <p className="text-sm text-muted-foreground">Please convert to EPUB or PDF.</p> </div> )}
         </div>
@@ -1422,7 +1433,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
 
             {(activeDoc?.type === 'pdf' && !isPdfTextView && pdfTotalPages > 0) && (
               <Card>
-                <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">PDF Navigation & View</CardTitle></CardHeader>
+                <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">PDF Navigation</CardTitle></CardHeader>
                 <CardContent className="space-y-2 pt-0">
                   <div className="flex items-center justify-between">
                     <Button onClick={() => navigatePdf('prev')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum <= 1} size="sm" variant="outline"><ChevronLeft /> Prev</Button>
@@ -1431,10 +1442,18 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                     </Button>
                     <Button onClick={() => navigatePdf('next')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum >= pdfTotalPages} size="sm" variant="outline">Next <ChevronRight /></Button>
                   </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {showViewControls && (
+              <Card>
+                <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">View Controls</CardTitle></CardHeader>
+                <CardContent className="space-y-2 pt-0">
                   <div className="flex items-center gap-2">
-                    <Button onClick={() => handlePdfScaleChange(pdfScale - 0.25)} size="icon" variant="outline" className="h-7 w-7" disabled={isRenderingPdfPage || pdfScale <= 0.25}><ZoomOut className="h-4 w-4"/></Button>
-                    <Slider value={[pdfScale]} min={0.25} max={5} step={0.25} onValueChange={([val]) => handlePdfScaleChange(val)} disabled={isRenderingPdfPage} />
-                    <Button onClick={() => handlePdfScaleChange(pdfScale + 0.25)} size="icon" variant="outline" className="h-7 w-7" disabled={isRenderingPdfPage || pdfScale >= 5}><ZoomIn className="h-4 w-4"/></Button>
+                    <Button onClick={() => handleViewScaleChange(viewScale - 0.25)} size="icon" variant="outline" className="h-7 w-7" disabled={isRenderingPdfPage || viewScale <= 0.25}><ZoomOut className="h-4 w-4"/></Button>
+                    <Slider value={[viewScale]} min={0.25} max={5} step={0.25} onValueChange={([val]) => handleViewScaleChange(val)} disabled={isRenderingPdfPage} />
+                    <Button onClick={() => handleViewScaleChange(viewScale + 0.25)} size="icon" variant="outline" className="h-7 w-7" disabled={isRenderingPdfPage || viewScale >= 5}><ZoomIn className="h-4 w-4"/></Button>
                   </div>
                 </CardContent>
               </Card>
