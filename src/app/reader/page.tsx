@@ -516,7 +516,7 @@ export default function ReaderPage() {
                               
                               if (isStale) return;
 
-                              const totalPages = currentBook.locations.length();
+                              const totalPages = currentBook.locations.length;
                               console.log(`[EPUB] Pagination successful. Total pages: ${totalPages}`);
                               
                               if (totalPages > 0) {
@@ -540,7 +540,7 @@ export default function ReaderPage() {
                           }
                       } else {
                         // Pagination is already done, just update the current page number
-                        if (currentBook.locations && typeof currentBook.locations.length === 'function' && currentBook.locations.length() > 0) {
+                        if (currentBook.locations && typeof currentBook.locations.length === 'number' && currentBook.locations.length > 0) {
                             const currentPage = currentBook.locations.pageFromCfi(location.start.cfi);
                             setEpubCurrentPageNum(currentPage);
                         }
@@ -1131,7 +1131,7 @@ export default function ReaderPage() {
         if (direction === 'prev' && prevPageNum > 1) {
             newPage = prevPageNum - 1;
         } else if (direction === 'next' && prevPageNum < pdfTotalPages) {
-            newPage = prevPageNum - 1;
+            newPage = prevPageNum + 1;
         }
 
         if (newPage !== prevPageNum) {
@@ -1203,7 +1203,7 @@ export default function ReaderPage() {
     if (totalPages <= 0) return;
     if (type === 'epub') {
         const book = epubBookRef.current;
-        if (!book || !book.locations || typeof book.locations.length !== 'function' || book.locations.length() === 0) {
+        if (!book || !book.locations || typeof book.locations.length !== 'number' || book.locations.length === 0) {
             toast({ variant: "default", title: "EPUB Info", description: "This book does not support jumping to a specific page." });
             return;
         }
@@ -1237,7 +1237,7 @@ export default function ReaderPage() {
         }
     } else if (type === 'epub') {
         const book = epubBookRef.current;
-        if (book?.locations && typeof book.locations.length === 'function' && book.locations.length() > 0 && (pageNum - 1) !== epubCurrentPageNum) {
+        if (book?.locations && typeof book.locations.length === 'number' && book.locations.length > 0 && (pageNum - 1) !== epubCurrentPageNum) {
             const cfi = book.locations.cfiFromPage(pageNum - 1);
             if (cfi && epubRenditionRef.current) {
                 stopSpeech(true);
