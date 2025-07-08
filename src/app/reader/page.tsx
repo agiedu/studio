@@ -1480,19 +1480,6 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
               </Card>
             )}
 
-            {showViewControls && (
-              <Card>
-                <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">View Controls</CardTitle></CardHeader>
-                <CardContent className="space-y-2 pt-0">
-                  <div className="flex items-center gap-2">
-                    <Button onClick={() => handleViewScaleChange(viewScale - 0.25)} size="icon" variant="outline" className="h-7 w-7" disabled={isRenderingPdfPage || viewScale <= 0.25}><ZoomOut className="h-4 w-4"/></Button>
-                    <Slider value={[viewScale]} min={0.25} max={5} step={0.25} onValueChange={([val]) => handleViewScaleChange(val)} disabled={isRenderingPdfPage} />
-                    <Button onClick={() => handleViewScaleChange(viewScale + 0.25)} size="icon" variant="outline" className="h-7 w-7" disabled={isRenderingPdfPage || viewScale >= 5}><ZoomIn className="h-4 w-4"/></Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
             {activeDoc?.type === 'epub' && (
               <Card>
                 <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">EPUB Navigation</CardTitle></CardHeader>
@@ -1517,19 +1504,18 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
             <Card>
               <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm flex items-center gap-1"><Settings2 className="h-4 w-4"/> Text-to-Speech</CardTitle></CardHeader>
               <CardContent className="space-y-3 pt-2">
-                <Button onMouseDown={(e) => {
-                    e.preventDefault();
-                    selectionInfoRef.current = getSelectedText();
-                  }} 
-                  onClick={playPauseSpeech} 
-                  disabled={mainButtonState.disabled} 
-                  variant={mainButtonState.variant} 
-                  className="w-full h-9 text-sm"
-                >
-                  {mainButtonState.icon} {mainButtonState.text}
-                </Button>
-                
                 <div className="grid grid-cols-2 gap-2">
+                    <Button onMouseDown={(e) => {
+                        e.preventDefault();
+                        selectionInfoRef.current = getSelectedText();
+                      }} 
+                      onClick={playPauseSpeech} 
+                      disabled={mainButtonState.disabled} 
+                      variant={mainButtonState.variant} 
+                      className="w-full text-xs col-span-2 h-9"
+                    >
+                      {mainButtonState.icon} {mainButtonState.text}
+                    </Button>
                     <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full text-xs"> <Star className="mr-2 h-3 w-3" /> Favorite Text </Button>
                     <Button 
                       onMouseDown={(e) => e.preventDefault()}
@@ -1578,6 +1564,20 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                 <div className="space-y-1"><Label htmlFor="tts-pitch" className="text-xs">Pitch: {ttsSettings.pitch.toFixed(1)}</Label><Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isSpeaking && !isPaused}/></div>
               </CardContent>
             </Card>
+            
+            {showViewControls && (
+              <Card>
+                <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">View Controls</CardTitle></CardHeader>
+                <CardContent className="space-y-2 pt-0">
+                  <div className="flex items-center gap-2">
+                    <Button onClick={() => handleViewScaleChange(viewScale - 0.25)} size="icon" variant="outline" className="h-7 w-7" disabled={isRenderingPdfPage || viewScale <= 0.25}><ZoomOut className="h-4 w-4"/></Button>
+                    <Slider value={[viewScale]} min={0.25} max={5} step={0.25} onValueChange={([val]) => handleViewScaleChange(val)} disabled={isRenderingPdfPage} />
+                    <Button onClick={() => handleViewScaleChange(viewScale + 0.25)} size="icon" variant="outline" className="h-7 w-7" disabled={isRenderingPdfPage || viewScale >= 5}><ZoomIn className="h-4 w-4"/></Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
         </div>
       </aside>
 
