@@ -198,19 +198,15 @@ export default function LibraryPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><UploadCloud className="text-primary" /> Add Document to Browser Storage</CardTitle>
-          <CardDescription>
-            Upload EPUB, MOBI, PDF, TXT, or Image files. They will be stored in **this browser's internal storage (IndexedDB)**.
-            Use &quot;Save to Device&quot; to save a copy to your computer.
-          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid w-full max-w-md items-center gap-1.5">
-            <Label htmlFor="doc-upload-library">Document File (.epub, .mobi, .pdf, .txt, .png, .jpg, etc.)</Label>
+            <Label htmlFor="doc-upload-library">Document File (.epub, .pdf, .txt, .png, .jpg)</Label>
             <Input
               ref={fileInputRef}
               id="doc-upload-library"
               type="file"
-              accept="application/epub+zip,application/x-mobipocket-ebook,application/pdf,text/plain,image/*"
+              accept="application/epub+zip,application/pdf,text/plain,image/*"
               onChange={handleFileUpload}
               disabled={isUploading || isLoading}
             />
@@ -319,4 +315,5 @@ export default function LibraryPage() {
     </AlertDialog>
     </div>
   );
-}
+
+    
