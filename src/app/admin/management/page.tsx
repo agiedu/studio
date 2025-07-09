@@ -35,7 +35,8 @@ function AdminManagementPage() {
     if (confirm(`Are you sure you want to delete user ${email}? This cannot be undone.`)) {
       const success = deleteUserByAdmin(email);
       if (success) {
-        setUsers(users.filter(u => u.email !== email));
+        // Re-fetch the user list from the source of truth to ensure UI consistency
+        setUsers(getAllUsersForAdmin());
         toast({ title: 'User Deleted', description: `User ${email} has been removed.` });
       } else {
         toast({ variant: 'destructive', title: 'Error', description: 'Failed to delete user.' });
