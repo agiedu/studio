@@ -22,6 +22,7 @@ const DOC_METADATA_CACHE_KEY = 'mangaTalk_docMetadataCache_v1';
 const TTS_TEXT_SIZE_KEY = 'mangaTalk_ttsTextSize_v1';
 const PDF_MANGA_DOCUMENT_PAGE_STATES_KEY = 'mangaTalk_pdfDocumentPageStates_v3';
 const EPUB_MANGA_DOCUMENT_CFI_KEY = 'mangaTalk_epubDocumentCfi_v1';
+const REMEMBERED_EMAIL_KEY = 'mangaTalk_rememberedEmail_v1';
 
 const ALL_USER_SPECIFIC_BASE_KEYS = [
     TTS_SETTINGS_KEY,
@@ -188,4 +189,18 @@ export const saveTtsTextSize = (size: number): boolean => {
   const key = getUserKey(TTS_TEXT_SIZE_KEY);
   if (!key) return false;
   return safeLocalStorageSet(key, size);
+};
+
+// Remember Me for Login
+export const saveRememberedEmail = (email: string): boolean => {
+  return safeLocalStorageSet(REMEMBERED_EMAIL_KEY, email);
+};
+
+export const getRememberedEmail = (): string | null => {
+  return safeLocalStorageGet<string | null>(REMEMBERED_EMAIL_KEY, null);
+};
+
+export const clearRememberedEmail = (): void => {
+  if (typeof window === 'undefined') return;
+  window.localStorage.removeItem(REMEMBERED_EMAIL_KEY);
 };
