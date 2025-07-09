@@ -40,7 +40,8 @@ export const registerUser = (email: string, password: string): { success: boolea
 export const loginUser = (email: string, password: string): { success: boolean; message: string } => {
   const users = getUsers();
   const user = users.find(u => u.email === email);
-  if (!user || !bcrypt.compareSync(password, user.passwordHash)) {
+  // Check for user, user.passwordHash, and then compare passwords.
+  if (!user || !user.passwordHash || !bcrypt.compareSync(password, user.passwordHash)) {
     return { success: false, message: 'Invalid email or password.' };
   }
   // Clear any potential admin session when a regular user logs in.
