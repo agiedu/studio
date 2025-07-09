@@ -114,8 +114,10 @@ export const getAllUsersForAdmin = (): Omit<User, 'passwordHash'>[] => {
       .map(({ email }) => ({ email }));
 };
 
-export const deleteUserByAdmin = async (email: string): Promise<boolean> => {
-    if (!isAdminSessionActive() || email.toLowerCase() === ADMIN_EMAIL) return false;
+export const deleteUserByAdmin = async (email: string): Promise<{ success: boolean; message?: string }> => {
+    if (!isAdminSessionActive() || email.toLowerCase() === ADMIN_EMAIL) {
+        return { success: false, message: "Permission denied." };
+    }
 
     try {
         // Delete IndexedDB data
@@ -129,10 +131,10 @@ export const deleteUserByAdmin = async (email: string): Promise<boolean> => {
         users = users.filter(u => u.email.toLowerCase() !== email.toLowerCase());
         saveUsers(users);
         
-        return true;
-    } catch (error) {
+        return { success: true };
+    } catch (error: any) {
         console.error(`[AuthService] Failed to delete user ${email}:`, error);
-        return false;
+        return { success: false, message: error.message };
     }
 };
 

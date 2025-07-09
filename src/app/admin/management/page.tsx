@@ -16,13 +16,23 @@ import {
   getCurrentUser
 } from '@/lib/authService';
 import type { User } from '@/types';
-import { Trash2, Users, KeyRound, Link as LinkIcon, AlertTriangle } from 'lucide-react';
+import { Trash2, Users, KeyRound, AlertTriangle } from 'lucide-react';
 import { AppHeader } from '@/components/app/AppHeader';
-
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 function AdminManagementPage() {
   const { toast } = useToast();
   const [users, setUsers] = useState<Omit<User, 'passwordHash'>[]>([]);
+  const [userToDelete, setUserToDelete] = useState<{email: string} | null>(null);
   const [newAdminPassword, setNewAdminPassword] = useState('');
   const [adminLoginUrl, setAdminLoginUrl] = useState('');
 
@@ -31,16 +41,22 @@ function AdminManagementPage() {
     setAdminLoginUrl(getAdminLoginUrl());
   }, []);
 
-  const handleDeleteUser = async (email: string) => {
-    if (confirm(`Are you sure you want to delete user ${email}? This will permanently remove their account and all associated data. This cannot be undone.`)) {
-      const success = await deleteUserByAdmin(email);
-      if (success) {
-        setUsers(getAllUsersForAdmin());
-        toast({ title: 'User Deleted', description: `User ${email} has been removed.` });
-      } else {
-        toast({ variant: 'destructive', title: 'Error', description: 'Failed to delete user. Check the console for more details.' });
-      }
+  const performDelete = async () => {
+    if (!userToDelete) return;
+    
+    const result = await deleteUserByAdmin(userToDelete.email);
+    
+    if (result.success) {
+      toast({ title: 'User Deleted', description: `User ${userToDelete.email} has been removed.` });
+      setUsers(getAllUsersForAdmin()); // Refetch the list from the source
+    } else {
+      toast({ 
+        variant: 'destructive', 
+        title: 'Error Deleting User', 
+        description: result.message || 'An unknown error occurred. Check the console for details.' 
+      });
     }
+    setUserToDelete(null); // Close the dialog
   };
 
   const handlePasswordChange = () => {
@@ -83,7 +99,7 @@ function AdminManagementPage() {
                     <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => handleDeleteUser(user.email)}
+                        onClick={() => setUserToDelete(user)}
                         aria-label={`Delete user ${user.email}`}
                     >
                         <Trash2 className="h-4 w-4 text-destructive" />
@@ -129,6 +145,23 @@ function AdminManagementPage() {
           </CardContent>
         </Card>
       </div>
+      
+      <AlertDialog open={!!userToDelete} onOpenChange={(isOpen) => !isOpen && setUserToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the user 
+              <span className="font-semibold"> {userToDelete?.email} </span> 
+              and all of their associated data.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={performDelete}>Continue</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
