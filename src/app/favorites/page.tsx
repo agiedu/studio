@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { edgeTTSLanguageVoices } from '@/lib/edge-tts-voices';
 import { cn } from '@/lib/utils';
 import { AuthGuard } from '@/components/auth/AuthGuard';
+import { AppHeader } from '@/components/app/AppHeader';
 
 
 interface FavoritesTTSSettings {
@@ -301,154 +302,157 @@ function FavoritesPageContent() {
 
 
   return (
-    <div className="container mx-auto p-4 md:p-6 space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Star className="text-primary" /> My Favorites</CardTitle>
-          <CardDescription>Your saved text snippets. Click to play or delete.</CardDescription>
-        </CardHeader>
-        <CardContent>
-           <div className="mb-6 p-4 border rounded-md bg-muted/20">
-                <h3 className="text-lg font-medium mb-3">Global TTS Settings for Favorites</h3>
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
-                    <div>
-                        <Label htmlFor="fav-tts-engine">TTS Engine</Label>
-                        <Select value={ttsSettings.engine} onValueChange={(v) => handleSettingChange('engine', v as 'local' | 'cloud')} disabled={!!speakingItemId && !pausedItemId}>
-                            <SelectTrigger id="fav-tts-engine"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                            <SelectItem value="local"><div className="flex items-center gap-1"><Smartphone className="h-4 w-4" /> Local</div></SelectItem>
-                            <SelectItem value="cloud"><div className="flex items-center gap-1"><CloudIcon className="h-4 w-4"/> Cloud</div></SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    {ttsSettings.engine === 'local' && (
-                        <div>
-                            <Label htmlFor="fav-tts-language">Language</Label>
-                            <Input id="fav-tts-language" value={ttsSettings.language} onChange={(e) => handleSettingChange('language', e.target.value)} disabled={!!speakingItemId && !pausedItemId || availableVoices.length === 0} />
-                        </div>
-                    )}
-                </div>
+    <>
+      <AppHeader />
+      <div className="container mx-auto p-4 md:p-6 space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Star className="text-primary" /> My Favorites</CardTitle>
+            <CardDescription>Your saved text snippets. Click to play or delete.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="mb-6 p-4 border rounded-md bg-muted/20">
+                  <h3 className="text-lg font-medium mb-3">Global TTS Settings for Favorites</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                      <div>
+                          <Label htmlFor="fav-tts-engine">TTS Engine</Label>
+                          <Select value={ttsSettings.engine} onValueChange={(v) => handleSettingChange('engine', v as 'local' | 'cloud')} disabled={!!speakingItemId && !pausedItemId}>
+                              <SelectTrigger id="fav-tts-engine"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                              <SelectItem value="local"><div className="flex items-center gap-1"><Smartphone className="h-4 w-4" /> Local</div></SelectItem>
+                              <SelectItem value="cloud"><div className="flex items-center gap-1"><CloudIcon className="h-4 w-4"/> Cloud</div></SelectItem>
+                              </SelectContent>
+                          </Select>
+                      </div>
+                      {ttsSettings.engine === 'local' && (
+                          <div>
+                              <Label htmlFor="fav-tts-language">Language</Label>
+                              <Input id="fav-tts-language" value={ttsSettings.language} onChange={(e) => handleSettingChange('language', e.target.value)} disabled={!!speakingItemId && !pausedItemId || availableVoices.length === 0} />
+                          </div>
+                      )}
+                  </div>
 
-                {ttsSettings.engine === 'local' && (
-                    <div className="mb-3">
-                        <Label htmlFor="fav-tts-voice">Voice (Local)</Label>
-                        <Select 
-                            value={ttsSettings.voiceURI || ""} 
-                            onValueChange={(v) => handleSettingChange('voiceURI', v)} 
-                            disabled={!!speakingItemId && !pausedItemId || availableVoices.filter(voice => voice.lang && voice.lang.startsWith(ttsSettings.language.split('-')[0])).length === 0}
-                        >
-                            <SelectTrigger id="fav-tts-voice"><SelectValue placeholder={availableVoices.length > 0 ? "Select voice" : "No voices available"} /></SelectTrigger>
-                            <SelectContent className="max-h-60">
-                            {availableVoices.filter(voice => voice.lang && voice.lang.startsWith(ttsSettings.language.split('-')[0])).map(voice => (
-                                <SelectItem key={voice.voiceURI || voice.name} value={voice.voiceURI}>{voice.name} ({voice.lang})</SelectItem>
-                            ))}
-                            {availableVoices.filter(voice => voice.lang && voice.lang.startsWith(ttsSettings.language.split('-')[0])).length === 0 && (
-                                <SelectItem value="no-voice-fav" disabled>{availableVoices.length > 0 ? "No voices for language" : "No local voices"}</SelectItem>
-                            )}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                )}
+                  {ttsSettings.engine === 'local' && (
+                      <div className="mb-3">
+                          <Label htmlFor="fav-tts-voice">Voice (Local)</Label>
+                          <Select 
+                              value={ttsSettings.voiceURI || ""} 
+                              onValueChange={(v) => handleSettingChange('voiceURI', v)} 
+                              disabled={!!speakingItemId && !pausedItemId || availableVoices.filter(voice => voice.lang && voice.lang.startsWith(ttsSettings.language.split('-')[0])).length === 0}
+                          >
+                              <SelectTrigger id="fav-tts-voice"><SelectValue placeholder={availableVoices.length > 0 ? "Select voice" : "No voices available"} /></SelectTrigger>
+                              <SelectContent className="max-h-60">
+                              {availableVoices.filter(voice => voice.lang && voice.lang.startsWith(ttsSettings.language.split('-')[0])).map(voice => (
+                                  <SelectItem key={voice.voiceURI || voice.name} value={voice.voiceURI}>{voice.name} ({voice.lang})</SelectItem>
+                              ))}
+                              {availableVoices.filter(voice => voice.lang && voice.lang.startsWith(ttsSettings.language.split('-')[0])).length === 0 && (
+                                  <SelectItem value="no-voice-fav" disabled>{availableVoices.length > 0 ? "No voices for language" : "No local voices"}</SelectItem>
+                              )}
+                              </SelectContent>
+                          </Select>
+                      </div>
+                  )}
 
-                {ttsSettings.engine === 'cloud' && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
-                        <div>
-                            <Label htmlFor="fav-cloud-tts-language">Language (Cloud)</Label>
-                            <Select value={ttsSettings.language} onValueChange={(v) => handleSettingChange('language', v as string)} disabled={!!speakingItemId && !pausedItemId}>
-                                <SelectTrigger id="fav-cloud-tts-language"><SelectValue placeholder="Select a language" /></SelectTrigger>
-                                <SelectContent className="max-h-60">
-                                    {Object.entries(edgeTTSLanguageVoices).map(([locale, { language }]) => (
-                                        <SelectItem key={locale} value={locale}>{language} ({locale})</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div>
-                            <Label htmlFor="fav-cloud-tts-voice">Voice (Cloud)</Label>
-                            <Select value={ttsSettings.cloudVoiceId || ""} onValueChange={(v) => handleSettingChange('cloudVoiceId', v)} disabled={!!speakingItemId && !pausedItemId || !ttsSettings.language}>
-                                <SelectTrigger id="fav-cloud-tts-voice"><SelectValue placeholder="Select a voice" /></SelectTrigger>
-                                <SelectContent className="max-h-60">
-                                    {(edgeTTSLanguageVoices[ttsSettings.language]?.voices || []).map(voice => (
-                                        <SelectItem key={voice.id} value={voice.id}>{voice.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </div>
-                )}
+                  {ttsSettings.engine === 'cloud' && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                          <div>
+                              <Label htmlFor="fav-cloud-tts-language">Language (Cloud)</Label>
+                              <Select value={ttsSettings.language} onValueChange={(v) => handleSettingChange('language', v as string)} disabled={!!speakingItemId && !pausedItemId}>
+                                  <SelectTrigger id="fav-cloud-tts-language"><SelectValue placeholder="Select a language" /></SelectTrigger>
+                                  <SelectContent className="max-h-60">
+                                      {Object.entries(edgeTTSLanguageVoices).map(([locale, { language }]) => (
+                                          <SelectItem key={locale} value={locale}>{language} ({locale})</SelectItem>
+                                      ))}
+                                  </SelectContent>
+                              </Select>
+                          </div>
+                          <div>
+                              <Label htmlFor="fav-cloud-tts-voice">Voice (Cloud)</Label>
+                              <Select value={ttsSettings.cloudVoiceId || ""} onValueChange={(v) => handleSettingChange('cloudVoiceId', v)} disabled={!!speakingItemId && !pausedItemId || !ttsSettings.language}>
+                                  <SelectTrigger id="fav-cloud-tts-voice"><SelectValue placeholder="Select a voice" /></SelectTrigger>
+                                  <SelectContent className="max-h-60">
+                                      {(edgeTTSLanguageVoices[ttsSettings.language]?.voices || []).map(voice => (
+                                          <SelectItem key={voice.id} value={voice.id}>{voice.name}</SelectItem>
+                                      ))}
+                                  </SelectContent>
+                              </Select>
+                          </div>
+                      </div>
+                  )}
 
-                <div className="space-y-2 mb-3">
-                    <Label htmlFor="fav-tts-rate">Rate: {ttsSettings.rate.toFixed(1)}</Label>
-                    <Slider id="fav-tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={!!speakingItemId && !pausedItemId}/>
-                </div>
-                <div className="space-y-2">
-                    <Label htmlFor="fav-tts-pitch">Pitch: {ttsSettings.pitch.toFixed(1)}</Label>
-                    <Slider id="fav-tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={!!speakingItemId && !pausedItemId}/>
-                </div>
-           </div>
+                  <div className="space-y-2 mb-3">
+                      <Label htmlFor="fav-tts-rate">Rate: {ttsSettings.rate.toFixed(1)}</Label>
+                      <Slider id="fav-tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={!!speakingItemId && !pausedItemId}/>
+                  </div>
+                  <div className="space-y-2">
+                      <Label htmlFor="fav-tts-pitch">Pitch: {ttsSettings.pitch.toFixed(1)}</Label>
+                      <Slider id="fav-tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={!!speakingItemId && !pausedItemId}/>
+                  </div>
+            </div>
 
-          {favoriteItems.length === 0 ? (
-            <p className="text-muted-foreground flex items-center gap-2"><Info className="h-5 w-5" /> Your favorites list is empty. Select text in the reader and click "Favorite Selected Text" to add items.</p>
-          ) : (
-            <ul className="space-y-3">
-              {favoriteItems.map(item => {
-                const isCurrentlySpeaking = speakingItemId === item.id;
-                const isCurrentlyPaused = pausedItemId === item.id;
-                let buttonIcon = <Play className="mr-1.5 h-4 w-4" />;
-                let buttonText = "Play";
-                if (isCurrentlySpeaking) {
-                  if (isCurrentlyPaused) {
-                    buttonIcon = <Play className="mr-1.5 h-4 w-4" />;
-                    buttonText = "Resume";
-                  } else {
-                    buttonIcon = <Pause className="mr-1.5 h-4 w-4" />;
-                    buttonText = "Pause";
+            {favoriteItems.length === 0 ? (
+              <p className="text-muted-foreground flex items-center gap-2"><Info className="h-5 w-5" /> Your favorites list is empty. Select text in the reader and click "Favorite Selected Text" to add items.</p>
+            ) : (
+              <ul className="space-y-3">
+                {favoriteItems.map(item => {
+                  const isCurrentlySpeaking = speakingItemId === item.id;
+                  const isCurrentlyPaused = pausedItemId === item.id;
+                  let buttonIcon = <Play className="mr-1.5 h-4 w-4" />;
+                  let buttonText = "Play";
+                  if (isCurrentlySpeaking) {
+                    if (isCurrentlyPaused) {
+                      buttonIcon = <Play className="mr-1.5 h-4 w-4" />;
+                      buttonText = "Resume";
+                    } else {
+                      buttonIcon = <Pause className="mr-1.5 h-4 w-4" />;
+                      buttonText = "Pause";
+                    }
                   }
-                }
-                if (isLoadingTTS && isCurrentlySpeaking && !isCurrentlyPaused) {
-                  buttonIcon = <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />;
-                  buttonText = "Loading...";
-                }
+                  if (isLoadingTTS && isCurrentlySpeaking && !isCurrentlyPaused) {
+                    buttonIcon = <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />;
+                    buttonText = "Loading...";
+                  }
 
-                return (
-                  <li key={item.id} className="p-3 border rounded-md flex flex-col sm:flex-row justify-between items-start gap-2 bg-card hover:shadow-md transition-shadow">
-                    <div className="flex-grow">
-                      <p className={cn(
-                          "text-sm mb-1 whitespace-pre-wrap transition-colors",
-                          (isCurrentlySpeaking || isCurrentlyPaused) && "text-green-600 dark:text-green-500"
-                        )}>"{item.text}"</p>
-                      <p className="text-xs text-muted-foreground">
-                        {item.sourceDocumentName && `From: ${item.sourceDocumentName} | `}
-                        Added: {format(new Date(item.createdAt), "MMM d, yyyy HH:mm")}
-                      </p>
-                    </div>
-                    <div className="flex gap-2 mt-2 sm:mt-0 sm:items-center flex-shrink-0">
-                      <Button 
-                        size="sm" 
-                        variant={isCurrentlySpeaking && !isCurrentlyPaused ? "outline" : "default"}
-                        onClick={() => handlePlayPauseFavorite(item)} 
-                        disabled={isLoadingTTS && !isCurrentlySpeaking}
-                        className="w-[100px]"
-                        >
-                        {buttonIcon} {buttonText}
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => handleDeleteFavorite(item.id)} disabled={isLoadingTTS && isCurrentlySpeaking} aria-label="Delete Favorite">
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
+                  return (
+                    <li key={item.id} className="p-3 border rounded-md flex flex-col sm:flex-row justify-between items-start gap-2 bg-card hover:shadow-md transition-shadow">
+                      <div className="flex-grow">
+                        <p className={cn(
+                            "text-sm mb-1 whitespace-pre-wrap transition-colors",
+                            (isCurrentlySpeaking || isCurrentlyPaused) && "text-green-600 dark:text-green-500"
+                          )}>"{item.text}"</p>
+                        <p className="text-xs text-muted-foreground">
+                          {item.sourceDocumentName && `From: ${item.sourceDocumentName} | `}
+                          Added: {format(new Date(item.createdAt), "MMM d, yyyy HH:mm")}
+                        </p>
+                      </div>
+                      <div className="flex gap-2 mt-2 sm:mt-0 sm:items-center flex-shrink-0">
+                        <Button 
+                          size="sm" 
+                          variant={isCurrentlySpeaking && !isCurrentlyPaused ? "outline" : "default"}
+                          onClick={() => handlePlayPauseFavorite(item)} 
+                          disabled={isLoadingTTS && !isCurrentlySpeaking}
+                          className="w-[100px]"
+                          >
+                          {buttonIcon} {buttonText}
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => handleDeleteFavorite(item.id)} disabled={isLoadingTTS && isCurrentlySpeaking} aria-label="Delete Favorite">
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </CardContent>
+          {favoriteItems.length > 0 && (
+            <CardFooter>
+              <p className="text-xs text-muted-foreground">Your favorites are stored in your browser's local storage.</p>
+            </CardFooter>
           )}
-        </CardContent>
-        {favoriteItems.length > 0 && (
-          <CardFooter>
-            <p className="text-xs text-muted-foreground">Your favorites are stored in your browser's local storage.</p>
-          </CardFooter>
-        )}
-      </Card>
-    </div>
+        </Card>
+      </div>
+    </>
   );
 }
 
