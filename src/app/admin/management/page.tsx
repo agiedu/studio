@@ -31,15 +31,14 @@ function AdminManagementPage() {
     setAdminLoginUrl(getAdminLoginUrl());
   }, []);
 
-  const handleDeleteUser = (email: string) => {
-    if (confirm(`Are you sure you want to delete user ${email}? This cannot be undone.`)) {
-      const success = deleteUserByAdmin(email);
+  const handleDeleteUser = async (email: string) => {
+    if (confirm(`Are you sure you want to delete user ${email}? This will permanently remove their account and all associated data. This cannot be undone.`)) {
+      const success = await deleteUserByAdmin(email);
       if (success) {
-        // Re-fetch the user list from the source of truth to ensure UI consistency
         setUsers(getAllUsersForAdmin());
         toast({ title: 'User Deleted', description: `User ${email} has been removed.` });
       } else {
-        toast({ variant: 'destructive', title: 'Error', description: 'Failed to delete user.' });
+        toast({ variant: 'destructive', title: 'Error', description: 'Failed to delete user. Check the console for more details.' });
       }
     }
   };

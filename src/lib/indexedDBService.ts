@@ -1,4 +1,3 @@
-
 // src/lib/indexedDBService.ts
 import type { StoredMangaDocument, StoredPdfDocument, MangaDocumentDisplayInfo } from '@/types';
 import { saveDocumentMetadata } from './localStorageService';
@@ -151,6 +150,47 @@ export async function deleteDocumentById(id: string): Promise<void> {
     transaction.onerror = () => reject(new Error(`Failed to delete document: ${transaction.error?.message}`));
   });
 }
+
+function getDBNameForUser(email: string): string {
+    const userId = email.replace(/[^a-zA-Z0-9]/g, '_');
+    return `MangaTalkDB_${userId}`;
+}
+
+export async function deleteDatabaseForUser(email: string): Promise<void> {
+    if (typeof window === 'undefined') {
+        return Promise.reject(new Error("IndexedDB can only be accessed in the browser."));
+    }
+    const dbName = getDBNameForUser(email);
+
+    if (dbPromises.has(dbName)) {
+        try {
+            const db = await dbPromises.get(dbName);
+            db.close();
+        } catch (e) {
+            console.warn(`Could not close DB handle for ${dbName} during deletion:`, e);
+        } finally {
+            dbPromises.delete(dbName);
+        }
+    }
+
+    return new Promise((resolve, reject) => {
+        console.log(`[IndexedDBService] Deleting database: ${dbName}`);
+        const request = indexedDB.deleteDatabase(dbName);
+        request.onsuccess = () => {
+            console.log(`[IndexedDBService] Database ${dbName} deleted successfully.`);
+            resolve();
+        };
+        request.onerror = () => {
+            console.error(`[IndexedDBService] Error deleting database ${dbName}:`, request.error);
+            reject(new Error(`Could not delete database: ${request.error?.message}`));
+        };
+        request.onblocked = () => {
+             console.warn(`[IndexedDBService] Deletion of database ${dbName} is blocked.`);
+             reject(new Error(`Database deletion is blocked. Please close other tabs with this app open.`));
+        };
+    });
+}
+
 
 function getLastActiveDocKey(): string | null {
     const user = getCurrentUser();

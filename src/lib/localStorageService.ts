@@ -1,4 +1,3 @@
-
 import type { TTSSettings, FavoriteItem, MangaDocumentDisplayInfo } from '@/types';
 import { getCurrentUser } from './authService';
 
@@ -23,6 +22,16 @@ const DOC_METADATA_CACHE_KEY = 'mangaTalk_docMetadataCache_v1';
 const TTS_TEXT_SIZE_KEY = 'mangaTalk_ttsTextSize_v1';
 const PDF_MANGA_DOCUMENT_PAGE_STATES_KEY = 'mangaTalk_pdfDocumentPageStates_v3';
 const EPUB_MANGA_DOCUMENT_CFI_KEY = 'mangaTalk_epubDocumentCfi_v1';
+
+const ALL_USER_SPECIFIC_BASE_KEYS = [
+    TTS_SETTINGS_KEY,
+    FAVORITE_ITEMS_KEY,
+    SCRATCHPAD_TEXT_KEY,
+    DOC_METADATA_CACHE_KEY,
+    TTS_TEXT_SIZE_KEY,
+    PDF_MANGA_DOCUMENT_PAGE_STATES_KEY,
+    EPUB_MANGA_DOCUMENT_CFI_KEY,
+];
 
 
 // --- HELPERS ---
@@ -51,6 +60,18 @@ const safeLocalStorageSet = (key: string, value: any): boolean => {
     console.error(specificMessage, error);
     return false;
   }
+};
+
+// --- DATA CLEANUP ---
+
+export const removeAllDataForUser = (email: string): void => {
+    if (typeof window === 'undefined' || !email) return;
+    console.log(`[LocalStorageService] Removing all data for user: ${email}`);
+    for (const baseKey of ALL_USER_SPECIFIC_BASE_KEYS) {
+        // Construct the user-specific key and remove it.
+        const userKey = `${baseKey}_${email}`;
+        window.localStorage.removeItem(userKey);
+    }
 };
 
 // --- PDF Page Index ---

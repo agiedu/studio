@@ -1,6 +1,8 @@
 'use client';
 import type { User } from '@/types';
 import bcrypt from 'bcryptjs';
+import { deleteDatabaseForUser } from '@/lib/indexedDBService';
+import { removeAllDataForUser } from '@/lib/localStorageService';
 
 const USERS_KEY = 'mangaTalk_users';
 const CURRENT_USER_KEY = 'mangaTalk_currentUser';
@@ -101,7 +103,7 @@ export const isAdminSessionActive = (): boolean => {
     const session = localStorage.getItem(ADMIN_SESSION_KEY);
     const currentUser = getCurrentUser();
     // Double check: session must be active AND the current user must be the admin
-    return session === 'true' && currentUser?.email.toLowerCase() === ADMIN_EMAIL;
+    return session === 'true' && !!currentUser && currentUser.email.toLowerCase() === ADMIN_EMAIL;
 };
 
 export const getAllUsersForAdmin = (): Omit<User, 'passwordHash'>[] => {
@@ -112,12 +114,26 @@ export const getAllUsersForAdmin = (): Omit<User, 'passwordHash'>[] => {
       .map(({ email }) => ({ email }));
 };
 
-export const deleteUserByAdmin = (email: string): boolean => {
+export const deleteUserByAdmin = async (email: string): Promise<boolean> => {
     if (!isAdminSessionActive() || email.toLowerCase() === ADMIN_EMAIL) return false;
-    let users = getUsers();
-    users = users.filter(u => u.email.toLowerCase() !== email.toLowerCase());
-    saveUsers(users);
-    return true;
+
+    try {
+        // Delete IndexedDB data
+        await deleteDatabaseForUser(email);
+
+        // Delete localStorage data
+        removeAllDataForUser(email);
+
+        // Delete user record from the main list
+        let users = getUsers();
+        users = users.filter(u => u.email.toLowerCase() !== email.toLowerCase());
+        saveUsers(users);
+        
+        return true;
+    } catch (error) {
+        console.error(`[AuthService] Failed to delete user ${email}:`, error);
+        return false;
+    }
 };
 
 // DEPRECATED FUNCTIONS
