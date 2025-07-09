@@ -1,16 +1,32 @@
 
 import type { TTSSettings, FavoriteItem, MangaDocumentDisplayInfo } from '@/types';
-// PDF_MANGA_DOCUMENT_PAGE_STATES_KEY will be managed differently or per document in IndexedDB if needed.
-// For now, we simplify and assume MangaRoom handles its current page index in component state.
+import { getCurrentUser } from './authService';
+
+// --- KEY GENERATION ---
+// All keys are now functions that generate user-specific keys.
+
+const getUserId = (): string | null => {
+    const user = getCurrentUser();
+    return user ? user.email : null;
+};
+
+const getUserKey = (baseKey: string): string | null => {
+    const userId = getUserId();
+    if (!userId) return null;
+    return `${baseKey}_${userId}`;
+};
 
 const TTS_SETTINGS_KEY = 'mangaTalk_ttsSettings_v2';
 const FAVORITE_ITEMS_KEY = 'mangaTalk_favoriteItems_v1';
 const SCRATCHPAD_TEXT_KEY = 'mangaTalk_scratchpadText_v1';
 const DOC_METADATA_CACHE_KEY = 'mangaTalk_docMetadataCache_v1';
 const TTS_TEXT_SIZE_KEY = 'mangaTalk_ttsTextSize_v1';
+const PDF_MANGA_DOCUMENT_PAGE_STATES_KEY = 'mangaTalk_pdfDocumentPageStates_v3';
+const EPUB_MANGA_DOCUMENT_CFI_KEY = 'mangaTalk_epubDocumentCfi_v1';
 
 
-// Helper to safely access localStorage
+// --- HELPERS ---
+
 const safeLocalStorageGet = <T>(key: string, defaultValue: T): T => {
   if (typeof window === 'undefined') return defaultValue;
   try {
@@ -38,31 +54,33 @@ const safeLocalStorageSet = (key: string, value: any): boolean => {
 };
 
 // --- PDF Page Index ---
-const PDF_MANGA_DOCUMENT_PAGE_STATES_KEY = 'mangaTalk_pdfDocumentPageStates_v3';
 export const loadCurrentPdfPageIndexForDoc = (docId: string): number | undefined => {
-  if (!docId || typeof window === 'undefined') return undefined;
-  const states = safeLocalStorageGet<{ [docId: string]: number }>(PDF_MANGA_DOCUMENT_PAGE_STATES_KEY, {});
+  const key = getUserKey(PDF_MANGA_DOCUMENT_PAGE_STATES_KEY);
+  if (!key || !docId) return undefined;
+  const states = safeLocalStorageGet<{ [docId: string]: number }>(key, {});
   return states[docId];
 };
 export const saveCurrentPdfPageIndexForDoc = (docId: string, pageIndex: number): boolean => {
-  if (!docId || typeof window === 'undefined') return false;
-  const states = safeLocalStorageGet<{ [docId: string]: number }>(PDF_MANGA_DOCUMENT_PAGE_STATES_KEY, {});
+  const key = getUserKey(PDF_MANGA_DOCUMENT_PAGE_STATES_KEY);
+  if (!key || !docId) return false;
+  const states = safeLocalStorageGet<{ [docId: string]: number }>(key, {});
   states[docId] = pageIndex;
-  return safeLocalStorageSet(PDF_MANGA_DOCUMENT_PAGE_STATES_KEY, states);
+  return safeLocalStorageSet(key, states);
 };
 
 // --- EPUB CFI (Location) ---
-const EPUB_MANGA_DOCUMENT_CFI_KEY = 'mangaTalk_epubDocumentCfi_v1';
 export const loadCurrentEpubCfiForDoc = (docId: string): string | undefined => {
-    if (!docId || typeof window === 'undefined') return undefined;
-    const states = safeLocalStorageGet<{ [docId: string]: string }>(EPUB_MANGA_DOCUMENT_CFI_KEY, {});
+    const key = getUserKey(EPUB_MANGA_DOCUMENT_CFI_KEY);
+    if (!key || !docId) return undefined;
+    const states = safeLocalStorageGet<{ [docId: string]: string }>(key, {});
     return states[docId];
 };
 export const saveCurrentEpubCfiForDoc = (docId: string, cfi: string): boolean => {
-    if (!docId || typeof window === 'undefined') return false;
-    const states = safeLocalStorageGet<{ [docId: string]: string }>(EPUB_MANGA_DOCUMENT_CFI_KEY, {});
+    const key = getUserKey(EPUB_MANGA_DOCUMENT_CFI_KEY);
+    if (!key || !docId) return false;
+    const states = safeLocalStorageGet<{ [docId: string]: string }>(key, {});
     states[docId] = cfi;
-    return safeLocalStorageSet(EPUB_MANGA_DOCUMENT_CFI_KEY, states);
+    return safeLocalStorageSet(key, states);
 };
 
 
@@ -76,18 +94,28 @@ export const defaultTTSSettings: TTSSettings = {
   engine: 'local',
 };
 export const loadTTSSettings = (): TTSSettings => {
-  const settings = safeLocalStorageGet<TTSSettings>(TTS_SETTINGS_KEY, defaultTTSSettings);
+  const key = getUserKey(TTS_SETTINGS_KEY);
+  if (!key) return defaultTTSSettings;
+  const settings = safeLocalStorageGet<TTSSettings>(key, defaultTTSSettings);
   return { ...defaultTTSSettings, ...settings };
 };
-export const saveTTSSettings = (settings: TTSSettings): boolean => safeLocalStorageSet(TTS_SETTINGS_KEY, settings);
+export const saveTTSSettings = (settings: TTSSettings): boolean => {
+  const key = getUserKey(TTS_SETTINGS_KEY);
+  if (!key) return false;
+  return safeLocalStorageSet(key, settings);
+};
 
-// Favorites Page specific storage (FavoriteItem - shared)
+// Favorites Page specific storage
 export const loadFavoriteItems = (): FavoriteItem[] => {
-    return safeLocalStorageGet<FavoriteItem[]>(FAVORITE_ITEMS_KEY, []);
+    const key = getUserKey(FAVORITE_ITEMS_KEY);
+    if (!key) return [];
+    return safeLocalStorageGet<FavoriteItem[]>(key, []);
 };
 
 export const saveFavoriteItems = (items: FavoriteItem[]): boolean => {
-    return safeLocalStorageSet(FAVORITE_ITEMS_KEY, items);
+    const key = getUserKey(FAVORITE_ITEMS_KEY);
+    if (!key) return false;
+    return safeLocalStorageSet(key, items);
 };
 
 export const addFavoriteItem = (item: FavoriteItem): boolean => {
@@ -104,29 +132,39 @@ export const deleteFavoriteItem = (itemId: string): boolean => {
 
 // Scratchpad Text
 export const loadScratchpadText = (): string => {
-  return safeLocalStorageGet<string>(SCRATCHPAD_TEXT_KEY, '');
+  const key = getUserKey(SCRATCHPAD_TEXT_KEY);
+  if (!key) return '';
+  return safeLocalStorageGet<string>(key, '');
 };
 
 export const saveScratchpadText = (text: string): boolean => {
-  return safeLocalStorageSet(SCRATCHPAD_TEXT_KEY, text);
+  const key = getUserKey(SCRATCHPAD_TEXT_KEY);
+  if (!key) return false;
+  return safeLocalStorageSet(key, text);
 };
 
 // Document Metadata Cache
 export const loadDocumentMetadata = (): MangaDocumentDisplayInfo[] => {
-  return safeLocalStorageGet<MangaDocumentDisplayInfo[]>(DOC_METADATA_CACHE_KEY, []);
+  const key = getUserKey(DOC_METADATA_CACHE_KEY);
+  if (!key) return [];
+  return safeLocalStorageGet<MangaDocumentDisplayInfo[]>(key, []);
 };
 
 export const saveDocumentMetadata = (metadata: MangaDocumentDisplayInfo[]): boolean => {
-  return safeLocalStorageSet(DOC_METADATA_CACHE_KEY, metadata);
+  const key = getUserKey(DOC_METADATA_CACHE_KEY);
+  if (!key) return false;
+  return safeLocalStorageSet(key, metadata);
 };
 
 // TTS Text Size
 export const defaultTtsTextSize = 14;
 export const loadTtsTextSize = (): number => {
-  return safeLocalStorageGet<number>(TTS_TEXT_SIZE_KEY, defaultTtsTextSize);
+  const key = getUserKey(TTS_TEXT_SIZE_KEY);
+  if (!key) return defaultTtsTextSize;
+  return safeLocalStorageGet<number>(key, defaultTtsTextSize);
 };
 export const saveTtsTextSize = (size: number): boolean => {
-  return safeLocalStorageSet(TTS_TEXT_SIZE_KEY, size);
+  const key = getUserKey(TTS_TEXT_SIZE_KEY);
+  if (!key) return false;
+  return safeLocalStorageSet(key, size);
 };
-
-    

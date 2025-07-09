@@ -23,12 +23,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { AuthGuard } from '@/components/auth/AuthGuard';
+import { AppHeader } from '@/components/app/AppHeader';
 
 function arrayBufferToBlob(buffer: ArrayBuffer, type: string): Blob {
   return new Blob([buffer], { type });
 }
 
-export default function LibraryPage() {
+function LibraryPageContent() {
   const { toast } = useToast();
   // Initialize with empty/loading state to match server render and prevent hydration errors
   const [storedDocuments, setStoredDocuments] = useState<StoredMangaDocument[]>([]);
@@ -194,126 +196,137 @@ export default function LibraryPage() {
   };
   
   return (
-    <div className="container mx-auto p-4 md:p-6 space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><UploadCloud className="text-primary" /> Add Document to Browser Storage</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid w-full max-w-md items-center gap-1.5">
-            <Label htmlFor="doc-upload-library">Document File (.epub, .pdf, .txt, .png, .jpg)</Label>
-            <Input
-              ref={fileInputRef}
-              id="doc-upload-library"
-              type="file"
-              accept="application/epub+zip,application/pdf,text/plain,image/*"
-              onChange={handleFileUpload}
-              disabled={isUploading || isLoading}
-            />
-          </div>
-          {isUploading && <p className="mt-2 text-sm text-muted-foreground flex items-center"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Processing and saving to browser...</p>}
-        </CardContent>
-      </Card>
+    <>
+      <AppHeader />
+      <div className="container mx-auto p-4 md:p-6 space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><UploadCloud className="text-primary" /> Add Document to Browser Storage</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid w-full max-w-md items-center gap-1.5">
+              <Label htmlFor="doc-upload-library">Document File (.epub, .pdf, .txt, .png, .jpg)</Label>
+              <Input
+                ref={fileInputRef}
+                id="doc-upload-library"
+                type="file"
+                accept="application/epub+zip,application/pdf,text/plain,image/*"
+                onChange={handleFileUpload}
+                disabled={isUploading || isLoading}
+              />
+            </div>
+            {isUploading && <p className="mt-2 text-sm text-muted-foreground flex items-center"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Processing and saving to browser...</p>}
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><BookOpen className="text-primary" /> Documents Stored in This Browser</CardTitle>
-          <CardDescription>
-            List of documents in this browser. Click &quot;Open in Reader&quot; to view.
-          </CardDescription>
-          <Button variant="outline" size="sm" onClick={() => fetchDocuments(true, "Manual refresh of document list")} disabled={isLoading || isUploading} className="mt-2 w-fit">
-            <RefreshCw className={`mr-2 h-4 w-4 ${isLoading && !isUploading ? 'animate-spin' : ''}`} /> Refresh List
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {isLoading && <p className="text-muted-foreground flex items-center"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading documents...</p>}
-          {!isLoading && storedDocuments.length === 0 && (
-            <p className="text-muted-foreground">No documents found. Upload one to get started.</p>
-          )}
-          {storedDocuments.length > 0 && (
-            <ul className="space-y-3">
-              {storedDocuments.map(doc => (
-                  <li key={doc.id} className="p-3 border rounded-md flex flex-col sm:flex-row justify-between items-start gap-3 bg-card hover:shadow-md transition-shadow">
-                    <div className="flex items-center gap-3 flex-grow min-w-0">
-                      {getDocumentIcon(doc.type)}
-                      <div className="min-w-0">
-                        <p className="text-base font-medium truncate" title={doc.title}>{doc.title || 'Untitled Document'}</p>
-                        <p className="text-xs text-muted-foreground">
-                          Type: {doc.originalType || doc.type} | Stored: {new Date(doc.createdAt || 0).toLocaleDateString()}
-                          {doc.type === 'pdf' && doc.numPages !== undefined && ` | Pages: ${doc.numPages}`}
-                        </p>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><BookOpen className="text-primary" /> Documents Stored in This Browser</CardTitle>
+            <CardDescription>
+              List of documents in this browser. Click &quot;Open in Reader&quot; to view.
+            </CardDescription>
+            <Button variant="outline" size="sm" onClick={() => fetchDocuments(true, "Manual refresh of document list")} disabled={isLoading || isUploading} className="mt-2 w-fit">
+              <RefreshCw className={`mr-2 h-4 w-4 ${isLoading && !isUploading ? 'animate-spin' : ''}`} /> Refresh List
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {isLoading && <p className="text-muted-foreground flex items-center"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading documents...</p>}
+            {!isLoading && storedDocuments.length === 0 && (
+              <p className="text-muted-foreground">No documents found. Upload one to get started.</p>
+            )}
+            {storedDocuments.length > 0 && (
+              <ul className="space-y-3">
+                {storedDocuments.map(doc => (
+                    <li key={doc.id} className="p-3 border rounded-md flex flex-col sm:flex-row justify-between items-start gap-3 bg-card hover:shadow-md transition-shadow">
+                      <div className="flex items-center gap-3 flex-grow min-w-0">
+                        {getDocumentIcon(doc.type)}
+                        <div className="min-w-0">
+                          <p className="text-base font-medium truncate" title={doc.title}>{doc.title || 'Untitled Document'}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Type: {doc.originalType || doc.type} | Stored: {new Date(doc.createdAt || 0).toLocaleDateString()}
+                            {doc.type === 'pdf' && doc.numPages !== undefined && ` | Pages: ${doc.numPages}`}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex gap-2 mt-2 sm:mt-0 sm:items-center flex-shrink-0">
-                      <Button size="sm" variant="outline" asChild disabled={isUploading || isLoading}>
-                        <Link href={`/reader?docId=${doc.id}`}>
-                          <BookOpen className="mr-1.5 h-4 w-4" /> Open in Reader
-                        </Link>
-                      </Button>
-                      <Button
+                      <div className="flex gap-2 mt-2 sm:mt-0 sm:items-center flex-shrink-0">
+                        <Button size="sm" variant="outline" asChild disabled={isUploading || isLoading}>
+                          <Link href={`/reader?docId=${doc.id}`}>
+                            <BookOpen className="mr-1.5 h-4 w-4" /> Open in Reader
+                          </Link>
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleSaveToDevice(doc)}
+                            disabled={isSavingToDevice === doc.id || isUploading || isLoading}
+                            className="w-[150px]"
+                            title="Save a copy to your computer's file system."
+                        >
+                            {isSavingToDevice === doc.id ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />} Save to Device
+                        </Button>
+                        <Button
                           size="sm"
-                          variant="outline"
-                          onClick={() => handleSaveToDevice(doc)}
-                          disabled={isSavingToDevice === doc.id || isUploading || isLoading}
-                          className="w-[150px]"
-                          title="Save a copy to your computer's file system."
-                      >
-                          {isSavingToDevice === doc.id ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />} Save to Device
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setDocToDelete(doc)}
-                        disabled={isUploading || isLoading}
-                        aria-label="Delete Document">
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </li>
-                )
-              )}
-            </ul>
+                          variant="ghost"
+                          onClick={() => setDocToDelete(doc)}
+                          disabled={isUploading || isLoading}
+                          aria-label="Delete Document">
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </li>
+                  )
+                )}
+              </ul>
+            )}
+          </CardContent>
+          {storedDocuments.length > 0 && (
+            <CardFooter>
+              <p className="text-xs text-muted-foreground">Documents are stored in your browser's IndexedDB. Clearing site data will remove them.</p>
+            </CardFooter>
           )}
-        </CardContent>
-        {storedDocuments.length > 0 && (
-          <CardFooter>
-            <p className="text-xs text-muted-foreground">Documents are stored in your browser's IndexedDB. Clearing site data will remove them.</p>
-          </CardFooter>
-        )}
-      </Card>
+        </Card>
 
-      <Card className="border-blue-500 bg-blue-500/5">
-        <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-blue-700 dark:text-blue-300"><Info className="h-6 w-6" /> Understanding &quot;Save to Device&quot;</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm text-blue-600 dark:text-blue-400/90">
-            <p className="font-semibold text-base">
-                &quot;Save to Device&quot; saves a copy of your browser-stored document to your computer.
-            </p>
-            <p>
-                This will trigger a standard browser download for the selected file.
-            </p>
-        </CardContent>
-      </Card>
-      
-      <AlertDialog open={!!docToDelete} onOpenChange={(isOpen) => !isOpen && setDocToDelete(null)}>
-        <AlertDialogContent>
-            <AlertDialogHeader>
-            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-                This action cannot be undone. This will permanently delete the document
-                <span className="font-bold"> &quot;{docToDelete?.title}&quot;</span>.
-            </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={performDelete}>
-                Continue
-            </AlertDialogAction>
-            </AlertDialogFooter>
-        </AlertDialogContent>
-    </AlertDialog>
-    </div>
+        <Card className="border-blue-500 bg-blue-500/5">
+          <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-blue-700 dark:text-blue-300"><Info className="h-6 w-6" /> Understanding &quot;Save to Device&quot;</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm text-blue-600 dark:text-blue-400/90">
+              <p className="font-semibold text-base">
+                  &quot;Save to Device&quot; saves a copy of your browser-stored document to your computer.
+              </p>
+              <p>
+                  This will trigger a standard browser download for the selected file.
+              </p>
+          </CardContent>
+        </Card>
+        
+        <AlertDialog open={!!docToDelete} onOpenChange={(isOpen) => !isOpen && setDocToDelete(null)}>
+          <AlertDialogContent>
+              <AlertDialogHeader>
+              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                  This action cannot be undone. This will permanently delete the document
+                  <span className="font-bold"> &quot;{docToDelete?.title}&quot;</span>.
+              </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={performDelete}>
+                  Continue
+              </AlertDialogAction>
+              </AlertDialogFooter>
+          </AlertDialogContent>
+      </AlertDialog>
+      </div>
+    </>
   );
+}
 
+export default function LibraryPage() {
+    return (
+        <AuthGuard>
+            <LibraryPageContent />
+        </AuthGuard>
+    )
+}
     

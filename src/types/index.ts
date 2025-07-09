@@ -1,5 +1,9 @@
 
 
+export interface User {
+  email: string;
+  passwordHash: string;
+}
 
 export interface MangaSubPage { // Primarily for PDF pages rendered as images
   imageDataUrl: string;
@@ -104,5 +108,3 @@ export interface MangaDocumentDisplayInfo {
   createdAt: number;
   numPages?: number;
 }
-
-    

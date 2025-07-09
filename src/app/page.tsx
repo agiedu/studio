@@ -1,14 +1,27 @@
 
-import { redirect } from 'next/navigation';
+'use client';
+
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { getCurrentUser } from '@/lib/authService';
+import { Loader2 } from 'lucide-react';
 
 export default function Home() {
-  // Redirect to the library page by default
-  redirect('/library');
+  const router = useRouter();
 
-  // Fallback content if redirect doesn't happen immediately (should not be visible)
-  // return (
-  //   // <div className="flex flex-col flex-grow items-center justify-center">
-  //   //   <p>Redirecting to your library...</p>
-  //   // </div>
-  // );
+  useEffect(() => {
+    // This check runs only on the client-side
+    if (getCurrentUser()) {
+      router.replace('/library');
+    } else {
+      router.replace('/login');
+    }
+  }, [router]);
+
+  // Render a loading state while the redirect is happening
+  return (
+    <div className="flex h-screen w-full items-center justify-center">
+      <Loader2 className="h-8 w-8 animate-spin" />
+    </div>
+  );
 }

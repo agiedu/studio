@@ -42,13 +42,15 @@ import * as IndexedDBService from '@/lib/indexedDBService';
 import type { TTSSettings, TTSVoice, StoredMangaDocument, ActiveMangaDocument, StoredPdfDocument, StoredImageDocument, StoredEpubDocument, StoredTxtDocument, StoredMobiDocument } from '@/types';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
+import { AuthGuard } from '@/components/auth/AuthGuard';
+import { AppHeader } from '@/components/app/AppHeader';
 
 const PDF_DEFAULT_SCALE = 1.0;
 const PUNCTUATION_REGEX = /\p{P}/gu;
 
 type SpeechOrigin = 'main' | 'repeat' | null;
 
-export default function ReaderPage() {
+function ReaderPageContent() {
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -1272,346 +1274,355 @@ export default function ReaderPage() {
 
 
   return (
-    <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)]">
-      {/* Reader Content Pane */}
-      <div className="flex-grow flex flex-col bg-muted/20 p-2 md:p-4 min-w-0">
-        
-        {/* Top part: Scrollable Content Area */}
-        <div ref={scrollContainerRef} onScroll={(e) => scrollPositionRef.current = e.currentTarget.scrollTop} className="flex-grow overflow-y-auto rounded-lg bg-background shadow-inner relative flex flex-col justify-start">
-            {(isLoadingDoc || isEpubLoading || isRenderingPdfPage) && (
-                <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
-                    <Loader2 className="h-10 w-10 animate-spin text-primary" />
-                    <p className="ml-3">Loading content...</p>
-                </div>
-            )}
-            {docErrorMessage && !activeDoc && (
-                <div className="absolute inset-x-0 top-4 mx-auto w-fit max-w-md bg-destructive/10 border border-destructive text-destructive p-3 rounded-md shadow-lg z-20 flex items-start gap-2">
-                    <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
-                    <div>
-                        <p className="font-medium text-sm">Document Display Issue</p>
-                        <p className="text-xs">{docErrorMessage}</p>
-                        <Button variant="ghost" size="sm" className="text-xs h-auto p-1 mt-1 text-destructive hover:bg-destructive/20" onClick={() => setDocErrorMessage(null)}>Dismiss</Button>
-                    </div>
-                </div>
-            )}
-            
-            <div 
-              className="w-full h-full p-2 md:p-4 flex flex-col items-center justify-start"
-              style={{
-                transform: `scale(${viewScale})`,
-                transformOrigin: 'top center',
-                transition: 'transform 0.2s ease-out'
-              }}
-            >
-              {/* Scratchpad View */}
-              {!activeDoc && !isLoadingDoc && !docErrorMessage && (
-                <div className="w-full h-full flex flex-col">
-                  <div className="w-full flex-grow">
-                    {(isSpeaking || isPaused) ? (
-                      <div ref={mainHighlightedContentRef} className="w-full h-full whitespace-pre-wrap select-text text-sm overflow-y-auto">
-                        {speakingViewContent}
-                      </div>
-                    ) : (
-                      <Textarea
-                          ref={mainTextAreaRef}
-                          id="scratchpad-input"
-                          placeholder="Welcome to the Scratchpad!
-
-Type or paste any text here to have it read aloud or to save snippets to your favorites."
-                          className="w-full h-full text-sm resize-none border-none focus-visible:ring-0 p-0 shadow-none bg-transparent"
-                          value={scratchpadText}
-                          onChange={(e) => {
-                              setScratchpadText(e.target.value);
-                              setCurrentTextForTTS(e.target.value);
-                          }}
-                          aria-label="Scratchpad for custom text input"
-                      />
-                    )}
+    <>
+      <AppHeader />
+      <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)]">
+        {/* Reader Content Pane */}
+        <div className="flex-grow flex flex-col bg-muted/20 p-2 md:p-4 min-w-0">
+          
+          {/* Top part: Scrollable Content Area */}
+          <div ref={scrollContainerRef} onScroll={(e) => scrollPositionRef.current = e.currentTarget.scrollTop} className="flex-grow overflow-y-auto rounded-lg bg-background shadow-inner relative flex flex-col justify-start">
+              {(isLoadingDoc || isEpubLoading || isRenderingPdfPage) && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
+                      <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                      <p className="ml-3">Loading content...</p>
                   </div>
-                </div>
               )}
-
-              {/* PDF Text View */}
-              {activeDoc?.type === 'pdf' && isPdfTextView && (
-                <div className="w-full h-full flex flex-col">
-                    <div ref={mainHighlightedContentRef} className="w-full flex-grow whitespace-pre-wrap select-text px-3 py-2 text-sm min-h-[80px]">
-                        {(isSpeaking || isPaused) ? speakingViewContent : <>{pdfTextContent || ''}</>}
-                    </div>
-                </div>
-              )}
-
-
-              {/* PDF Image Content */}
-              {activeDoc?.type === 'pdf' && !isPdfTextView && (
-                  <div className="w-full text-center space-y-4">
-                      {pdfPageImage && <NextImage src={pdfPageImage} alt={`Page ${currentPdfPageNum}`} width={0} height={0} style={{ width: 'auto', height: 'auto', maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} className="shadow-lg border rounded-md" />}
+              {docErrorMessage && !activeDoc && (
+                  <div className="absolute inset-x-0 top-4 mx-auto w-fit max-w-md bg-destructive/10 border border-destructive text-destructive p-3 rounded-md shadow-lg z-20 flex items-start gap-2">
+                      <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                      <div>
+                          <p className="font-medium text-sm">Document Display Issue</p>
+                          <p className="text-xs">{docErrorMessage}</p>
+                          <Button variant="ghost" size="sm" className="text-xs h-auto p-1 mt-1 text-destructive hover:bg-destructive/20" onClick={() => setDocErrorMessage(null)}>Dismiss</Button>
+                      </div>
                   </div>
               )}
               
-              {/* EPUB Content */}
-              <div id="epub-container" className={cn("w-full h-full flex flex-col items-center", activeDoc?.type !== 'epub' && "hidden")}>
-                  <div
-                      key={activeDoc?.id || 'epub-placeholder'}
-                      id="epub-viewer"
-                      ref={epubViewerRef}
-                      className="w-full flex-grow"
-                  />
-              </div>
-
-              {/* TXT Content */}
-              {activeDoc?.type === 'txt' && (
-                <div className="w-full h-full flex flex-col">
-                    <div ref={mainHighlightedContentRef} className="w-full flex-grow whitespace-pre-wrap select-text px-3 py-2 text-sm min-h-[80px]">
-                        {(isSpeaking || isPaused) ? speakingViewContent : <>{txtContent}</>}
-                    </div>
-                </div>
-              )}
-
-
-              {/* Image Content */}
-              {activeDoc?.type === 'image' && displayedImageSrc && (
-                  <div className="w-full text-center space-y-4">
-                      <NextImage src={displayedImageSrc} alt={activeDoc.title || 'Uploaded Image'} width={800} height={600} style={{objectFit: 'contain'}} className="max-w-full max-h-[calc(100%-4rem)] shadow-lg border rounded-md inline-block" data-ai-hint="illustration abstract" />
-                  </div>
-              )}
-            </div>
-            {/* Mobi Not Supported Message */}
-            {activeDoc?.type === 'mobi' && ( <div className="p-4 bg-background rounded-md shadow-inner text-center h-full flex flex-col justify-center items-center"> <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-2"/> <p className="font-semibold">MOBI Not Supported</p> <p className="text-sm text-muted-foreground">Please convert to EPUB or PDF.</p> </div> )}
-        </div>
-
-        {/* Bottom part: TTS Box - Fixed at the bottom of the content pane */}
-        <div className="flex-shrink-0 pt-2">
-            <Card className="shadow-md">
-                <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3">
-                    <CardTitle className="text-sm flex items-center"><FileText className="mr-2 h-4 w-4"/> Current Text for TTS</CardTitle>
-                    <div className="flex items-center gap-2">
-                        {(showOcrButtonForPdfPage || showOcrButtonForImage || showOcrButtonForEpubPage) && (
-                            <Button
-                                onClick={handlePerformOcr}
-                                disabled={isPerformingOcr}
-                                size="icon"
-                                variant="outline"
-                                className="h-9 w-9"
-                                title={activeDoc?.type === 'image' ? 'OCR Image' : 'OCR Page'}
-                            >
-                                {isPerformingOcr ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanText className="h-4 w-4" />}
-                            </Button>
-                        )}
-                         <Popover>
-                            <PopoverTrigger asChild>
-                                <Button variant="outline" size="icon" className="h-9 w-9">
-                                    <CaseSensitive className="h-4 w-4" />
-                                    <span className="sr-only">Set font size</span>
-                                </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-56" align="end">
-                                <div className="space-y-2">
-                                    <Label htmlFor="tts-font-size" className="text-sm">Font Size: {ttsTextSize}px</Label>
-                                    <Slider
-                                        id="tts-font-size"
-                                        min={10}
-                                        max={32}
-                                        step={1}
-                                        value={[ttsTextSize]}
-                                        onValueChange={([v]) => setTtsTextSize(v)}
-                                    />
-                                </div>
-                            </PopoverContent>
-                        </Popover>
-                    </div>
-                </CardHeader>
-                <CardContent className="pt-0">
-                    {(isSpeaking || isPaused) ? (
-                        <div ref={ttsBoxHighlightedContentRef} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 overflow-y-auto whitespace-pre-wrap select-text" style={{ fontSize: `${ttsTextSize}px` }}>
-                            {speakingViewContent}
+              <div 
+                className="w-full h-full p-2 md:p-4 flex flex-col items-center justify-start"
+                style={{
+                  transform: `scale(${viewScale})`,
+                  transformOrigin: 'top center',
+                  transition: 'transform 0.2s ease-out'
+                }}
+              >
+                {/* Scratchpad View */}
+                {!activeDoc && !isLoadingDoc && !docErrorMessage && (
+                  <div className="w-full h-full flex flex-col">
+                    <div className="w-full flex-grow">
+                      {(isSpeaking || isPaused) ? (
+                        <div ref={mainHighlightedContentRef} className="w-full h-full whitespace-pre-wrap select-text text-sm overflow-y-auto">
+                          {speakingViewContent}
                         </div>
-                    ) : (
-                        <textarea ref={ttsBoxTextAreaRef} readOnly value={currentTextForTTS} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 overflow-y-auto whitespace-pre-wrap select-text" placeholder="Text for TTS..." style={{ fontSize: `${ttsTextSize}px` }} />
-                    )}
-                </CardContent>
-            </Card>
-        </div>
-      </div>
+                      ) : (
+                        <Textarea
+                            ref={mainTextAreaRef}
+                            id="scratchpad-input"
+                            placeholder="Welcome to the Scratchpad!
 
-      {/* Controls Sidebar */}
-      <aside className="w-full lg:w-80 xl:w-96 border-l bg-background flex-shrink-0 overflow-y-auto">
-        <div className="h-full p-3 pb-6 space-y-4">
-            <Card>
-                <CardHeader className="pb-2 pt-4">
-                    <CardTitle className="text-base truncate flex items-center gap-1">
-                        <BookOpen className="h-5 w-5 text-primary"/> {activeDoc?.title || "Scratchpad"}
-                    </CardTitle>
-                    <CardDescription className="text-xs">
-                      {activeDoc
-                        ? `Type: ${activeDoc.type?.toUpperCase()}${activeDoc?.type === 'pdf' && !isPdfTextView && pdfTotalPages > 0 ? `, Page: ${currentPdfPageNum}/${pdfTotalPages}` : ''}`
-                        : 'Custom text input'}
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="pt-2">
-                  <div className="flex w-full items-center gap-2">
-                    <Button variant="outline" size="sm" className="flex-grow" onClick={handleSwitchToScratchpad} disabled={isLoadingDoc}>
-                        <Edit className="mr-2 h-4 w-4" />
-                        Switch to Scratchpad
-                    </Button>
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-9 w-9 flex-shrink-0"
-                        onClick={handleClearScratchpad}
-                        disabled={isLoadingDoc || !!activeDoc}
-                        aria-label="Clear scratchpad text"
-                        title="Clear scratchpad text"
-                    >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </div>
-                </CardContent>
-            </Card>
-
-            {activeDoc?.type === 'pdf' && !isPdfTextView && pdfTotalPages > 0 && (
-              <Card>
-                <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">PDF Navigation</CardTitle></CardHeader>
-                <CardContent className="space-y-2 pt-0">
-                  <div className="flex items-center justify-between">
-                    <Button onClick={() => navigatePdf('prev')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum <= 1} size="sm" variant="outline" aria-label="Previous Page"><ChevronLeft /></Button>
-                    <Button variant="ghost" className="h-9 tabular-nums" onClick={() => openJumpDialog('pdf', currentPdfPageNum, pdfTotalPages)}>
-                        {currentPdfPageNum} / {pdfTotalPages}
-                    </Button>
-                    <Button onClick={() => navigatePdf('next')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum >= pdfTotalPages} size="sm" variant="outline" aria-label="Next Page"><ChevronRight /></Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {activeDoc?.type === 'epub' && (
-              <Card>
-                <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">EPUB Navigation</CardTitle></CardHeader>
-                <CardContent className="flex items-center justify-between pt-0">
-                    <Button onClick={() => navigateEpub('prev')} size="sm" variant="outline" disabled={isEpubLoading || isLoadingDoc} aria-label="Previous Page"><ChevronLeft /></Button>
-                    
-                    {isEpubPaginating ? (
-                      <span className="text-sm text-muted-foreground px-2">Page info loading...</span>
-                    ) : epubTotalPages > 0 ? (
-                      <Button variant="ghost" className="h-9 tabular-nums" onClick={() => openJumpDialog('epub', epubCurrentPageNum + 1, epubTotalPages)}>
-                          {epubCurrentPageNum + 1} / {epubTotalPages}
-                      </Button>
-                    ) : (
-                      <span className="text-sm text-muted-foreground px-2">No page info</span>
-                    )}
-                    
-                    <Button onClick={() => navigateEpub('next')} size="sm" variant="outline" disabled={isEpubLoading || isLoadingDoc} aria-label="Next Page"><ChevronRight /></Button>
-                </CardContent>
-              </Card>
-            )}
-
-            <Card>
-              <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm flex items-center gap-1"><Settings2 className="h-4 w-4"/> Text-to-Speech</CardTitle></CardHeader>
-              <CardContent className="space-y-3 pt-2">
-                <div className="grid grid-cols-2 gap-2">
-                    <Button onMouseDown={(e) => {
-                        e.preventDefault();
-                        selectionInfoRef.current = getSelectedText();
-                      }} 
-                      onClick={playPauseSpeech} 
-                      disabled={mainButtonState.disabled} 
-                      variant={mainButtonState.variant} 
-                      className="w-full text-xs col-span-2 h-9"
-                    >
-                      {mainButtonState.icon} {mainButtonState.text}
-                    </Button>
-                    <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full" title="Favorite Text">
-                      <Star />
-                    </Button>
-                    <Button 
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => {
-                        const selection = getSelectedText();
-                        if (selection.text.trim()) {
-                          speakTextOnce(selection.text);
-                        } else {
-                          toast({ title: "No Selection", description: "Please select text to repeat." });
-                        }
-                      }}
-                      variant="outline" 
-                      size="sm" 
-                      className="w-full" 
-                      disabled={isLoadingTTS}
-                      title="Repeat Selection"
-                    > 
-                      <Repeat />
-                    </Button>
-                </div>
-
-                <Separator className="my-3" />
-
-                <div>
-                  <Label htmlFor="tts-engine" className="text-xs">Engine</Label>
-                  <Select value={ttsSettings.engine} onValueChange={(v) => handleSettingChange('engine', v as 'local' | 'cloud')} disabled={isSpeaking && !isPaused}>
-                    <SelectTrigger id="tts-engine" className="h-9 text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent><SelectItem value="local"><div className="flex items-center gap-1 text-xs"><Smartphone className="h-3 w-3"/>Local</div></SelectItem><SelectItem value="cloud"><div className="flex items-center gap-1 text-xs"><CloudIcon className="h-3 w-3"/>Cloud</div></SelectItem></SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="tts-language" className="text-xs">Language</Label>
-                  <Input id="tts-language" className="h-9 text-xs" value={ttsSettings.language} onChange={(e) => handleSettingChange('language', e.target.value)} disabled={isSpeaking && !isPaused} />
-                </div>
-                {ttsSettings.engine === 'local' && (
-                  <div>
-                    <Label htmlFor="tts-voice" className="text-xs">Voice (Local)</Label>
-                    <Select value={ttsSettings.voiceURI || ""} onValueChange={(v) => handleSettingChange('voiceURI', v)} disabled={isSpeaking && !isPaused || availableVoices.length === 0}>
-                      <SelectTrigger id="tts-voice" className="h-9 text-xs"><SelectValue placeholder="Select voice" /></SelectTrigger>
-                      <SelectContent className="max-h-48">
-                        {availableVoices.map(v => (<SelectItem key={v.voiceURI || v.name} value={v.voiceURI || ""} className="text-xs">{v.name} ({v.lang})</SelectItem>))}
-                      </SelectContent>
-                    </Select>
+Type or paste any text here to have it read aloud or to save snippets to your favorites."
+                            className="w-full h-full text-sm resize-none border-none focus-visible:ring-0 p-0 shadow-none bg-transparent"
+                            value={scratchpadText}
+                            onChange={(e) => {
+                                setScratchpadText(e.target.value);
+                                setCurrentTextForTTS(e.target.value);
+                            }}
+                            aria-label="Scratchpad for custom text input"
+                        />
+                      )}
+                    </div>
                   </div>
                 )}
-                <div className="space-y-1"><Label htmlFor="tts-rate" className="text-xs">Rate: {ttsSettings.rate.toFixed(1)}</Label><Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isSpeaking && !isPaused}/></div>
-                <div className="space-y-1"><Label htmlFor="tts-pitch" className="text-xs">Pitch: {ttsSettings.pitch.toFixed(1)}</Label><Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isSpeaking && !isPaused}/></div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-                <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">View Controls</CardTitle></CardHeader>
-                <CardContent className="space-y-2 pt-0">
-                  <div className="flex items-center gap-2">
-                    <Button onClick={() => handleViewScaleChange(viewScale - 0.25)} size="icon" variant="outline" className="h-7 w-7" disabled={isRenderingPdfPage || viewScale <= 0.25}><ZoomOut className="h-4 w-4"/></Button>
-                    <Slider value={[viewScale]} min={0.25} max={5} step={0.25} onValueChange={([val]) => handleViewScaleChange(val)} disabled={isRenderingPdfPage} />
-                    <Button onClick={() => handleViewScaleChange(viewScale + 0.25)} size="icon" variant="outline" className="h-7 w-7" disabled={isRenderingPdfPage || viewScale >= 5}><ZoomIn className="h-4 w-4"/></Button>
+
+                {/* PDF Text View */}
+                {activeDoc?.type === 'pdf' && isPdfTextView && (
+                  <div className="w-full h-full flex flex-col">
+                      <div ref={mainHighlightedContentRef} className="w-full flex-grow whitespace-pre-wrap select-text px-3 py-2 text-sm min-h-[80px]">
+                          {(isSpeaking || isPaused) ? speakingViewContent : <>{pdfTextContent || ''}</>}
+                      </div>
                   </div>
-                </CardContent>
+                )}
+
+
+                {/* PDF Image Content */}
+                {activeDoc?.type === 'pdf' && !isPdfTextView && (
+                    <div className="w-full text-center space-y-4">
+                        {pdfPageImage && <NextImage src={pdfPageImage} alt={`Page ${currentPdfPageNum}`} width={0} height={0} style={{ width: 'auto', height: 'auto', maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} className="shadow-lg border rounded-md" />}
+                    </div>
+                )}
+                
+                {/* EPUB Content */}
+                <div id="epub-container" className={cn("w-full h-full flex flex-col items-center", activeDoc?.type !== 'epub' && "hidden")}>
+                    <div
+                        key={activeDoc?.id || 'epub-placeholder'}
+                        id="epub-viewer"
+                        ref={epubViewerRef}
+                        className="w-full flex-grow"
+                    />
+                </div>
+
+                {/* TXT Content */}
+                {activeDoc?.type === 'txt' && (
+                  <div className="w-full h-full flex flex-col">
+                      <div ref={mainHighlightedContentRef} className="w-full flex-grow whitespace-pre-wrap select-text px-3 py-2 text-sm min-h-[80px]">
+                          {(isSpeaking || isPaused) ? speakingViewContent : <>{txtContent}</>}
+                      </div>
+                  </div>
+                )}
+
+
+                {/* Image Content */}
+                {activeDoc?.type === 'image' && displayedImageSrc && (
+                    <div className="w-full text-center space-y-4">
+                        <NextImage src={displayedImageSrc} alt={activeDoc.title || 'Uploaded Image'} width={800} height={600} style={{objectFit: 'contain'}} className="max-w-full max-h-[calc(100%-4rem)] shadow-lg border rounded-md inline-block" data-ai-hint="illustration abstract" />
+                    </div>
+                )}
+              </div>
+              {/* Mobi Not Supported Message */}
+              {activeDoc?.type === 'mobi' && ( <div className="p-4 bg-background rounded-md shadow-inner text-center h-full flex flex-col justify-center items-center"> <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-2"/> <p className="font-semibold">MOBI Not Supported</p> <p className="text-sm text-muted-foreground">Please convert to EPUB or PDF.</p> </div> )}
+          </div>
+
+          {/* Bottom part: TTS Box - Fixed at the bottom of the content pane */}
+          <div className="flex-shrink-0 pt-2">
+              <Card className="shadow-md">
+                  <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3">
+                      <CardTitle className="text-sm flex items-center"><FileText className="mr-2 h-4 w-4"/> Current Text for TTS</CardTitle>
+                      <div className="flex items-center gap-2">
+                          {(showOcrButtonForPdfPage || showOcrButtonForImage || showOcrButtonForEpubPage) && (
+                              <Button
+                                  onClick={handlePerformOcr}
+                                  disabled={isPerformingOcr}
+                                  size="icon"
+                                  variant="outline"
+                                  className="h-9 w-9"
+                                  title={activeDoc?.type === 'image' ? 'OCR Image' : 'OCR Page'}
+                              >
+                                  {isPerformingOcr ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanText className="h-4 w-4" />}
+                              </Button>
+                          )}
+                          <Popover>
+                              <PopoverTrigger asChild>
+                                  <Button variant="outline" size="icon" className="h-9 w-9">
+                                      <CaseSensitive className="h-4 w-4" />
+                                      <span className="sr-only">Set font size</span>
+                                  </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-56" align="end">
+                                  <div className="space-y-2">
+                                      <Label htmlFor="tts-font-size" className="text-sm">Font Size: {ttsTextSize}px</Label>
+                                      <Slider
+                                          id="tts-font-size"
+                                          min={10}
+                                          max={32}
+                                          step={1}
+                                          value={[ttsTextSize]}
+                                          onValueChange={([v]) => setTtsTextSize(v)}
+                                      />
+                                  </div>
+                              </PopoverContent>
+                          </Popover>
+                      </div>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                      {(isSpeaking || isPaused) ? (
+                          <div ref={ttsBoxHighlightedContentRef} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 overflow-y-auto whitespace-pre-wrap select-text" style={{ fontSize: `${ttsTextSize}px` }}>
+                              {speakingViewContent}
+                          </div>
+                      ) : (
+                          <textarea ref={ttsBoxTextAreaRef} readOnly value={currentTextForTTS} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 overflow-y-auto whitespace-pre-wrap select-text" placeholder="Text for TTS..." style={{ fontSize: `${ttsTextSize}px` }} />
+                      )}
+                  </CardContent>
+              </Card>
+          </div>
+        </div>
+
+        {/* Controls Sidebar */}
+        <aside className="w-full lg:w-80 xl:w-96 border-l bg-background flex-shrink-0 overflow-y-auto">
+          <div className="h-full p-3 pb-6 space-y-4">
+              <Card>
+                  <CardHeader className="pb-2 pt-4">
+                      <CardTitle className="text-base truncate flex items-center gap-1">
+                          <BookOpen className="h-5 w-5 text-primary"/> {activeDoc?.title || "Scratchpad"}
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        {activeDoc
+                          ? `Type: ${activeDoc.type?.toUpperCase()}${activeDoc?.type === 'pdf' && !isPdfTextView && pdfTotalPages > 0 ? `, Page: ${currentPdfPageNum}/${pdfTotalPages}` : ''}`
+                          : 'Custom text input'}
+                      </CardDescription>
+                  </CardHeader>
+                  <CardContent className="pt-2">
+                    <div className="flex w-full items-center gap-2">
+                      <Button variant="outline" size="sm" className="flex-grow" onClick={handleSwitchToScratchpad} disabled={isLoadingDoc}>
+                          <Edit className="mr-2 h-4 w-4" />
+                          Switch to Scratchpad
+                      </Button>
+                      <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 flex-shrink-0"
+                          onClick={handleClearScratchpad}
+                          disabled={isLoadingDoc || !!activeDoc}
+                          aria-label="Clear scratchpad text"
+                          title="Clear scratchpad text"
+                      >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  </CardContent>
               </Card>
 
-        </div>
-      </aside>
+              {activeDoc?.type === 'pdf' && !isPdfTextView && pdfTotalPages > 0 && (
+                <Card>
+                  <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">PDF Navigation</CardTitle></CardHeader>
+                  <CardContent className="space-y-2 pt-0">
+                    <div className="flex items-center justify-between">
+                      <Button onClick={() => navigatePdf('prev')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum <= 1} size="sm" variant="outline" aria-label="Previous Page"><ChevronLeft /></Button>
+                      <Button variant="ghost" className="h-9 tabular-nums" onClick={() => openJumpDialog('pdf', currentPdfPageNum, pdfTotalPages)}>
+                          {currentPdfPageNum} / {pdfTotalPages}
+                      </Button>
+                      <Button onClick={() => navigatePdf('next')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum >= pdfTotalPages} size="sm" variant="outline" aria-label="Next Page"><ChevronRight /></Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
-      <AlertDialog open={jumpDialogInfo.open} onOpenChange={(isOpen) => !isOpen && handleCancelJump()}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Jump to Page</AlertDialogTitle>
-            <AlertDialogDescription>
-              Enter a page number between 1 and {jumpDialogInfo.totalPages}.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="py-2">
-            <Input
-              type="number"
-              value={jumpToPageInput}
-              onChange={(e) => setJumpToPageInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleConfirmJump()}
-              placeholder={`Page (1-${jumpDialogInfo.totalPages})`}
-              className="text-center"
-              autoFocus
-            />
+              {activeDoc?.type === 'epub' && (
+                <Card>
+                  <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">EPUB Navigation</CardTitle></CardHeader>
+                  <CardContent className="flex items-center justify-between pt-0">
+                      <Button onClick={() => navigateEpub('prev')} size="sm" variant="outline" disabled={isEpubLoading || isLoadingDoc} aria-label="Previous Page"><ChevronLeft /></Button>
+                      
+                      {isEpubPaginating ? (
+                        <span className="text-sm text-muted-foreground px-2">Page info loading...</span>
+                      ) : epubTotalPages > 0 ? (
+                        <Button variant="ghost" className="h-9 tabular-nums" onClick={() => openJumpDialog('epub', epubCurrentPageNum + 1, epubTotalPages)}>
+                            {epubCurrentPageNum + 1} / {epubTotalPages}
+                        </Button>
+                      ) : (
+                        <span className="text-sm text-muted-foreground px-2">No page info</span>
+                      )}
+                      
+                      <Button onClick={() => navigateEpub('next')} size="sm" variant="outline" disabled={isEpubLoading || isLoadingDoc} aria-label="Next Page"><ChevronRight /></Button>
+                  </CardContent>
+                </Card>
+              )}
+
+              <Card>
+                <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm flex items-center gap-1"><Settings2 className="h-4 w-4"/> Text-to-Speech</CardTitle></CardHeader>
+                <CardContent className="space-y-3 pt-2">
+                  <div className="grid grid-cols-2 gap-2">
+                      <Button onMouseDown={(e) => {
+                          e.preventDefault();
+                          selectionInfoRef.current = getSelectedText();
+                        }} 
+                        onClick={playPauseSpeech} 
+                        disabled={mainButtonState.disabled} 
+                        variant={mainButtonState.variant} 
+                        className="w-full text-xs col-span-2 h-9"
+                      >
+                        {mainButtonState.icon} {mainButtonState.text}
+                      </Button>
+                      <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full" title="Favorite Text">
+                        <Star />
+                      </Button>
+                      <Button 
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          const selection = getSelectedText();
+                          if (selection.text.trim()) {
+                            speakTextOnce(selection.text);
+                          } else {
+                            toast({ title: "No Selection", description: "Please select text to repeat." });
+                          }
+                        }}
+                        variant="outline" 
+                        size="sm" 
+                        className="w-full" 
+                        disabled={isLoadingTTS}
+                        title="Repeat Selection"
+                      > 
+                        <Repeat />
+                      </Button>
+                  </div>
+
+                  <Separator className="my-3" />
+
+                  <div>
+                    <Label htmlFor="tts-engine" className="text-xs">Engine</Label>
+                    <Select value={ttsSettings.engine} onValueChange={(v) => handleSettingChange('engine', v as 'local' | 'cloud')} disabled={isSpeaking && !isPaused}>
+                      <SelectTrigger id="tts-engine" className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent><SelectItem value="local"><div className="flex items-center gap-1 text-xs"><Smartphone className="h-3 w-3"/>Local</div></SelectItem><SelectItem value="cloud"><div className="flex items-center gap-1 text-xs"><CloudIcon className="h-3 w-3"/>Cloud</div></SelectItem></SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="tts-language" className="text-xs">Language</Label>
+                    <Input id="tts-language" className="h-9 text-xs" value={ttsSettings.language} onChange={(e) => handleSettingChange('language', e.target.value)} disabled={isSpeaking && !isPaused} />
+                  </div>
+                  {ttsSettings.engine === 'local' && (
+                    <div>
+                      <Label htmlFor="tts-voice" className="text-xs">Voice (Local)</Label>
+                      <Select value={ttsSettings.voiceURI || ""} onValueChange={(v) => handleSettingChange('voiceURI', v)} disabled={isSpeaking && !isPaused || availableVoices.length === 0}>
+                        <SelectTrigger id="tts-voice" className="h-9 text-xs"><SelectValue placeholder="Select voice" /></SelectTrigger>
+                        <SelectContent className="max-h-48">
+                          {availableVoices.map(v => (<SelectItem key={v.voiceURI || v.name} value={v.voiceURI || ""} className="text-xs">{v.name} ({v.lang})</SelectItem>))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  <div className="space-y-1"><Label htmlFor="tts-rate" className="text-xs">Rate: {ttsSettings.rate.toFixed(1)}</Label><Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isSpeaking && !isPaused}/></div>
+                  <div className="space-y-1"><Label htmlFor="tts-pitch" className="text-xs">Pitch: {ttsSettings.pitch.toFixed(1)}</Label><Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isSpeaking && !isPaused}/></div>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                  <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">View Controls</CardTitle></CardHeader>
+                  <CardContent className="space-y-2 pt-0">
+                    <div className="flex items-center gap-2">
+                      <Button onClick={() => handleViewScaleChange(viewScale - 0.25)} size="icon" variant="outline" className="h-7 w-7" disabled={isRenderingPdfPage || viewScale <= 0.25}><ZoomOut className="h-4 w-4"/></Button>
+                      <Slider value={[viewScale]} min={0.25} max={5} step={0.25} onValueChange={([val]) => handleViewScaleChange(val)} disabled={isRenderingPdfPage} />
+                      <Button onClick={() => handleViewScaleChange(viewScale + 0.25)} size="icon" variant="outline" className="h-7 w-7" disabled={isRenderingPdfPage || viewScale >= 5}><ZoomIn className="h-4 w-4"/></Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
           </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={handleCancelJump}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmJump}>Jump</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+        </aside>
+
+        <AlertDialog open={jumpDialogInfo.open} onOpenChange={(isOpen) => !isOpen && handleCancelJump()}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Jump to Page</AlertDialogTitle>
+              <AlertDialogDescription>
+                Enter a page number between 1 and {jumpDialogInfo.totalPages}.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="py-2">
+              <Input
+                type="number"
+                value={jumpToPageInput}
+                onChange={(e) => setJumpToPageInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleConfirmJump()}
+                placeholder={`Page (1-${jumpDialogInfo.totalPages})`}
+                className="text-center"
+                autoFocus
+              />
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={handleCancelJump}>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleConfirmJump}>Jump</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    </>
   );
 }
 
-    
+export default function ReaderPage() {
+    return (
+        <AuthGuard>
+            <ReaderPageContent />
+        </AuthGuard>
+    )
+}

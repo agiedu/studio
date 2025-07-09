@@ -16,6 +16,7 @@ import { Slider } from '@/components/ui/slider';
 import { Input } from '@/components/ui/input';
 import { edgeTTSLanguageVoices } from '@/lib/edge-tts-voices';
 import { cn } from '@/lib/utils';
+import { AuthGuard } from '@/components/auth/AuthGuard';
 
 
 interface FavoritesTTSSettings {
@@ -28,7 +29,7 @@ interface FavoritesTTSSettings {
   type?: 'local' | 'cloud'; 
 }
 
-export default function FavoritesPage() {
+function FavoritesPageContent() {
   const { toast } = useToast();
   const [favoriteItems, setFavoriteItems] = useState<FavoriteItem[]>([]);
   const [isLoadingTTS, setIsLoadingTTS] = useState(false);
@@ -449,4 +450,12 @@ export default function FavoritesPage() {
       </Card>
     </div>
   );
+}
+
+export default function FavoritesPage() {
+    return (
+        <AuthGuard>
+            <FavoritesPageContent />
+        </AuthGuard>
+    );
 }
