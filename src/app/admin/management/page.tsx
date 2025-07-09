@@ -11,9 +11,9 @@ import { AdminAuthGuard } from '@/components/auth/AuthGuard';
 import {
   getAllUsersForAdmin,
   deleteUserByAdmin,
-  getAdminPassword,
-  setAdminPassword,
   getAdminLoginUrl,
+  changeUserPassword,
+  getCurrentUser
 } from '@/lib/authService';
 import type { User } from '@/types';
 import { Trash2, Users, KeyRound, Link as LinkIcon, AlertTriangle } from 'lucide-react';
@@ -48,7 +48,13 @@ function AdminManagementPage() {
       toast({ variant: 'destructive', title: 'Error', description: 'Password must be at least 4 characters long.' });
       return;
     }
-    const success = setAdminPassword(newAdminPassword);
+    const adminUser = getCurrentUser();
+    if (!adminUser) {
+        toast({ variant: 'destructive', title: 'Error', description: 'Could not identify admin user.' });
+        return;
+    }
+
+    const success = changeUserPassword(adminUser.email, newAdminPassword);
     if (success) {
       toast({ title: 'Success', description: 'Admin password updated successfully.' });
       setNewAdminPassword('');
@@ -69,21 +75,25 @@ function AdminManagementPage() {
             <CardDescription>View and manage all registered users.</CardDescription>
           </CardHeader>
           <CardContent>
-            <ul className="space-y-2">
-              {users.map(user => (
-                <li key={user.email} className="flex items-center justify-between p-2 border rounded-md">
-                  <span>{user.email}</span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleDeleteUser(user.email)}
-                    aria-label={`Delete user ${user.email}`}
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
-                </li>
-              ))}
-            </ul>
+            {users.length > 0 ? (
+                <ul className="space-y-2">
+                {users.map(user => (
+                    <li key={user.email} className="flex items-center justify-between p-2 border rounded-md">
+                    <span>{user.email}</span>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDeleteUser(user.email)}
+                        aria-label={`Delete user ${user.email}`}
+                    >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                    </li>
+                ))}
+                </ul>
+            ) : (
+                <p className="text-muted-foreground">No other users have registered.</p>
+            )}
           </CardContent>
         </Card>
 
@@ -104,7 +114,7 @@ function AdminManagementPage() {
               <Button onClick={handlePasswordChange} className="mt-2">Save Password</Button>
             </div>
             <div>
-              <Label htmlFor="admin-url">Change Admin Login URL</Label>
+              <Label htmlFor="admin-url">Admin Login URL</Label>
               <Input
                 id="admin-url"
                 type="text"
@@ -112,7 +122,6 @@ function AdminManagementPage() {
                 readOnly
                 disabled
               />
-              <Button className="mt-2" disabled>Save URL</Button>
               <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
                 <AlertTriangle className="h-4 w-4" /> This cannot be changed in a client-only application.
               </p>

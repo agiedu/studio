@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { loginAdmin } from '@/lib/authService';
+import { loginUser } from '@/lib/authService';
 import { MangaTalkLogo } from '@/components/icons/MangaTalkLogo';
 import { AlertCircle } from 'lucide-react';
 
@@ -20,7 +20,8 @@ export default function AdminLoginPage() {
 
   const handleLogin = () => {
     setError('');
-    const result = loginAdmin(email, password);
+    // Use the unified login function for all users, including admin
+    const result = loginUser(email, password);
     if (result.success) {
       toast({ title: 'Login Successful', description: 'Redirecting to admin panel...' });
       router.push('/admin/management');
@@ -68,7 +69,7 @@ export default function AdminLoginPage() {
             Login
           </Button>
           <p className="text-xs text-muted-foreground text-center pt-2">
-            Note: For this demo, the default password is 'admin'.
+            Note: The default admin password is 'admin'.
           </p>
         </CardContent>
       </Card>

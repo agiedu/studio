@@ -5,17 +5,27 @@ import bcrypt from 'bcryptjs';
 const USERS_KEY = 'mangaTalk_users';
 const CURRENT_USER_KEY = 'mangaTalk_currentUser';
 const ADMIN_SESSION_KEY = 'mangaTalk_adminSession';
-const ADMIN_PASSWORD_KEY = 'mangaTalk_adminPassword';
 const ADMIN_LOGIN_URL_KEY = 'mangaTalk_adminLoginUrl';
 
 const ADMIN_EMAIL = 'laotouerle@outlook.com';
 const DEFAULT_ADMIN_PASSWORD = 'admin';
 
-// Helper to get all users from localStorage
+// Helper to get all users from localStorage, and ensure admin exists
 const getUsers = (): User[] => {
   if (typeof window === 'undefined') return [];
-  const users = localStorage.getItem(USERS_KEY);
-  return users ? JSON.parse(users) : [];
+  const usersJson = localStorage.getItem(USERS_KEY);
+  let users: User[] = usersJson ? JSON.parse(usersJson) : [];
+
+  // Ensure the admin user exists in the list. This is a self-healing mechanism.
+  const adminUserExists = users.some(u => u.email.toLowerCase() === ADMIN_EMAIL);
+  if (!adminUserExists) {
+    console.log("Admin user not found, creating with default password.");
+    const passwordHash = bcrypt.hashSync(DEFAULT_ADMIN_PASSWORD, 8);
+    users.push({ email: ADMIN_EMAIL, passwordHash });
+    localStorage.setItem(USERS_KEY, JSON.stringify(users));
+  }
+  
+  return users;
 };
 
 // Helper to save all users to localStorage
@@ -28,7 +38,8 @@ const saveUsers = (users: User[]) => {
 
 export const registerUser = (email: string, password: string): { success: boolean; message: string } => {
   const users = getUsers();
-  if (users.find(u => u.email === email) || email.toLowerCase() === ADMIN_EMAIL) {
+  // Case-insensitive check to prevent duplicates
+  if (users.find(u => u.email.toLowerCase() === email.toLowerCase())) {
     return { success: false, message: 'User with this email already exists.' };
   }
   const passwordHash = bcrypt.hashSync(password, 8);
@@ -39,14 +50,24 @@ export const registerUser = (email: string, password: string): { success: boolea
 
 export const loginUser = (email: string, password: string): { success: boolean; message: string } => {
   const users = getUsers();
-  const user = users.find(u => u.email === email);
-  // Check for user, user.passwordHash, and then compare passwords.
+  const lowerCaseEmail = email.toLowerCase();
+  const user = users.find(u => u.email.toLowerCase() === lowerCaseEmail);
+
   if (!user || !user.passwordHash || !bcrypt.compareSync(password, user.passwordHash)) {
     return { success: false, message: 'Invalid email or password.' };
   }
-  // Clear any potential admin session when a regular user logs in.
-  localStorage.removeItem(ADMIN_SESSION_KEY);
-  localStorage.setItem(CURRENT_USER_KEY, JSON.stringify({ email }));
+  
+  // Set current user session
+  localStorage.setItem(CURRENT_USER_KEY, JSON.stringify({ email: user.email }));
+
+  // Check if the user is an admin and set admin session if they are
+  if (lowerCaseEmail === ADMIN_EMAIL) {
+    localStorage.setItem(ADMIN_SESSION_KEY, 'true');
+  } else {
+    // Explicitly clear admin session for non-admin users
+    localStorage.removeItem(ADMIN_SESSION_KEY);
+  }
+  
   return { success: true, message: 'Login successful.' };
 };
 
@@ -64,7 +85,7 @@ export const getCurrentUser = (): { email: string } | null => {
 
 export const changeUserPassword = (email: string, newPassword: string): boolean => {
     const users = getUsers();
-    const userIndex = users.findIndex(u => u.email === email);
+    const userIndex = users.findIndex(u => u.email.toLowerCase() === email.toLowerCase());
     if (userIndex === -1) {
         return false;
     }
@@ -74,16 +95,6 @@ export const changeUserPassword = (email: string, newPassword: string): boolean 
 };
 
 // --- Admin Functions ---
-
-export const loginAdmin = (email: string, password: string): { success: boolean; message: string } => {
-  const adminPassword = getAdminPassword();
-  if (email.toLowerCase() !== ADMIN_EMAIL || password !== adminPassword) {
-    return { success: false, message: 'Invalid admin email or password.' };
-  }
-  localStorage.setItem(ADMIN_SESSION_KEY, 'true');
-  localStorage.setItem(CURRENT_USER_KEY, JSON.stringify({ email }));
-  return { success: true, message: 'Admin login successful.' };
-};
 
 export const isAdminSessionActive = (): boolean => {
     if (typeof window === 'undefined') return false;
@@ -95,30 +106,34 @@ export const isAdminSessionActive = (): boolean => {
 
 export const getAllUsersForAdmin = (): Omit<User, 'passwordHash'>[] => {
     if (!isAdminSessionActive()) return [];
-    return getUsers().map(({ email }) => ({ email }));
+    // Filter out the admin user from the list shown in the panel
+    return getUsers()
+      .filter(u => u.email.toLowerCase() !== ADMIN_EMAIL)
+      .map(({ email }) => ({ email }));
 };
 
 export const deleteUserByAdmin = (email: string): boolean => {
     if (!isAdminSessionActive() || email.toLowerCase() === ADMIN_EMAIL) return false;
     let users = getUsers();
-    users = users.filter(u => u.email !== email);
+    users = users.filter(u => u.email.toLowerCase() !== email.toLowerCase());
     saveUsers(users);
-    // In a real app, you would also trigger deletion of the user's IndexedDB,
-    // which is complex on their behalf. Here we just delete the login.
     return true;
 };
 
-
+// DEPRECATED FUNCTIONS
 export const getAdminPassword = (): string => {
-    if (typeof window === 'undefined') return DEFAULT_ADMIN_PASSWORD;
-    return localStorage.getItem(ADMIN_PASSWORD_KEY) || DEFAULT_ADMIN_PASSWORD;
+    console.warn("getAdminPassword is deprecated and will be removed.");
+    return "";
+};
+export const setAdminPassword = (newPassword: string): boolean => {
+    console.warn("setAdminPassword is deprecated. Use changeUserPassword instead.");
+    return false;
+};
+export const loginAdmin = (email: string, password: string): { success: boolean; message: string } => {
+    console.warn("loginAdmin is deprecated. Use loginUser instead.");
+    return loginUser(email, password);
 };
 
-export const setAdminPassword = (newPassword: string): boolean => {
-    if (!isAdminSessionActive()) return false;
-    localStorage.setItem(ADMIN_PASSWORD_KEY, newPassword);
-    return true;
-};
 
 export const getAdminLoginUrl = (): string => {
     if (typeof window === 'undefined') return '/login/2467899abcmh';
@@ -128,7 +143,6 @@ export const getAdminLoginUrl = (): string => {
 // Note: This function is a placeholder as we can't change server file routes from the client.
 export const setAdminLoginUrl = (newUrl: string): boolean => {
     if (!isAdminSessionActive()) return false;
-    // localStorage.setItem(ADMIN_LOGIN_URL_KEY, newUrl);
     console.warn("Changing admin login URL is not supported in this client-only architecture.");
     return false;
 };
