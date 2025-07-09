@@ -22,16 +22,35 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
 
+  // Captcha state
+  const [num1, setNum1] = useState(0);
+  const [num2, setNum2] = useState(0);
+  const [captchaAnswer, setCaptchaAnswer] = useState('');
+  
+  const generateCaptcha = () => {
+    setNum1(Math.floor(Math.random() * 10));
+    setNum2(Math.floor(Math.random() * 10));
+    setCaptchaAnswer('');
+  };
+
   useEffect(() => {
     const rememberedEmail = LocalStorageService.getRememberedEmail();
     if (rememberedEmail) {
       setEmail(rememberedEmail);
       setRememberMe(true);
     }
+    generateCaptcha();
   }, []);
 
   const handleLogin = () => {
     setError('');
+
+    if (parseInt(captchaAnswer, 10) !== num1 + num2) {
+        setError('Incorrect verification answer. Please try again.');
+        generateCaptcha();
+        return;
+    }
+
     const result = loginUser(email, password);
     if (result.success) {
       if (rememberMe) {
@@ -43,6 +62,7 @@ export default function LoginPage() {
       router.push('/library');
     } else {
       setError(result.message);
+      generateCaptcha();
     }
   };
 
@@ -76,6 +96,18 @@ export default function LoginPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="captcha">Verification: What is {num1} + {num2}?</Label>
+            <Input
+              id="captcha"
+              type="number"
+              placeholder="Your answer"
+              value={captchaAnswer}
+              onChange={(e) => setCaptchaAnswer(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
               required
             />

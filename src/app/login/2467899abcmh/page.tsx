@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,9 +18,30 @@ export default function AdminLoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
+  // Captcha state
+  const [num1, setNum1] = useState(0);
+  const [num2, setNum2] = useState(0);
+  const [captchaAnswer, setCaptchaAnswer] = useState('');
+
+  const generateCaptcha = () => {
+    setNum1(Math.floor(Math.random() * 10));
+    setNum2(Math.floor(Math.random() * 10));
+    setCaptchaAnswer('');
+  };
+
+  useEffect(() => {
+    generateCaptcha();
+  }, []);
+
   const handleLogin = () => {
     setError('');
-    // Use the unified login function for all users, including admin
+
+    if (parseInt(captchaAnswer, 10) !== num1 + num2) {
+        setError('Incorrect verification answer. Please try again.');
+        generateCaptcha();
+        return;
+    }
+
     const result = loginUser(email, password);
     if (result.success) {
       toast({ title: 'Login Successful', description: 'Redirecting to admin panel...' });
@@ -28,6 +49,7 @@ export default function AdminLoginPage() {
     } else {
       setError(result.message);
       toast({ variant: 'destructive', title: 'Login Failed', description: result.message });
+      generateCaptcha();
     }
   };
 
@@ -61,6 +83,19 @@ export default function AdminLoginPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="captcha">Verification: What is {num1} + {num2}?</Label>
+            <Input
+              id="captcha"
+              type="number"
+              placeholder="Your answer"
+              value={captchaAnswer}
+              onChange={(e) => setCaptchaAnswer(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
               required
             />
           </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -20,14 +20,38 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
 
+  // Captcha state
+  const [num1, setNum1] = useState(0);
+  const [num2, setNum2] = useState(0);
+  const [captchaAnswer, setCaptchaAnswer] = useState('');
+
+  const generateCaptcha = () => {
+    setNum1(Math.floor(Math.random() * 10));
+    setNum2(Math.floor(Math.random() * 10));
+    setCaptchaAnswer('');
+  };
+
+  useEffect(() => {
+    generateCaptcha();
+  }, []);
+
   const handleRegister = () => {
     setError('');
+
+    if (parseInt(captchaAnswer, 10) !== num1 + num2) {
+        setError('Incorrect verification answer. Please try again.');
+        generateCaptcha();
+        return;
+    }
+
     if (password !== confirmPassword) {
       setError('Passwords do not match.');
+      generateCaptcha();
       return;
     }
     if (password.length < 4) {
         setError('Password must be at least 4 characters long.');
+        generateCaptcha();
         return;
     }
 
@@ -37,6 +61,7 @@ export default function RegisterPage() {
       router.push('/login');
     } else {
       setError(result.message);
+      generateCaptcha();
     }
   };
 
@@ -80,6 +105,19 @@ export default function RegisterPage() {
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleRegister()}
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="captcha">Verification: What is {num1} + {num2}?</Label>
+            <Input
+              id="captcha"
+              type="number"
+              placeholder="Your answer"
+              value={captchaAnswer}
+              onChange={(e) => setCaptchaAnswer(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleRegister()}
               required
             />
           </div>
