@@ -1,5 +1,5 @@
 'use client';
-import type { User } from '@/types';
+import type { User, FailedLoginAttempt } from '@/types';
 import bcrypt from 'bcryptjs';
 import { deleteDatabaseForUser } from '@/lib/indexedDBService';
 import { removeAllDataForUser } from '@/lib/localStorageService';
@@ -7,21 +7,25 @@ import { removeAllDataForUser } from '@/lib/localStorageService';
 const USERS_KEY = 'mangaTalk_users';
 const CURRENT_USER_KEY = 'mangaTalk_currentUser';
 const ADMIN_SESSION_KEY = 'mangaTalk_adminSession';
-const ADMIN_LOGIN_URL_KEY = 'mangaTalk_adminLoginUrl';
+const FAILED_LOGIN_ATTEMPTS_KEY = 'mangaTalk_failedLoginAttempts';
 
 const ADMIN_EMAIL = 'laotouerle@outlook.com';
 const DEFAULT_ADMIN_PASSWORD = 'admin';
 
-// Helper to get all users from localStorage, and ensure admin exists
+// --- Brute-force protection settings ---
+const MAX_LOGIN_ATTEMPTS = 3; // Max attempts before locking
+const LOCKOUT_PERIOD_MINUTES = 60; // How long to wait for attempts to reset
+const LOCKOUT_DURATION_MINUTES = 240; // How long an account is locked
+
+// --- Helper Functions ---
+
 const getUsers = (): User[] => {
   if (typeof window === 'undefined') return [];
   const usersJson = localStorage.getItem(USERS_KEY);
   let users: User[] = usersJson ? JSON.parse(usersJson) : [];
 
-  // Ensure the admin user exists in the list. This is a self-healing mechanism.
   const adminUserExists = users.some(u => u.email.toLowerCase() === ADMIN_EMAIL);
   if (!adminUserExists) {
-    console.log("Admin user not found, creating with default password.");
     const passwordHash = bcrypt.hashSync(DEFAULT_ADMIN_PASSWORD, 8);
     users.push({ email: ADMIN_EMAIL, passwordHash });
     localStorage.setItem(USERS_KEY, JSON.stringify(users));
@@ -30,17 +34,27 @@ const getUsers = (): User[] => {
   return users;
 };
 
-// Helper to save all users to localStorage
 const saveUsers = (users: User[]) => {
   if (typeof window === 'undefined') return;
   localStorage.setItem(USERS_KEY, JSON.stringify(users));
 };
 
-// --- User Functions ---
+const getFailedAttempts = (): Record<string, FailedLoginAttempt> => {
+    if (typeof window === 'undefined') return {};
+    const attemptsJson = localStorage.getItem(FAILED_LOGIN_ATTEMPTS_KEY);
+    return attemptsJson ? JSON.parse(attemptsJson) : {};
+};
+
+const saveFailedAttempts = (attempts: Record<string, FailedLoginAttempt>) => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(FAILED_LOGIN_ATTEMPTS_KEY, JSON.stringify(attempts));
+};
+
+
+// --- User & Auth Functions ---
 
 export const registerUser = (email: string, password: string): { success: boolean; message: string } => {
   const users = getUsers();
-  // Case-insensitive check to prevent duplicates
   if (users.find(u => u.email.toLowerCase() === email.toLowerCase())) {
     return { success: false, message: 'User with this email already exists.' };
   }
@@ -51,22 +65,64 @@ export const registerUser = (email: string, password: string): { success: boolea
 };
 
 export const loginUser = (email: string, password: string): { success: boolean; message: string } => {
-  const users = getUsers();
   const lowerCaseEmail = email.toLowerCase();
+  const attempts = getFailedAttempts();
+  const userAttempt = attempts[lowerCaseEmail];
+  const now = Date.now();
+
+  // 1. Check if the user is currently locked out
+  if (userAttempt && userAttempt.lockedUntil && now < userAttempt.lockedUntil) {
+      const minutesRemaining = Math.ceil((userAttempt.lockedUntil - now) / (1000 * 60));
+      return { success: false, message: `Account is locked. Please try again in ${minutesRemaining} minutes.` };
+  }
+
+  // 2. Proceed with login attempt
+  const users = getUsers();
   const user = users.find(u => u.email.toLowerCase() === lowerCaseEmail);
 
   if (!user || !user.passwordHash || !bcrypt.compareSync(password, user.passwordHash)) {
-    return { success: false, message: 'Invalid email or password.' };
+    // 3. Handle failed login attempt
+    let newAttemptCount = 1;
+    if (userAttempt) {
+        // Reset attempts if the last attempt was outside the lockout period window
+        const minutesSinceLastAttempt = (now - userAttempt.firstAttemptTimestamp) / (1000 * 60);
+        if (minutesSinceLastAttempt > LOCKOUT_PERIOD_MINUTES) {
+            newAttemptCount = 1; // Reset counter
+        } else {
+            newAttemptCount = userAttempt.count + 1;
+        }
+    }
+
+    if (newAttemptCount >= MAX_LOGIN_ATTEMPTS) {
+        // Lock the account
+        attempts[lowerCaseEmail] = {
+            count: newAttemptCount,
+            firstAttemptTimestamp: userAttempt?.firstAttemptTimestamp || now,
+            lockedUntil: now + LOCKOUT_DURATION_MINUTES * 60 * 1000,
+        };
+        saveFailedAttempts(attempts);
+        return { success: false, message: `Too many failed attempts. Account has been locked for ${LOCKOUT_DURATION_MINUTES} minutes.` };
+    } else {
+        // Just record the failed attempt
+        attempts[lowerCaseEmail] = {
+            count: newAttemptCount,
+            firstAttemptTimestamp: newAttemptCount === 1 ? now : userAttempt.firstAttemptTimestamp,
+        };
+        saveFailedAttempts(attempts);
+    }
+      
+    return { success: false, message: `Invalid email or password. Attempt ${newAttemptCount} of ${MAX_LOGIN_ATTEMPTS}.` };
   }
   
-  // Set current user session
+  // 4. Handle successful login
+  delete attempts[lowerCaseEmail]; // Clear failed attempts on success
+  saveFailedAttempts(attempts);
+  
   localStorage.setItem(CURRENT_USER_KEY, JSON.stringify({ email: user.email }));
 
-  // Check if the user is an admin and set admin session if they are
   if (lowerCaseEmail === ADMIN_EMAIL) {
     localStorage.setItem(ADMIN_SESSION_KEY, 'true');
   } else {
-    // Explicitly clear admin session for non-admin users
     localStorage.removeItem(ADMIN_SESSION_KEY);
   }
   
@@ -102,13 +158,11 @@ export const isAdminSessionActive = (): boolean => {
     if (typeof window === 'undefined') return false;
     const session = localStorage.getItem(ADMIN_SESSION_KEY);
     const currentUser = getCurrentUser();
-    // Double check: session must be active AND the current user must be the admin
     return session === 'true' && !!currentUser && currentUser.email.toLowerCase() === ADMIN_EMAIL;
 };
 
 export const getAllUsersForAdmin = (): Omit<User, 'passwordHash'>[] => {
     if (!isAdminSessionActive()) return [];
-    // Filter out the admin user from the list shown in the panel
     return getUsers()
       .filter(u => u.email.toLowerCase() !== ADMIN_EMAIL)
       .map(({ email }) => ({ email }));
@@ -120,13 +174,9 @@ export const deleteUserByAdmin = async (email: string): Promise<{ success: boole
     }
 
     try {
-        // Delete IndexedDB data
         await deleteDatabaseForUser(email);
-
-        // Delete localStorage data
         removeAllDataForUser(email);
 
-        // Delete user record from the main list
         let users = getUsers();
         users = users.filter(u => u.email.toLowerCase() !== email.toLowerCase());
         saveUsers(users);
@@ -138,29 +188,7 @@ export const deleteUserByAdmin = async (email: string): Promise<{ success: boole
     }
 };
 
-// DEPRECATED FUNCTIONS
-export const getAdminPassword = (): string => {
-    console.warn("getAdminPassword is deprecated and will be removed.");
-    return "";
-};
-export const setAdminPassword = (newPassword: string): boolean => {
-    console.warn("setAdminPassword is deprecated. Use changeUserPassword instead.");
-    return false;
-};
-export const loginAdmin = (email: string, password: string): { success: boolean; message: string } => {
-    console.warn("loginAdmin is deprecated. Use loginUser instead.");
-    return loginUser(email, password);
-};
-
-
 export const getAdminLoginUrl = (): string => {
     if (typeof window === 'undefined') return '/login/2467899abcmh';
-    return localStorage.getItem(ADMIN_LOGIN_URL_KEY) || '/login/2467899abcmh';
-};
-
-// Note: This function is a placeholder as we can't change server file routes from the client.
-export const setAdminLoginUrl = (newUrl: string): boolean => {
-    if (!isAdminSessionActive()) return false;
-    console.warn("Changing admin login URL is not supported in this client-only architecture.");
-    return false;
+    return '/login/2467899abcmh';
 };

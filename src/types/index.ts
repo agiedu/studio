@@ -5,6 +5,13 @@ export interface User {
   passwordHash: string;
 }
 
+export interface FailedLoginAttempt {
+  count: number;
+  firstAttemptTimestamp: number;
+  lockedUntil?: number;
+}
+
+
 export interface MangaSubPage { // Primarily for PDF pages rendered as images
   imageDataUrl: string;
   extractedText?: string;
