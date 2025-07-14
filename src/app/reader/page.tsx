@@ -513,17 +513,14 @@ function ReaderPageContent() {
                     if (!isMountedRef.current || !epubBookRef.current || !rendition) return;
                     const currentBook = epubBookRef.current;
 
-                    // Always save the current location
                     const currentDocId = (activeDoc as ActiveMangaDocument | null)?.id;
                     if (currentDocId) {
                         LocalStorageService.saveCurrentEpubCfiForDoc(currentDocId, location.start.cfi);
                     }
                     
-                    // Process the view for OCR and text extraction
                     processEpubView(rendition.getContents()?.[0]);
 
-                    // If pagination is already done, update the current page number
-                    if (paginationAttemptedRef.current && currentBook.locations && typeof currentBook.locations.length === 'number' && currentBook.locations.length > 0) {
+                    if (paginationAttemptedRef.current && currentBook.locations?.length > 0) {
                         const currentPage = currentBook.locations.pageFromCfi(location.start.cfi);
                         setEpubCurrentPageNum(currentPage);
                     }
@@ -538,17 +535,14 @@ function ReaderPageContent() {
                   if(isStale) { book.destroy(); return; }
 
                   const lastLocation = LocalStorageService.loadCurrentEpubCfiForDoc(doc.id); 
-                  // display() returns a promise that resolves when the section is displayed.
                   const displayPromise = rendition.display(lastLocation || undefined);
 
-                  // Use the promise to trigger the one-time pagination after the first render.
                   displayPromise.then(async () => {
                     const currentBook = epubBookRef.current;
-                    if (!isMountedRef.current || !currentBook || !rendition) return;
+                    if (!isMountedRef.current || !currentBook || !rendition || isStale) return;
 
                     if (!paginationAttemptedRef.current) {
                         paginationAttemptedRef.current = true;
-                        console.log("[EPUB] Initial view rendered. Attempting to generate locations.");
                         setIsEpubPaginating(true);
                         try {
                             await currentBook.locations.generate(1650);
@@ -556,24 +550,16 @@ function ReaderPageContent() {
                             if (isStale || !isMountedRef.current) return;
 
                             const totalPages = currentBook.locations.length;
-                            console.log(`[EPUB] Pagination successful. Total pages: ${totalPages}`);
+                            setEpubTotalPages(totalPages);
                             
                             if (totalPages > 0) {
-                                setEpubTotalPages(totalPages);
                                 const currentLocation = rendition.currentLocation();
                                 const currentPageNum = currentBook.locations.pageFromCfi(currentLocation.start.cfi);
                                 setEpubCurrentPageNum(currentPageNum);
-                            } else {
-                               throw new Error("Pagination process did not yield any pages.");
                             }
                         } catch (paginationError: any) {
                             if (isStale) return;
                             console.warn("EPUB pagination failed:", paginationError.message);
-                            toast({
-                                variant: "default",
-                                title: "EPUB Info",
-                                description: "Page numbering is not available for this book. Navigation is limited to Previous/Next."
-                            });
                             setEpubTotalPages(0);
                         } finally {
                             if (isMountedRef.current) setIsEpubPaginating(false);
@@ -921,8 +907,6 @@ function ReaderPageContent() {
 
   // The executor function for continuous reading.
   const _startSpeech = useCallback(async (origin: SpeechOrigin, startIndex = 0, _isContinuing = false) => {
-    let textToRead: string;
-    
     if (!_isContinuing) {
         const trimmedText = currentTextForTTS?.trim();
         if (!trimmedText) {
@@ -941,8 +925,6 @@ function ReaderPageContent() {
         isSpeakingRef.current = true;
         setIsPaused(false);
         setSpeechOrigin(origin);
-
-        textToRead = trimmedText.replace(PUNCTUATION_REGEX, ' ').trim();
         
         let charCount = 0;
         let startSegment = 0;
@@ -1125,7 +1107,6 @@ function ReaderPageContent() {
                     newSettings.cloudVoiceId = cloudLangData.voices[0].id;
                 }
             } else if (value === 'local') {
-                // When switching to local, ensure a valid voice is selected
                 const currentVoice = availableVoices.find(v => v.voiceURI === newSettings.voiceURI);
                 if (!currentVoice) {
                     const defaultVoice = availableVoices.find(v => v.default) || availableVoices[0];
@@ -1288,7 +1269,7 @@ function ReaderPageContent() {
         }
     } else if (type === 'epub') {
         const book = epubBookRef.current;
-        if (book?.locations && typeof book.locations.length === 'number' && book.locations.length > 0 && (pageNum - 1) !== epubCurrentPageNum) {
+        if (book?.locations?.length > 0 && (pageNum) !== epubCurrentPageNum) {
             const cfi = book.locations.cfiFromPage(pageNum - 1);
             if (cfi && epubRenditionRef.current) {
                 stopSpeech(true);
@@ -1540,7 +1521,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                       <Button onClick={() => navigateEpub('prev')} size="sm" variant="outline" disabled={isEpubLoading || isLoadingDoc} aria-label="Previous Page"><ChevronLeft /></Button>
                       
                       {isEpubPaginating ? (
-                        <span className="text-sm text-muted-foreground px-2">Page info loading...</span>
+                        <span className="text-sm text-muted-foreground px-2 flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Page info loading...</span>
                       ) : epubTotalPages > 0 ? (
                         <Button variant="ghost" className="h-9 tabular-nums" onClick={() => openJumpDialog('epub', epubCurrentPageNum + 1, epubTotalPages)}>
                             {epubCurrentPageNum + 1} / {epubTotalPages}
