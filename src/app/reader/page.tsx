@@ -9,6 +9,7 @@ import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist/types/src/displa
 import ePub from 'epubjs';
 import type Book from 'epubjs/types/book';
 import type Rendition from 'epubjs/types/rendition';
+import type { Locations } from 'epubjs/types/locations';
 import dynamic from 'next/dynamic';
 
 
@@ -448,24 +449,9 @@ function ReaderPageContent() {
                   const rendition = book.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
                   epubRenditionRef.current = rendition;
 
-                  const generateEpubPagination = async (b: Book) => {
-                      if (!isMountedRef.current || isStale) return;
-                      setIsEpubPaginating(true);
-                      try {
-                          await b.locations.generate(1650);
-                          if (isStale || !isMountedRef.current) return;
-                          setEpubTotalPages(b.locations.length());
-                      } catch (e: any) {
-                          if (isStale) return;
-                          console.warn("EPUB pagination failed:", e.message);
-                          setEpubTotalPages(0);
-                      } finally {
-                          if (isMountedRef.current) setIsEpubPaginating(false);
-                      }
-                  };
-
                   const onRelocated = (location: any) => {
                       if (!isMountedRef.current || !epubRenditionRef.current || !epubBookRef.current?.locations) return;
+                      
                       const currentDocId = (activeDoc as ActiveMangaDocument | null)?.id;
                       if (currentDocId) {
                           LocalStorageService.saveCurrentEpubCfiForDoc(currentDocId, location.start.cfi);
@@ -481,18 +467,33 @@ function ReaderPageContent() {
                   };
                   rendition.on('relocated', onRelocated);
                   
+                  const generateEpubPagination = async (b: Book) => {
+                      if (!isMountedRef.current || isStale || b.locations.length() > 0) return;
+                      setIsEpubPaginating(true);
+                      try {
+                          await b.locations.generate(1650); // A common value for word count per page
+                          if (isStale || !isMountedRef.current) return;
+                          
+                          setEpubTotalPages(b.locations.length());
+
+                          const currentLocation = rendition.currentLocation();
+                          const currentPageNum = b.locations.pageFromCfi(currentLocation.start.cfi);
+                          setEpubCurrentPageNum(currentPageNum);
+                      } catch (e: any) {
+                          if (isStale) return;
+                          console.warn("EPUB pagination failed:", e.message);
+                          setEpubTotalPages(0);
+                      } finally {
+                          if (isMountedRef.current) setIsEpubPaginating(false);
+                      }
+                  };
+
                   const onRendered = async (section: any, view: any) => {
                       if (!isMountedRef.current || isStale) return;
                       processEpubView(view);
                       
-                      if(epubBookRef.current && epubTotalPages === 0 && !isEpubPaginating) {
+                      if (epubBookRef.current && epubTotalPages === 0 && !isEpubPaginating) {
                         await generateEpubPagination(epubBookRef.current);
-
-                        if(isMountedRef.current && epubBookRef.current.locations && typeof epubBookRef.current.locations.pageFromCfi === 'function') {
-                            const currentLocation = rendition.currentLocation();
-                            const currentPageNum = epubBookRef.current.locations.pageFromCfi(currentLocation.start.cfi);
-                            setEpubCurrentPageNum(currentPageNum);
-                        }
                       }
                   };
                   rendition.on('rendered', onRendered);
@@ -1143,7 +1144,7 @@ function ReaderPageContent() {
   };
 
   const navigateEpub = async (direction: 'prev' | 'next') => {
-    if (!epubRenditionRef.current || isEpubLoading) return;
+    if (!epubRenditionRef.current || isEpubLoading || isEpubPaginating) return;
     stopSpeech(true);
     try {
       if (direction === 'prev') {
@@ -1193,9 +1194,8 @@ function ReaderPageContent() {
   };
 
   const openJumpDialog = (type: 'pdf' | 'epub', currentPage: number, totalPages: number) => {
-    if (totalPages <= 0) return;
-    const bookInstance = epubBookRef.current;
-    if (type === 'epub' && (!bookInstance || !bookInstance.locations || typeof bookInstance.locations.cfiFromPage !== 'function')) {
+    if (isEpubPaginating || totalPages <= 0) return;
+    if (type === 'epub' && (!epubBookRef.current || !epubBookRef.current.locations?.cfiFromPage)) {
         toast({ variant: "default", title: "EPUB Info", description: "This book does not support jumping to a specific page." });
         return;
     }
@@ -1228,7 +1228,7 @@ function ReaderPageContent() {
         }
     } else if (type === 'epub') {
         const bookInstance = epubBookRef.current;
-        if (bookInstance && bookInstance.locations && typeof bookInstance.locations.cfiFromPage === 'function' && (pageNum - 1) !== epubCurrentPageNum) {
+        if (bookInstance && bookInstance.locations && typeof bookInstance.locations.cfiFromPage === 'function' && pageNum !== epubCurrentPageNum) {
             const cfi = bookInstance.locations.cfiFromPage(pageNum - 1);
             if (cfi && epubRenditionRef.current) {
                 stopSpeech(true);
@@ -1471,8 +1471,8 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                       {isEpubPaginating ? (
                         <span className="text-sm text-muted-foreground px-2 flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Page info loading...</span>
                       ) : epubTotalPages > 0 ? (
-                        <Button variant="ghost" className="h-9 tabular-nums" onClick={() => openJumpDialog('epub', epubCurrentPageNum + 1, epubTotalPages)}>
-                            {epubCurrentPageNum + 1} / {epubTotalPages}
+                        <Button variant="ghost" className="h-9 tabular-nums" onClick={() => openJumpDialog('epub', epubCurrentPageNum, epubTotalPages)}>
+                            {epubCurrentPageNum} / {epubTotalPages}
                         </Button>
                       ) : (
                         <span className="text-sm text-muted-foreground px-2">No page info</span>
@@ -1671,3 +1671,4 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
+
