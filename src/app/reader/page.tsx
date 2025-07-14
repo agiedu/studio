@@ -384,7 +384,6 @@ function ReaderPageContent() {
   useEffect(() => {
     let isStale = false;
     
-    // Handlers defined here to be attached/detached
     const relocationHandler = (location: any) => {
         if (!isMountedRef.current || !epubBookRef.current || !epubRenditionRef.current) return;
         const currentDocId = (activeDoc as ActiveMangaDocument | null)?.id;
@@ -392,7 +391,8 @@ function ReaderPageContent() {
             LocalStorageService.saveCurrentEpubCfiForDoc(currentDocId, location.start.cfi);
         }
         processEpubView(epubRenditionRef.current.getContents()?.[0]);
-        if (paginationAttemptedRef.current && epubBookRef.current.locations?.length > 0) {
+
+        if (epubBookRef.current.locations?.length > 0) {
             const currentPage = epubBookRef.current.locations.pageFromCfi(location.start.cfi);
             if (isMountedRef.current) setEpubCurrentPageNum(currentPage);
         }
@@ -490,7 +490,6 @@ function ReaderPageContent() {
                   const rendition = book.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
                   epubRenditionRef.current = rendition;
 
-                  // Attach event handlers
                   rendition.on('relocated', relocationHandler);
                   rendition.on('rendered', renderedHandler);
                   
@@ -512,7 +511,6 @@ function ReaderPageContent() {
                           const totalPages = book.locations.length();
                           setEpubTotalPages(totalPages);
                           
-                          // Re-sync current page number after locations are generated
                           if (totalPages > 0 && epubRenditionRef.current) {
                               const currentLocation = epubRenditionRef.current.currentLocation();
                               const currentPageNum = book.locations.pageFromCfi(currentLocation.start.cfi);
@@ -573,7 +571,6 @@ function ReaderPageContent() {
       }
     };
     
-    // Initial setup before loading a new document
     stopSpeech(true);
     setDocErrorMessage(null);
     setActiveDoc(null);
@@ -587,7 +584,6 @@ function ReaderPageContent() {
     
     return () => {
       isStale = true;
-      console.log("[Cleanup] Running cleanup for previous document.");
       stopSpeech(true);
 
       if (pdfDocProxy) {
@@ -606,16 +602,16 @@ function ReaderPageContent() {
         epubRenditionRef.current.off('relocated', relocationHandler);
         epubRenditionRef.current.off('rendered', renderedHandler);
         try { epubRenditionRef.current.destroy(); } catch (e) { console.log("Non-critical error destroying EPUB rendition", e); }
-        epubRenditionRef.current = null;
       }
       if (epubViewerRef.current) {
         epubViewerRef.current.innerHTML = '';
       }
       if (epubBookRef.current) {
           try { epubBookRef.current.destroy(); } catch (e) { console.log("Non-critical error destroying EPUB book", e); }
-          epubBookRef.current = null;
       }
-
+      
+      epubRenditionRef.current = null;
+      epubBookRef.current = null;
       paginationAttemptedRef.current = false;
       setEpubPageIsImage(false);
       epubImageForOcrRef.current = null;
@@ -1080,7 +1076,7 @@ function ReaderPageContent() {
     setTtsSettings(prev => {
         let newSettings = { ...prev };
 
-        if (key === 'voiceURI') {
+        if (key === 'voiceURI' && value) {
             const selectedVoice = availableVoices.find(v => v.voiceURI === value);
             if (selectedVoice) {
                 newSettings.voiceURI = selectedVoice.voiceURI;
@@ -1103,8 +1099,6 @@ function ReaderPageContent() {
                     newSettings.cloudVoiceId = cloudLangData.voices[0].id;
                 }
             } else if (value === 'local') {
-                // When switching to local, the voiceURI is now the source of truth,
-                // so we find a matching voice if the current one is invalid.
                 const currentVoice = availableVoices.find(v => v.voiceURI === newSettings.voiceURI);
                 if (!currentVoice) {
                     const defaultVoice = availableVoices.find(v => v.default) || availableVoices[0];
@@ -1718,4 +1712,5 @@ export default function ReaderPage() {
 
 
     
+
 

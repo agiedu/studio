@@ -307,7 +307,7 @@ function FavoritesPageContent() {
             }
         }
 
-        if (key === 'voiceURI' && newSettings.engine === 'local') {
+        if (key === 'voiceURI' && newSettings.engine === 'local' && value) {
             const selectedVoice = availableVoices.find(v => v.voiceURI === value);
             if (selectedVoice) {
                 newSettings.language = selectedVoice.lang;
