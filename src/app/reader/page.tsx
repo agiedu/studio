@@ -48,12 +48,10 @@ import { AppHeader } from '@/components/app/AppHeader';
 import { edgeTTSLanguageVoices } from '@/lib/edge-tts-voices';
 
 const PDF_DEFAULT_SCALE = 1.0;
-// Expanded regex to cover more punctuation and special symbols
 const PUNCTUATION_REGEX = /[.,?!,。？！，、\n\r"“„”'‘’`*_{}\[\]()#&@:;~<>/\\|\-—–^%$]/g;
 
 type SpeechOrigin = 'main' | 'repeat' | null;
 
-// Helper to group voices by language
 const groupVoicesByLanguage = (voices: TTSVoice[]) => {
   return voices.reduce((acc, voice) => {
     const lang = voice.lang || 'Unknown';
@@ -75,7 +73,6 @@ function ReaderPageContent() {
   const [isLoadingDoc, setIsLoadingDoc] = useState(true);
   const [docErrorMessage, setDocErrorMessage] = useState<string | null>(null);
 
-  // PDF specific states
   const [pdfDocProxy, setPdfDocProxy] = useState<PDFDocumentProxy | null>(null);
   const [currentPdfPageNum, setCurrentPdfPageNum] = useState(1);
   const [pdfTotalPages, setPdfTotalPages] = useState(0);
@@ -88,8 +85,7 @@ function ReaderPageContent() {
   const [viewScale, setViewScale] = useState(1);
 
 
-  // EPUB specific states and refs
-  const epubViewerRef = useRef<HTMLDivElement | null>(null);
+  const epubViewerRef = useRef<HTMLDivElement>(null);
   const epubBookRef = useRef<Book | null>(null);
   const epubRenditionRef = useRef<Rendition | null>(null);
   const [isEpubLoading, setIsEpubLoading] = useState(false);
@@ -101,17 +97,14 @@ function ReaderPageContent() {
   const paginationAttemptedRef = useRef(false);
 
 
-  // TXT and Image states
   const [txtContent, setTxtContent] = useState<string>("");
   const [displayedImageSrc, setDisplayedImageSrc] = useState<string | null>(null);
   const currentImageObjectUrlRef = useRef<string | null>(null);
   
-  // Scratchpad state
   const [scratchpadText, setScratchpadText] = useState<string>(LocalStorageService.loadScratchpadText());
   const scrollPositionRef = useRef(0);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
-  // OCR and TTS states
   const [isPerformingOcr, setIsPerformingOcr] = useState(false);
   const [currentTextForTTS, setCurrentTextForTTS] = useState<string>("");
   const [ttsSettings, setTtsSettings] = useState<TTSSettings>(LocalStorageService.defaultTTSSettings);
@@ -135,11 +128,9 @@ function ReaderPageContent() {
   const segmentIndexRef = useRef(0);
   const selectionInfoRef = useRef<{ text: string; startIndex: number | null } | null>(null);
 
-  // Refs for text selection
-  const mainTextAreaRef = useRef<HTMLTextAreaElement | null>(null); // For Scratchpad
-  const ttsBoxTextAreaRef = useRef<HTMLTextAreaElement | null>(null); // For the box at the bottom
+  const mainTextAreaRef = useRef<HTMLTextAreaElement | null>(null); 
+  const ttsBoxTextAreaRef = useRef<HTMLTextAreaElement | null>(null); 
 
-  // Jump to page dialog state
   const [jumpDialogInfo, setJumpDialogInfo] = useState<{
     open: boolean;
     type: 'pdf' | 'epub' | null;
@@ -151,11 +142,8 @@ function ReaderPageContent() {
 
   const textSegments = useMemo(() => {
     if (!currentTextForTTS) return [];
-    // Split by common sentence-ending punctuation, keeping the delimiter.
-    // This regex handles English and Chinese punctuation.
     const parts = currentTextForTTS.split(/([.?!,。？！，、\n]+)/g);
     const segments = [];
-    // Reassemble parts to ensure delimiters are attached to the preceding text segment
     for (let i = 0; i < parts.length; i += 2) {
       const text = parts[i];
       const delimiter = parts[i + 1] || '';
@@ -191,13 +179,10 @@ function ReaderPageContent() {
       return { text: '', startIndex: null };
     }
   
-    // Helper function to calculate start index from a selection and a container
-    // It's robust and finds the precise character index of the selection start.
     const getIndexFromSelection = (selection: Selection, container: HTMLElement): { text: string, startIndex: number } | null => {
         if (!selection.rangeCount || selection.isCollapsed) return null;
 
         const range = selection.getRangeAt(0);
-        // Ensure the selection is actually within the designated container
         if (!container.contains(range.startContainer)) return null;
 
         const selectionText = range.toString();
@@ -210,7 +195,6 @@ function ReaderPageContent() {
         return { text: selectionText, startIndex };
     };
 
-    // Priority 1: Textareas (most reliable via selectionStart)
     const mainTextarea = mainTextAreaRef.current;
     if (mainTextarea && mainTextarea.selectionStart !== mainTextarea.selectionEnd) {
       return {
@@ -226,7 +210,6 @@ function ReaderPageContent() {
       };
     }
   
-    // Priority 2: EPUB iframe (now uses robust index calculation)
     if (activeDoc?.type === 'epub' && epubRenditionRef.current) {
       try {
         const epubWindow = epubRenditionRef.current.getContents()?.[0]?.window;
@@ -242,7 +225,6 @@ function ReaderPageContent() {
       }
     }
     
-    // Priority 3: General page selection (e.g., in the main display divs)
     const pageSelection = window.getSelection();
     if (pageSelection && !pageSelection.isCollapsed) {
         const scrollContainer = scrollContainerRef.current;
@@ -274,15 +256,12 @@ function ReaderPageContent() {
     };
   }, []);
 
-  // Effect to persist scratchpad text
   useEffect(() => {
-    // Only save when in scratchpad mode and not loading.
     if (!activeDoc && !isLoadingDoc) {
       LocalStorageService.saveScratchpadText(scratchpadText);
     }
   }, [scratchpadText, activeDoc, isLoadingDoc]);
 
-  // Effect to restore scroll position when switching to speaking view to prevent jump-to-top
   useEffect(() => {
     if (isSpeaking && scrollContainerRef.current) {
         scrollContainerRef.current.scrollTop = scrollPositionRef.current;
@@ -346,14 +325,13 @@ function ReaderPageContent() {
         const contentBody = view.document.body;
         const imageElement = contentBody.querySelector('img') || contentBody.querySelector('image');
 
-        if (imageElement) { // If an image exists, we prioritize it for OCR.
+        if (imageElement) {
             imageElement.crossOrigin = "anonymous";
-            // Check if image is loaded and has dimensions.
             if (imageElement.complete && imageElement.naturalWidth > 0) {
                 updateOcrSourceFromImage(imageElement);
             } else {
                 setCurrentTextForTTS("Loading image for OCR...");
-                setEpubPageIsImage(true); // Show OCR button while image loads
+                setEpubPageIsImage(true); 
                 imageElement.onload = () => updateOcrSourceFromImage(imageElement);
                 imageElement.onerror = () => {
                     if (!isMountedRef.current) return;
@@ -363,7 +341,7 @@ function ReaderPageContent() {
                     setEpubPageIsImage(false);
                 };
             }
-        } else { // No image found, fall back to text content.
+        } else { 
             epubImageForOcrRef.current = null;
             const pageText = (contentBody.innerText || "").trim();
             if (isMountedRef.current) {
@@ -375,34 +353,14 @@ function ReaderPageContent() {
         console.error("Error processing EPUB view:", error);
         if (isMountedRef.current) {
             setCurrentTextForTTS("Error analyzing page content.");
-            setEpubPageIsImage(false); // Reset state on error
+            setEpubPageIsImage(false); 
         }
     }
   }, [updateOcrSourceFromImage]);
 
-  // Main Effect for loading and cleaning up any document type
   useEffect(() => {
     let isStale = false;
     
-    const relocationHandler = (location: any) => {
-        if (!isMountedRef.current || !epubBookRef.current || !epubRenditionRef.current) return;
-        const currentDocId = (activeDoc as ActiveMangaDocument | null)?.id;
-        if (currentDocId) {
-            LocalStorageService.saveCurrentEpubCfiForDoc(currentDocId, location.start.cfi);
-        }
-        processEpubView(epubRenditionRef.current.getContents()?.[0]);
-
-        if (epubBookRef.current.locations?.length > 0) {
-            const currentPage = epubBookRef.current.locations.pageFromCfi(location.start.cfi);
-            if (isMountedRef.current) setEpubCurrentPageNum(currentPage);
-        }
-    };
-    
-    const renderedHandler = (section: any, view: any) => {
-        if (!isMountedRef.current) return;
-        processEpubView(view);
-    };
-
     const loadDocument = async () => {
       if (!docId) {
         const lastActiveId = await IndexedDBService.getLastActiveDocId();
@@ -490,11 +448,26 @@ function ReaderPageContent() {
                   const rendition = book.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
                   epubRenditionRef.current = rendition;
 
-                  rendition.on('relocated', relocationHandler);
-                  rendition.on('rendered', renderedHandler);
+                  rendition.on('relocated', (location: any) => {
+                      if (!isMountedRef.current || !epubBookRef.current || !epubRenditionRef.current) return;
+                      const currentDocId = (activeDoc as ActiveMangaDocument | null)?.id;
+                      if (currentDocId) {
+                          LocalStorageService.saveCurrentEpubCfiForDoc(currentDocId, location.start.cfi);
+                      }
+                      processEpubView(epubRenditionRef.current.getContents()?.[0]);
+
+                      if (epubBookRef.current.locations?.length > 0) {
+                          const currentPage = epubBookRef.current.locations.pageFromCfi(location.start.cfi);
+                          if (isMountedRef.current) setEpubCurrentPageNum(currentPage);
+                      }
+                  });
+                  rendition.on('rendered', (section: any, view: any) => {
+                      if (!isMountedRef.current) return;
+                      processEpubView(view);
+                  });
                   
                   await book.ready;
-                  if(isStale) { if (book) book.destroy(); return; }
+                  if(isStale) { return; }
 
                   const lastLocation = LocalStorageService.loadCurrentEpubCfiForDoc(doc.id); 
                   await rendition.display(lastLocation || undefined);
@@ -587,7 +560,7 @@ function ReaderPageContent() {
       stopSpeech(true);
 
       if (pdfDocProxy) {
-        try { pdfDocProxy.destroy(); } catch (e) { console.log("Non-critical error destroying PDF proxy", e); }
+        try { pdfDocProxy.destroy(); } catch (e) { console.warn("Non-critical error destroying PDF proxy", e); }
         setPdfDocProxy(null);
       }
       setPdfTextContent(null);
@@ -599,19 +572,17 @@ function ReaderPageContent() {
       }
       
       if (epubRenditionRef.current) {
-        epubRenditionRef.current.off('relocated', relocationHandler);
-        epubRenditionRef.current.off('rendered', renderedHandler);
-        try { epubRenditionRef.current.destroy(); } catch (e) { console.log("Non-critical error destroying EPUB rendition", e); }
+        epubRenditionRef.current.destroy();
+        epubRenditionRef.current = null;
+      }
+      if (epubBookRef.current) {
+          epubBookRef.current.destroy();
+          epubBookRef.current = null;
       }
       if (epubViewerRef.current) {
         epubViewerRef.current.innerHTML = '';
       }
-      if (epubBookRef.current) {
-          try { epubBookRef.current.destroy(); } catch (e) { console.log("Non-critical error destroying EPUB book", e); }
-      }
       
-      epubRenditionRef.current = null;
-      epubBookRef.current = null;
       paginationAttemptedRef.current = false;
       setEpubPageIsImage(false);
       epubImageForOcrRef.current = null;
@@ -622,7 +593,6 @@ function ReaderPageContent() {
   }, [docId, router, processEpubView, stopSpeech]);
 
 
-  // PDF Page Rendering Effect
   useEffect(() => {
     if (activeDoc?.type !== 'pdf' || isPdfTextView || !pdfDocProxy || !currentPdfPageNum) return;
 
@@ -807,19 +777,17 @@ function ReaderPageContent() {
   useEffect(() => {
     if (ttsSettings.engine !== 'local' || availableVoices.length === 0 || !isMountedRef.current) return;
 
-    // Check if the currently selected voice is valid and available
     const currentVoiceIsValid = availableVoices.some(v => v.voiceURI === ttsSettings.voiceURI);
 
     if (currentVoiceIsValid) {
-        return; // No change needed if the current voice is fine
+        return; 
     }
     
-    // If the selected voice is not valid (e.g., after a browser/OS update), find a new default
     const defaultVoice =
-        availableVoices.find(v => v.lang === ttsSettings.language && v.default) || // Default for current lang
-        availableVoices.find(v => v.lang === ttsSettings.language) || // Any for current lang
-        availableVoices.find(v => v.default && v.lang) || // Any default voice with a language
-        availableVoices[0]; // Absolute first voice
+        availableVoices.find(v => v.lang === ttsSettings.language && v.default) || 
+        availableVoices.find(v => v.lang === ttsSettings.language) || 
+        availableVoices.find(v => v.default && v.lang) || 
+        availableVoices[0]; 
 
     if (defaultVoice) {
         setTtsSettings(prev => ({
@@ -830,7 +798,6 @@ function ReaderPageContent() {
     }
   }, [ttsSettings.engine, ttsSettings.voiceURI, ttsSettings.language, availableVoices]);
 
-  // Persist settings whenever they change
   useEffect(() => {
       LocalStorageService.saveTTSSettings(ttsSettings);
   }, [ttsSettings]);
@@ -841,10 +808,9 @@ function ReaderPageContent() {
     const handleAudioEnded = () => { 
         if (audioPlayerRef.current === player && isSpeaking && isMountedRef.current) {
           if (ttsSettings.engine === 'local') {
-            // Local engine is handled by utterance.onend
           } else if (ttsSettings.engine === 'cloud' && isSpeakingRef.current) {
             segmentIndexRef.current++;
-            if (isMountedRef.current) _startSpeech('main', 0, true); // Trigger next segment
+            if (isMountedRef.current) _startSpeech('main', 0, true); 
           }
         }
     };
@@ -858,7 +824,6 @@ function ReaderPageContent() {
     };
   }, [ttsSettings.engine, isSpeaking, stopSpeech, toast]);
 
-  // Effect for auto-scrolling the main content view
   useEffect(() => {
     if (isSpeaking && !isPaused && highlightedSegmentIndex > -1) {
       const scrollContainer = scrollContainerRef.current;
@@ -877,7 +842,6 @@ function ReaderPageContent() {
     }
   }, [highlightedSegmentIndex, isSpeaking, isPaused]);
 
-  // Effect for auto-scrolling the TTS box view
   useEffect(() => {
     if (isSpeaking && !isPaused && highlightedSegmentIndex > -1) {
       const ttsBoxContainer = ttsBoxHighlightedContentRef.current;
@@ -896,18 +860,17 @@ function ReaderPageContent() {
   }, [highlightedSegmentIndex, isSpeaking, isPaused]);
 
 
-  // The executor function for continuous reading.
   const _startSpeech = useCallback(async (origin: SpeechOrigin, startIndex = 0, _isContinuing = false) => {
     if (!_isContinuing) {
-        let trimmedText = currentTextForTTS?.trim();
-        if (!trimmedText) {
+        const textToPlay = currentTextForTTS?.trim();
+        if (!textToPlay) {
             toast({variant: "destructive", title: "No Text", description: "No text is available to be read aloud."});
             stopSpeech(true);
             return;
         }
         
         const invalidMessages = ["loading...", "performing ocr..."];
-        if(invalidMessages.some(msg => currentTextForTTS.toLowerCase().includes(msg))) {
+        if(invalidMessages.some(msg => textToPlay.toLowerCase().includes(msg))) {
             toast({variant: "destructive", title: "Cannot Play", description: "Please wait for the current action to complete."});
             stopSpeech(true);
             return;
@@ -940,7 +903,7 @@ function ReaderPageContent() {
     const currentIndex = segmentIndexRef.current;
     const segmentText = textSegments[currentIndex].replace(PUNCTUATION_REGEX, ' ').trim();
 
-    if (!segmentText) { // Skip empty segments
+    if (!segmentText) { 
         segmentIndexRef.current++;
         _startSpeech(origin, 0, true);
         return;
@@ -964,7 +927,7 @@ function ReaderPageContent() {
 
         utterance.onend = () => {
             segmentIndexRef.current++;
-            setTimeout(() => _startSpeech(origin, 0, true), 50); // Small delay
+            setTimeout(() => _startSpeech(origin, 0, true), 50); 
         };
         utterance.onerror = (event) => {
             if (isMountedRef.current && event.error !== 'canceled' && event.error !== 'interrupted') {
@@ -976,13 +939,13 @@ function ReaderPageContent() {
         utteranceRef.current = utterance;
         if(isMountedRef.current) setIsLoadingTTS(false);
         window.speechSynthesis.speak(utterance);
-    } else { // Cloud TTS
+    } else { 
         try {
             const result = await getCloudSpeech(segmentText, ttsSettings.language, ttsSettings.cloudVoiceId);
             if(!isMountedRef.current) return;
             if ('audioUrl' in result && audioPlayerRef.current) {
                 audioPlayerRef.current.src = result.audioUrl;
-                await audioPlayerRef.current.play(); // 'ended' event will trigger next segment
+                await audioPlayerRef.current.play(); 
             } else if ('error' in result) {
                 toast({ variant: "destructive", title: "Cloud TTS Error", description: result.error });
                 if(isMountedRef.current) stopSpeech(true);
@@ -1029,7 +992,7 @@ function ReaderPageContent() {
             }
         };
         setTimeout(() => { if(isMountedRef.current) window.speechSynthesis.speak(utterance); }, 50);
-    } else { // Cloud TTS for single playback
+    } else { 
       try {
         const result = await getCloudSpeech(cleanedText, ttsSettings.language, ttsSettings.cloudVoiceId);
         if (!isMountedRef.current) return;
@@ -1048,7 +1011,6 @@ function ReaderPageContent() {
     }
   }, [ttsSettings, availableVoices, stopSpeech, toast]);
 
-  // The "brain" function for the main play button.
   const playPauseSpeech = () => {
     if (!isMountedRef.current) return;
     
@@ -1181,7 +1143,7 @@ function ReaderPageContent() {
         await epubRenditionRef.current.next();
       }
     } catch (error) {
-        console.log(`[EPUB Nav] Error during rendition.${direction}():`, error);
+        console.warn(`[EPUB Nav] Error during rendition.${direction}():`, error);
         toast({ variant: "destructive", title: "EPUB Navigation Error", description: `Failed to turn page.` });
     }
   };
@@ -1210,11 +1172,9 @@ function ReaderPageContent() {
     if (isLoadingTTS && speechOrigin === 'main') {
       return { text: "Loading...", icon: <Loader2 className="mr-1 h-4 w-4 animate-spin" />, disabled: true, variant: "outline" as const };
     }
-    // If a selection exists, the button text can be more specific
     if (selectionInfoRef.current && selectionInfoRef.current.text.trim().length > 0 && !isSpeaking) {
         return { text: "Play from Selection", icon: <Play className="mr-1 h-4 w-4" />, disabled: false, variant: "default" as const }
     }
-    // Otherwise, it's a toggle for the whole document
     if (isSpeaking && speechOrigin === 'main') {
       return isPaused 
         ? { text: "Resume", icon: <Play className="mr-1 h-4 w-4" />, disabled: false, variant: "default" as const } 
@@ -1261,7 +1221,7 @@ function ReaderPageContent() {
         }
     } else if (type === 'epub') {
         const book = epubBookRef.current;
-        if (book?.locations?.length() > 0 && (pageNum) !== epubCurrentPageNum) {
+        if (book?.locations?.length() > 0 && (pageNum - 1) !== epubCurrentPageNum) {
             const cfi = book.locations.cfiFromPage(pageNum - 1);
             if (cfi && epubRenditionRef.current) {
                 stopSpeech(true);
@@ -1296,10 +1256,8 @@ function ReaderPageContent() {
     <>
       <AppHeader />
       <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)]">
-        {/* Reader Content Pane */}
         <div className="flex-grow flex flex-col bg-muted/20 p-2 md:p-4 min-w-0">
           
-          {/* Top part: Scrollable Content Area */}
           <div ref={scrollContainerRef} onScroll={(e) => scrollPositionRef.current = e.currentTarget.scrollTop} className="flex-grow overflow-y-auto rounded-lg bg-background shadow-inner relative flex flex-col justify-start">
               {(isLoadingDoc || isEpubLoading || isRenderingPdfPage) && (
                   <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
@@ -1326,7 +1284,6 @@ function ReaderPageContent() {
                   transition: 'transform 0.2s ease-out'
                 }}
               >
-                {/* Scratchpad View */}
                 {!activeDoc && !isLoadingDoc && !docErrorMessage && (
                   <div className="w-full h-full flex flex-col">
                     <div className="w-full flex-grow">
@@ -1354,7 +1311,6 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                   </div>
                 )}
 
-                {/* PDF Text View */}
                 {activeDoc?.type === 'pdf' && isPdfTextView && (
                   <div className="w-full h-full flex flex-col">
                       <div ref={mainHighlightedContentRef} className="w-full flex-grow whitespace-pre-wrap select-text px-3 py-2 text-sm min-h-[80px]">
@@ -1364,24 +1320,21 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                 )}
 
 
-                {/* PDF Image Content */}
                 {activeDoc?.type === 'pdf' && !isPdfTextView && (
                     <div className="w-full text-center space-y-4">
                         {pdfPageImage && <NextImage src={pdfPageImage} alt={`Page ${currentPdfPageNum}`} width={0} height={0} style={{ width: 'auto', height: 'auto', maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} className="shadow-lg border rounded-md" />}
                     </div>
                 )}
                 
-                {/* EPUB Content */}
                 <div id="epub-container" className={cn("w-full h-full flex flex-col items-center", activeDoc?.type !== 'epub' && "hidden")}>
                     <div
-                        key={activeDoc?.id || 'epub-placeholder'}
+                        key={docId || 'epub-placeholder'}
                         id="epub-viewer"
                         ref={epubViewerRef}
                         className="w-full flex-grow"
                     />
                 </div>
 
-                {/* TXT Content */}
                 {activeDoc?.type === 'txt' && (
                   <div className="w-full h-full flex flex-col">
                       <div ref={mainHighlightedContentRef} className="w-full flex-grow whitespace-pre-wrap select-text px-3 py-2 text-sm min-h-[80px]">
@@ -1391,18 +1344,15 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                 )}
 
 
-                {/* Image Content */}
                 {activeDoc?.type === 'image' && displayedImageSrc && (
                     <div className="w-full text-center space-y-4">
                         <NextImage src={displayedImageSrc} alt={activeDoc.title || 'Uploaded Image'} width={800} height={600} style={{objectFit: 'contain'}} className="max-w-full max-h-[calc(100%-4rem)] shadow-lg border rounded-md inline-block" data-ai-hint="illustration abstract" />
                     </div>
                 )}
               </div>
-              {/* Mobi Not Supported Message */}
               {activeDoc?.type === 'mobi' && ( <div className="p-4 bg-background rounded-md shadow-inner text-center h-full flex flex-col justify-center items-center"> <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-2"/> <p className="font-semibold">MOBI Not Supported</p> <p className="text-sm text-muted-foreground">Please convert to EPUB or PDF.</p> </div> )}
           </div>
 
-          {/* Bottom part: TTS Box - Fixed at the bottom of the content pane */}
           <div className="flex-shrink-0 pt-2">
               <Card className="shadow-md">
                   <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3">
@@ -1456,7 +1406,6 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
           </div>
         </div>
 
-        {/* Controls Sidebar */}
         <aside className="w-full lg:w-80 xl:w-96 border-l bg-background flex-shrink-0 overflow-y-auto">
           <div className="h-full p-3 pb-6 space-y-4">
               <Card>
@@ -1712,5 +1661,6 @@ export default function ReaderPage() {
 
 
     
+
 
 
