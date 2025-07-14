@@ -1645,6 +1645,22 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                         <Slider value={[viewScale]} min={0.25} max={5} step={0.25} onValueChange={([val]) => handleViewScaleChange(val)} disabled={isRenderingPdfPage} />
                         <Button onClick={() => handleViewScaleChange(viewScale + 0.25)} size="icon" variant="outline" className="h-7 w-7" disabled={isRenderingPdfPage || viewScale >= 5}><ZoomIn className="h-4 w-4"/></Button>
                       </div>
+                      {activeDoc?.type === 'pdf' && (
+                        <div className="pt-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            className="w-full"
+                            onClick={() => {
+                              stopSpeech(true);
+                              setIsPdfTextView(prev => !prev);
+                            }}
+                            disabled={isLoadingDoc || isRenderingPdfPage || !pdfTextContent}
+                          >
+                           {isPdfTextView ? "Switch to Image View" : "Switch to Text View"}
+                          </Button>
+                        </div>
+                       )}
                     </CardContent>
                   </Card>
               )}
