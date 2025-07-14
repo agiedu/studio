@@ -94,7 +94,6 @@ function ReaderPageContent() {
   const [epubTotalPages, setEpubTotalPages] = useState(0);
   const [epubCurrentPageNum, setEpubCurrentPageNum] = useState(0);
   const [isEpubPaginating, setIsEpubPaginating] = useState(false);
-  const paginationAttemptedRef = useRef(false);
 
 
   const [txtContent, setTxtContent] = useState<string>("");
@@ -441,14 +440,14 @@ function ReaderPageContent() {
                   const book = ePub(doc.fileData);
                   epubBookRef.current = book;
             
-                  if (isStale) { if (book) book.destroy(); return; }
+                  if (isStale) { return; }
                   
                   if (!epubViewerRef.current) throw new Error("EPUB viewer element not ready.");
             
                   const rendition = book.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
                   epubRenditionRef.current = rendition;
 
-                  rendition.on('relocated', (location: any) => {
+                  const onRelocated = (location: any) => {
                       if (!isMountedRef.current || !epubBookRef.current || !epubRenditionRef.current) return;
                       const currentDocId = (activeDoc as ActiveMangaDocument | null)?.id;
                       if (currentDocId) {
@@ -460,11 +459,14 @@ function ReaderPageContent() {
                           const currentPage = epubBookRef.current.locations.pageFromCfi(location.start.cfi);
                           if (isMountedRef.current) setEpubCurrentPageNum(currentPage);
                       }
-                  });
-                  rendition.on('rendered', (section: any, view: any) => {
+                  };
+                  rendition.on('relocated', onRelocated);
+                  
+                  const onRendered = (section: any, view: any) => {
                       if (!isMountedRef.current) return;
                       processEpubView(view);
-                  });
+                  };
+                  rendition.on('rendered', onRendered);
                   
                   await book.ready;
                   if(isStale) { return; }
@@ -473,30 +475,32 @@ function ReaderPageContent() {
                   await rendition.display(lastLocation || undefined);
                   if (isStale) return;
 
-                  if (!paginationAttemptedRef.current) {
-                      paginationAttemptedRef.current = true;
-                      setIsEpubPaginating(true);
+                  const generateEpubPagination = async () => {
+                      if (!epubBookRef.current || isStale) return;
                       try {
-                          await book.locations.generate(1650);
+                          setIsEpubPaginating(true);
+                          await epubBookRef.current.locations.generate(1650);
                           
                           if (isStale || !isMountedRef.current) return;
 
-                          const totalPages = book.locations.length();
+                          const totalPages = epubBookRef.current.locations.length();
                           setEpubTotalPages(totalPages);
                           
                           if (totalPages > 0 && epubRenditionRef.current) {
                               const currentLocation = epubRenditionRef.current.currentLocation();
-                              const currentPageNum = book.locations.pageFromCfi(currentLocation.start.cfi);
+                              const currentPageNum = epubBookRef.current.locations.pageFromCfi(currentLocation.start.cfi);
                               setEpubCurrentPageNum(currentPageNum);
                           }
                       } catch (paginationError: any) {
                           if (isStale) return;
                           console.warn("EPUB pagination failed:", paginationError.message);
-                          setEpubTotalPages(0);
+                          setEpubTotalPages(0); // Indicate pagination failed
                       } finally {
                           if (isMountedRef.current) setIsEpubPaginating(false);
                       }
-                  }
+                  };
+                  
+                  generateEpubPagination();
                   
               } catch (e: any) {
                   if (isStale) return;
@@ -552,6 +556,9 @@ function ReaderPageContent() {
     setDisplayedImageSrc(null);
     setIsEpubLoading(false);
     setCurrentTextForTTS("");
+    setEpubTotalPages(0);
+    setEpubCurrentPageNum(0);
+    setIsEpubPaginating(false);
     
     loadDocument();
     
@@ -583,12 +590,8 @@ function ReaderPageContent() {
         epubViewerRef.current.innerHTML = '';
       }
       
-      paginationAttemptedRef.current = false;
       setEpubPageIsImage(false);
       epubImageForOcrRef.current = null;
-      setEpubTotalPages(0);
-      setEpubCurrentPageNum(0);
-      setIsEpubPaginating(false);
     };
   }, [docId, router, processEpubView, stopSpeech]);
 
@@ -1225,7 +1228,7 @@ function ReaderPageContent() {
         }
     } else if (type === 'epub') {
         const book = epubBookRef.current;
-        if (book?.locations?.length() > 0 && (pageNum - 1) !== epubCurrentPageNum) {
+        if (book?.locations?.length() > 0 && (pageNum) !== epubCurrentPageNum) {
             const cfi = book.locations.cfiFromPage(pageNum - 1);
             if (cfi && epubRenditionRef.current) {
                 stopSpeech(true);
@@ -1662,12 +1665,3 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
-
-
-    
-
-
-
-
-
-
