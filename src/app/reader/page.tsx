@@ -9,6 +9,7 @@ import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist/types/src/displa
 import ePub from 'epubjs';
 import type Book from 'epubjs/types/book';
 import type Rendition from 'epubjs/types/rendition';
+import type { Locations } from 'epubjs/types/locations';
 
 
 import { useToast } from '@/hooks/use-toast';
@@ -93,6 +94,7 @@ function ReaderPageContent() {
   const [epubTotalPages, setEpubTotalPages] = useState(0);
   const [epubCurrentPageNum, setEpubCurrentPageNum] = useState(0);
   const [isEpubPaginating, setIsEpubPaginating] = useState(false);
+  const [epubLocations, setEpubLocations] = useState<Locations | null>(null);
 
 
   const [txtContent, setTxtContent] = useState<string>("");
@@ -446,19 +448,31 @@ function ReaderPageContent() {
                   const rendition = book.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
                   epubRenditionRef.current = rendition;
 
+                  const generateEpubPagination = async (b: Book) => {
+                      if (!isMountedRef.current || isStale) return;
+                      setIsEpubPaginating(true);
+                      try {
+                          await b.locations.generate(1650);
+                          if (isStale || !isMountedRef.current) return;
+                          setEpubLocations(b.locations);
+                          setEpubTotalPages(b.locations.length());
+                      } catch (e: any) {
+                          if (isStale) return;
+                          console.warn("EPUB pagination failed:", e.message);
+                          setEpubTotalPages(0);
+                      } finally {
+                          if (isMountedRef.current) setIsEpubPaginating(false);
+                      }
+                  };
+
                   const onRelocated = (location: any) => {
-                      if (!isMountedRef.current || !epubBookRef.current || !epubRenditionRef.current) return;
-                      
+                      if (!isMountedRef.current || !epubRenditionRef.current || !epubLocations) return;
                       const currentDocId = (activeDoc as ActiveMangaDocument | null)?.id;
                       if (currentDocId) {
                           LocalStorageService.saveCurrentEpubCfiForDoc(currentDocId, location.start.cfi);
                       }
-                      processEpubView(epubRenditionRef.current.getContents()?.[0]);
-
-                      if (epubBookRef.current.locations?.length() > 0) {
-                          const currentPage = epubBookRef.current.locations.pageFromCfi(location.start.cfi);
-                          if (isMountedRef.current) setEpubCurrentPageNum(currentPage);
-                      }
+                      const currentPage = epubLocations.pageFromCfi(location.start.cfi);
+                      if (isMountedRef.current) setEpubCurrentPageNum(currentPage);
                   };
                   rendition.on('relocated', onRelocated);
                   
@@ -475,26 +489,14 @@ function ReaderPageContent() {
                   await rendition.display(lastLocation || undefined);
                   if (isStale) return;
                   
-                  // This is the key part: reliably generate pagination after display
-                  setIsEpubPaginating(true);
-                  try {
-                    await book.locations.generate(1650);
-                    if (isStale || !isMountedRef.current) return;
-
-                    const totalPages = book.locations.length();
-                    setEpubTotalPages(totalPages);
-                    
-                    if (totalPages > 0 && epubRenditionRef.current) {
-                        const currentLocation = epubRenditionRef.current.currentLocation();
-                        const currentPageNum = book.locations.pageFromCfi(currentLocation.start.cfi);
-                        setEpubCurrentPageNum(currentPageNum);
-                    }
-                  } catch (paginationError: any) {
-                    if(isStale) return;
-                    console.warn("EPUB pagination failed:", paginationError.message);
-                    setEpubTotalPages(0);
-                  } finally {
-                    if (isMountedRef.current) setIsEpubPaginating(false);
+                  // Generate pagination after the first render
+                  await generateEpubPagination(book);
+                  
+                  // After pagination, update the current page number
+                  if (isMountedRef.current && book.locations.length() > 0) {
+                      const currentLocation = rendition.currentLocation();
+                      const currentPageNum = book.locations.pageFromCfi(currentLocation.start.cfi);
+                      setEpubCurrentPageNum(currentPageNum);
                   }
                   
               } catch (e: any) {
@@ -554,6 +556,7 @@ function ReaderPageContent() {
     setEpubTotalPages(0);
     setEpubCurrentPageNum(0);
     setIsEpubPaginating(false);
+    setEpubLocations(null);
     
     loadDocument();
     
@@ -1188,8 +1191,7 @@ function ReaderPageContent() {
   const openJumpDialog = (type: 'pdf' | 'epub', currentPage: number, totalPages: number) => {
     if (totalPages <= 0) return;
     if (type === 'epub') {
-        const book = epubBookRef.current;
-        if (!book || !book.locations || typeof book.locations.length !== 'function' || book.locations.length() === 0) {
+        if (!epubLocations || epubLocations.length() === 0) {
             toast({ variant: "default", title: "EPUB Info", description: "This book does not support jumping to a specific page." });
             return;
         }
@@ -1222,9 +1224,8 @@ function ReaderPageContent() {
             setCurrentPdfPageNum(pageNum);
         }
     } else if (type === 'epub') {
-        const book = epubBookRef.current;
-        if (book?.locations?.length() > 0 && (pageNum) !== epubCurrentPageNum) {
-            const cfi = book.locations.cfiFromPage(pageNum - 1);
+        if (epubLocations && (pageNum - 1) !== epubCurrentPageNum) {
+            const cfi = epubLocations.cfiFromPage(pageNum - 1);
             if (cfi && epubRenditionRef.current) {
                 stopSpeech(true);
                 epubRenditionRef.current.display(cfi);
