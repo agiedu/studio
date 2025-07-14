@@ -452,7 +452,7 @@ function ReaderPageContent() {
                       if (!isMountedRef.current || isStale) return;
                       setIsEpubPaginating(true);
                       try {
-                          await b.locations.generate(1650); // This populates b.locations
+                          await b.locations.generate(1650);
                           if (isStale || !isMountedRef.current) return;
                           
                           setEpubLocations(b.locations);
@@ -1660,3 +1660,6 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
+
+
+    
