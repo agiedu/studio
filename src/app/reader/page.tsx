@@ -454,7 +454,6 @@ function ReaderPageContent() {
                       try {
                           await b.locations.generate(1650);
                           if (isStale || !isMountedRef.current) return;
-                          
                           setEpubTotalPages(b.locations.length());
                       } catch (e: any) {
                           if (isStale) return;
@@ -471,10 +470,14 @@ function ReaderPageContent() {
                       if (currentDocId) {
                           LocalStorageService.saveCurrentEpubCfiForDoc(currentDocId, location.start.cfi);
                       }
-                      if (epubBookRef.current.locations.length() > 0) {
-                        const currentPage = epubBookRef.current.locations.pageFromCfi(location.start.cfi);
+                      
+                      const bookInstance = epubBookRef.current;
+                      if (bookInstance.locations?.length() > 0) {
+                        const currentPage = bookInstance.locations.pageFromCfi(location.start.cfi);
                         if (isMountedRef.current) setEpubCurrentPageNum(currentPage);
                       }
+
+                      processEpubView(epubRenditionRef.current.getContents()?.[0]);
                   };
                   rendition.on('relocated', onRelocated);
                   
@@ -1224,8 +1227,9 @@ function ReaderPageContent() {
             setCurrentPdfPageNum(pageNum);
         }
     } else if (type === 'epub') {
-        if (epubBookRef.current?.locations && (pageNum - 1) !== epubCurrentPageNum) {
-            const cfi = epubBookRef.current.locations.cfiFromPage(pageNum - 1);
+        const bookInstance = epubBookRef.current;
+        if (bookInstance?.locations && (pageNum - 1) !== epubCurrentPageNum) {
+            const cfi = bookInstance.locations.cfiFromPage(pageNum - 1);
             if (cfi && epubRenditionRef.current) {
                 stopSpeech(true);
                 epubRenditionRef.current.display(cfi);
@@ -1661,8 +1665,3 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
-
-
-    
-
-    
