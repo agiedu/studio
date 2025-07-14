@@ -47,7 +47,8 @@ import { AppHeader } from '@/components/app/AppHeader';
 import { edgeTTSLanguageVoices } from '@/lib/edge-tts-voices';
 
 const PDF_DEFAULT_SCALE = 1.0;
-const PUNCTUATION_REGEX = /[.,?!,。？！，、\n]/g;
+// Expanded regex to cover more punctuation and special symbols
+const PUNCTUATION_REGEX = /[.,?!,。？！，、\n\r"“„”'‘’`*_{}\[\]()#&@:;~<>/\\|\-—–^%$]/g;
 
 type SpeechOrigin = 'main' | 'repeat' | null;
 
