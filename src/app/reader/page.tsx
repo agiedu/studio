@@ -1463,7 +1463,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                 <Card>
                   <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">EPUB Navigation</CardTitle></CardHeader>
                   <CardContent className="flex items-center justify-between pt-0">
-                      <Button onClick={() => navigateEpub('prev')} size="sm" variant="outline" disabled={isEpubLoading || isLoadingDoc} aria-label="Previous Page"><ChevronLeft /></Button>
+                      <Button onClick={() => navigateEpub('prev')} size="sm" variant="outline" disabled={isEpubLoading || isLoadingDoc || isEpubPaginating} aria-label="Previous Page"><ChevronLeft /></Button>
                       
                       {isEpubPaginating ? (
                         <span className="text-sm text-muted-foreground px-2 flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Page info loading...</span>
@@ -1475,7 +1475,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                         <span className="text-sm text-muted-foreground px-2">No page info</span>
                       )}
                       
-                      <Button onClick={() => navigateEpub('next')} size="sm" variant="outline" disabled={isEpubLoading || isLoadingDoc} aria-label="Next Page"><ChevronRight /></Button>
+                      <Button onClick={() => navigateEpub('next')} size="sm" variant="outline" disabled={isEpubLoading || isLoadingDoc || isEpubPaginating} aria-label="Next Page"><ChevronRight /></Button>
                   </CardContent>
                 </Card>
               )}
@@ -1665,6 +1665,7 @@ export default function ReaderPage() {
 
 
     
+
 
 
 
