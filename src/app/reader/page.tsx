@@ -44,9 +44,10 @@ import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { AuthGuard } from '@/components/auth/AuthGuard';
 import { AppHeader } from '@/components/app/AppHeader';
+import { edgeTTSLanguageVoices } from '@/lib/edge-tts-voices';
 
 const PDF_DEFAULT_SCALE = 1.0;
-const PUNCTUATION_REGEX = /\p{P}/gu;
+const PUNCTUATION_REGEX = /[.,?!,。？！，、\n]/g;
 
 type SpeechOrigin = 'main' | 'repeat' | null;
 
@@ -762,7 +763,21 @@ function ReaderPageContent() {
     if (typeof window !== 'undefined') {
       const loadedSettings = LocalStorageService.loadTTSSettings();
       const engine = loadedSettings.engine || loadedSettings.type || 'local';
-      if (isMountedRef.current) setTtsSettings(prev => ({ ...prev, ...loadedSettings, type: engine, engine: engine }));
+      if (isMountedRef.current) {
+          const merged = {
+              ...loadedSettings,
+              engine: engine,
+              type: engine
+          };
+          if (merged.engine === 'cloud' && (!merged.language || !merged.cloudVoiceId)) {
+              const defaultLocale = 'en-US';
+              merged.language = defaultLocale;
+              if (edgeTTSLanguageVoices[defaultLocale]?.voices.length > 0) {
+                merged.cloudVoiceId = edgeTTSLanguageVoices[defaultLocale].voices[0].id;
+              }
+          }
+          setTtsSettings(prev => ({...prev, ...merged}));
+      }
     }
   }, []);
 
@@ -840,12 +855,17 @@ function ReaderPageContent() {
   useEffect(() => {
     const player = new Audio(); audioPlayerRef.current = player;
     const handleAudioEnded = () => { 
-        if (audioPlayerRef.current === player && isSpeaking && ttsSettings.engine === 'cloud' && isMountedRef.current) { 
-            stopSpeech(true); 
-        } 
+        if (audioPlayerRef.current === player && isSpeaking && isMountedRef.current) {
+          if (ttsSettings.engine === 'local') {
+            // Local engine is handled by utterance.onend
+          } else if (ttsSettings.engine === 'cloud' && isSpeakingRef.current) {
+            segmentIndexRef.current++;
+            if (isMountedRef.current) _startSpeech('main', 0, true); // Trigger next segment
+          }
+        }
     };
     const handleAudioPlaying = () => { if (audioPlayerRef.current === player && ttsSettings.engine === 'cloud' && isSpeaking && isMountedRef.current) { setIsLoadingTTS(false); } };
-    const handleAudioError = () => { if (audioPlayerRef.current === player && isSpeaking && ttsSettings.engine === 'cloud' && isMountedRef.current) { toast({variant: "destructive", title: "Audio Error", description: "Failed to play cloud TTS audio."}); stopSpeech(true); } };
+    const handleAudioError = () => { if (audioPlayerRef.current === player && isSpeaking && isMountedRef.current) { toast({variant: "destructive", title: "Audio Error", description: "Failed to play audio."}); stopSpeech(true); } };
     player.addEventListener('ended', handleAudioEnded); player.addEventListener('playing', handleAudioPlaying); player.addEventListener('error', handleAudioError);
     return () => {
         player.removeEventListener('ended', handleAudioEnded); player.removeEventListener('playing', handleAudioPlaying); player.removeEventListener('error', handleAudioError);
@@ -893,174 +913,154 @@ function ReaderPageContent() {
 
 
   // The executor function for continuous reading.
-  const _startSpeech = useCallback(async (origin: SpeechOrigin, startIndex = 0) => {
-    if (!isMountedRef.current) return;
-    
-    const trimmedText = currentTextForTTS?.trim();
-    if (!trimmedText) {
-        toast({variant: "destructive", title: "No Text", description: "No text is available to be read aloud."});
-        stopSpeech(true);
-        return;
-    }
-    const invalidMessages = ["loading...", "performing ocr..."];
-    if(invalidMessages.some(msg => trimmedText.toLowerCase().includes(msg))) {
-        toast({variant: "destructive", title: "Cannot Play", description: "Please wait for the current action to complete."});
-        stopSpeech(true);
-        return;
-    }
-
-    stopSpeech(false);
-    
-    setTimeout(async () => {
-        if (!isMountedRef.current) return;
-
+  const _startSpeech = useCallback(async (origin: SpeechOrigin, startIndex = 0, _isContinuing = false) => {
+    if (!_isContinuing) {
+        const trimmedText = currentTextForTTS?.trim();
+        if (!trimmedText) {
+            toast({variant: "destructive", title: "No Text", description: "No text is available to be read aloud."});
+            stopSpeech(true);
+            return;
+        }
+        const invalidMessages = ["loading...", "performing ocr..."];
+        if(invalidMessages.some(msg => trimmedText.toLowerCase().includes(msg))) {
+            toast({variant: "destructive", title: "Cannot Play", description: "Please wait for the current action to complete."});
+            stopSpeech(true);
+            return;
+        }
+        stopSpeech(false);
         setIsSpeaking(true);
         isSpeakingRef.current = true;
         setIsPaused(false);
         setSpeechOrigin(origin);
-        setIsLoadingTTS(true);
 
-        if (ttsSettings.engine === 'local') {
-            if (typeof window === 'undefined' || !window.speechSynthesis) {
-                toast({ variant: "destructive", title: "TTS Error", description: "Browser Speech Synthesis not supported." });
-                stopSpeech(true);
-                return;
+        let charCount = 0;
+        let startSegment = 0;
+        for (let i = 0; i < textSegments.length; i++) {
+            if (startIndex < (charCount + textSegments[i].length)) {
+                startSegment = i;
+                break;
             }
-            
-            let charCount = 0;
-            let startSegment = 0;
-
-            for (let i = 0; i < textSegments.length; i++) {
-                if (startIndex < (charCount + textSegments[i].length)) {
-                    startSegment = i;
-                    break;
-                }
-                charCount += textSegments[i].length;
-            }
-            segmentIndexRef.current = startSegment;
-
-            const speakNext = () => {
-                if (!isSpeakingRef.current || segmentIndexRef.current >= textSegments.length) {
-                    if (isMountedRef.current) stopSpeech(true);
-                    return;
-                }
-
-                const currentIndex = segmentIndexRef.current;
-                let segmentText = textSegments[currentIndex];
-
-                const textToSpeak = segmentText.replace(PUNCTUATION_REGEX, ' ').trim();
-
-                if (!textToSpeak) {
-                    segmentIndexRef.current++;
-                    speakNext();
-                    return;
-                }
-
-                const utterance = new SpeechSynthesisUtterance(textToSpeak);
-                utterance.lang = ttsSettings.language;
-                utterance.pitch = ttsSettings.pitch;
-                utterance.rate = ttsSettings.rate;
-                const systemVoices = window.speechSynthesis.getVoices();
-                let voiceToUse = systemVoices.find(v => v.voiceURI === ttsSettings.voiceURI);
-                if (voiceToUse) utterance.voice = voiceToUse;
-
-                utterance.onstart = () => {
-                    if (isSpeakingRef.current && isMountedRef.current) {
-                        setHighlightedSegmentIndex(currentIndex);
-                    }
-                };
-
-                utterance.onend = () => {
-                    segmentIndexRef.current++;
-                    setTimeout(speakNext, 50); // Small delay between utterances
-                };
-
-                utterance.onerror = (event) => {
-                    if (isMountedRef.current && event.error !== 'canceled' && event.error !== 'interrupted') {
-                        console.error("SpeechSynthesis Error:", event.error);
-                        toast({ variant: "destructive", title: "TTS Error", description: event.error || "An unknown error occurred." });
-                        stopSpeech(true);
-                    }
-                };
-                
-                utteranceRef.current = utterance;
-                window.speechSynthesis.speak(utterance);
-            };
-
-            if(isMountedRef.current) setIsLoadingTTS(false);
-            speakNext();
-
-        } else { // Cloud TTS
-            try {
-                // For cloud, we still send the whole text from the start index for simplicity.
-                const textForCloud = currentTextForTTS.substring(startIndex);
-                const cleanedTextForCloud = textForCloud.replace(PUNCTUATION_REGEX, ' ').trim();
-
-                if (!cleanedTextForCloud) {
-                    toast({ variant: "destructive", title: "No Text to Speak", description: "Text contains only punctuation." });
-                    stopSpeech(true);
-                    return;
-                }
-
-                if (audioPlayerRef.current) audioPlayerRef.current.loop = false;
-                const result = await getCloudSpeech(cleanedTextForCloud, ttsSettings.language);
-                if(!isMountedRef.current) return;
-                if ('audioUrl' in result && audioPlayerRef.current) {
-                    audioPlayerRef.current.src = result.audioUrl;
-                    await audioPlayerRef.current.play();
-                } else if ('error' in result) {
-                    toast({ variant: "destructive", title: "Cloud TTS Error", description: result.error });
-                    if(isMountedRef.current) stopSpeech(true);
-                }
-            } catch (e: any) {
-                if(isMountedRef.current) {
-                    toast({ variant: "destructive", title: "Cloud TTS Failed", description: e.message });
-                    stopSpeech(true);
-                }
-            }
+            charCount += textSegments[i].length;
         }
-    }, 50);
-  }, [ttsSettings, stopSpeech, toast, textSegments, currentTextForTTS]);
-
-  const speakTextOnce = useCallback((text: string) => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) {
-        toast({ variant: "destructive", title: "TTS Error", description: "Browser Speech Synthesis not supported." });
+        segmentIndexRef.current = startSegment;
+    }
+    
+    if (!isSpeakingRef.current || segmentIndexRef.current >= textSegments.length) {
+        if (isMountedRef.current) stopSpeech(true);
         return;
     }
     
-    stopSpeech(true); 
+    if (isMountedRef.current) setIsLoadingTTS(true);
 
-    if (ttsSettings.engine === 'cloud') {
-      toast({ title: "Info", description: "Repeating selection with Cloud TTS is not yet implemented." });
-      return;
+    const currentIndex = segmentIndexRef.current;
+    const segmentText = textSegments[currentIndex].replace(PUNCTUATION_REGEX, ' ').trim();
+
+    if (!segmentText) { // Skip empty segments
+        segmentIndexRef.current++;
+        _startSpeech(origin, 0, true);
+        return;
     }
+    
+    if (isMountedRef.current) setHighlightedSegmentIndex(currentIndex);
+
+    if (ttsSettings.engine === 'local') {
+        if (typeof window === 'undefined' || !window.speechSynthesis) {
+            toast({ variant: "destructive", title: "TTS Error", description: "Browser Speech Synthesis not supported." });
+            stopSpeech(true);
+            return;
+        }
+        const utterance = new SpeechSynthesisUtterance(segmentText);
+        utterance.lang = ttsSettings.language;
+        utterance.pitch = ttsSettings.pitch;
+        utterance.rate = ttsSettings.rate;
+        const systemVoices = window.speechSynthesis.getVoices();
+        let voiceToUse = systemVoices.find(v => v.voiceURI === ttsSettings.voiceURI);
+        if (voiceToUse) utterance.voice = voiceToUse;
+
+        utterance.onend = () => {
+            segmentIndexRef.current++;
+            setTimeout(() => _startSpeech(origin, 0, true), 50); // Small delay
+        };
+        utterance.onerror = (event) => {
+            if (isMountedRef.current && event.error !== 'canceled' && event.error !== 'interrupted') {
+                console.error("SpeechSynthesis Error:", event.error);
+                toast({ variant: "destructive", title: "TTS Error", description: event.error || "An unknown error occurred." });
+                stopSpeech(true);
+            }
+        };
+        utteranceRef.current = utterance;
+        if(isMountedRef.current) setIsLoadingTTS(false);
+        window.speechSynthesis.speak(utterance);
+    } else { // Cloud TTS
+        try {
+            const result = await getCloudSpeech(segmentText, ttsSettings.language, ttsSettings.cloudVoiceId);
+            if(!isMountedRef.current) return;
+            if ('audioUrl' in result && audioPlayerRef.current) {
+                audioPlayerRef.current.src = result.audioUrl;
+                await audioPlayerRef.current.play(); // 'ended' event will trigger next segment
+            } else if ('error' in result) {
+                toast({ variant: "destructive", title: "Cloud TTS Error", description: result.error });
+                if(isMountedRef.current) stopSpeech(true);
+            }
+        } catch (e: any) {
+            if(isMountedRef.current) {
+                toast({ variant: "destructive", title: "Cloud TTS Failed", description: e.message });
+                stopSpeech(true);
+            }
+        }
+    }
+  }, [ttsSettings, stopSpeech, toast, textSegments, currentTextForTTS]);
+
+  const speakTextOnce = useCallback(async (text: string) => {
+    stopSpeech(true); 
 
     const cleanedText = text.replace(PUNCTUATION_REGEX, ' ').trim();
     if (!cleanedText) {
         toast({ title: 'No Text to Speak', description: 'Your selection contains only punctuation.' });
         return;
     }
-
-    const utterance = new SpeechSynthesisUtterance(cleanedText);
-    utterance.lang = ttsSettings.language;
-    utterance.pitch = ttsSettings.pitch;
-    utterance.rate = ttsSettings.rate;
-    const voiceToUse = availableVoices.find(v => v.voiceURI === ttsSettings.voiceURI);
-    if (voiceToUse) {
-        const systemVoice = window.speechSynthesis.getVoices().find(v => v.voiceURI === voiceToUse.voiceURI);
-        if (systemVoice) utterance.voice = systemVoice;
-    }
     
-    utterance.onerror = (event) => {
-        if (isMountedRef.current && event.error !== 'canceled' && event.error !== 'interrupted') {
-            toast({ variant: "destructive", title: "TTS Error", description: event.error || "Speech failed." });
+    setIsLoadingTTS(true);
+
+    if (ttsSettings.engine === 'local') {
+        if (typeof window === 'undefined' || !window.speechSynthesis) {
+            toast({ variant: "destructive", title: "TTS Error", description: "Browser Speech Synthesis not supported." });
+            setIsLoadingTTS(false); return;
         }
-    };
-    
-    setTimeout(() => {
-        if(isMountedRef.current) window.speechSynthesis.speak(utterance);
-    }, 50);
-
+        const utterance = new SpeechSynthesisUtterance(cleanedText);
+        utterance.lang = ttsSettings.language;
+        utterance.pitch = ttsSettings.pitch;
+        utterance.rate = ttsSettings.rate;
+        const voiceToUse = availableVoices.find(v => v.voiceURI === ttsSettings.voiceURI);
+        if (voiceToUse) {
+            const systemVoice = window.speechSynthesis.getVoices().find(v => v.voiceURI === voiceToUse.voiceURI);
+            if (systemVoice) utterance.voice = systemVoice;
+        }
+        utterance.onend = () => { if(isMountedRef.current) setIsLoadingTTS(false); };
+        utterance.onerror = (event) => {
+            if (isMountedRef.current && event.error !== 'canceled' && event.error !== 'interrupted') {
+                toast({ variant: "destructive", title: "TTS Error", description: event.error || "Speech failed." });
+                setIsLoadingTTS(false);
+            }
+        };
+        setTimeout(() => { if(isMountedRef.current) window.speechSynthesis.speak(utterance); }, 50);
+    } else { // Cloud TTS for single playback
+      try {
+        const result = await getCloudSpeech(cleanedText, ttsSettings.language, ttsSettings.cloudVoiceId);
+        if (!isMountedRef.current) return;
+        if ('audioUrl' in result && audioPlayerRef.current) {
+          audioPlayerRef.current.src = result.audioUrl;
+          await audioPlayerRef.current.play();
+        } else if ('error' in result) {
+          toast({ variant: "destructive", title: "Cloud TTS Error", description: result.error });
+        }
+      } catch (error: any) {
+        if (!isMountedRef.current) return;
+        toast({ variant: "destructive", title: "Cloud TTS Failed", description: error.message });
+      } finally {
+        if (isMountedRef.current) setIsLoadingTTS(false);
+      }
+    }
   }, [ttsSettings, availableVoices, stopSpeech, toast]);
 
   // The "brain" function for the main play button.
@@ -1068,7 +1068,6 @@ function ReaderPageContent() {
     if (!isMountedRef.current) return;
     
     if (isSpeaking) {
-      // It's already playing, so toggle pause/resume
       if (isPaused) {
         if (ttsSettings.engine === 'local' && window.speechSynthesis) { window.speechSynthesis.resume(); } 
         else { audioPlayerRef.current?.play().catch(() => stopSpeech(true)); }
@@ -1079,9 +1078,7 @@ function ReaderPageContent() {
         setIsPaused(true);
       }
     } else {
-      // Not speaking, so start a new playback
       const selectionInfo = selectionInfoRef.current;
-      // Use selection start index if available, otherwise start from beginning.
       const startIndex = selectionInfo?.startIndex ?? 0;
       _startSpeech('main', startIndex);
     }
@@ -1091,19 +1088,46 @@ function ReaderPageContent() {
     if(!isMountedRef.current) return;
     stopSpeech(true);
 
-    if (key === 'voiceURI') {
-        const selectedVoice = availableVoices.find(v => v.voiceURI === value);
-        if (selectedVoice) {
-            setTtsSettings(prev => ({ ...prev, voiceURI: selectedVoice.voiceURI, language: selectedVoice.lang }));
+    setTtsSettings(prev => {
+        const newSettings = { ...prev };
+
+        if (key === 'voiceURI') {
+            const selectedVoice = availableVoices.find(v => v.voiceURI === value);
+            if (selectedVoice) {
+                newSettings.voiceURI = selectedVoice.voiceURI;
+                newSettings.language = selectedVoice.lang;
+            }
+        } else {
+            (newSettings[key] as any) = value;
         }
-    } else {
-        setTtsSettings(prevSettings => {
-            const newSettings = { ...prevSettings, [key]: value };
-            if (key === 'engine') newSettings.type = value as 'local' | 'cloud';
-            if (key === 'type') newSettings.engine = value as 'local' | 'cloud';
-            return newSettings;
-        });
-    }
+        
+        if (key === 'engine') {
+            newSettings.type = value as 'local' | 'cloud';
+            if (value === 'cloud') {
+                const currentLang = newSettings.language;
+                const cloudLangData = edgeTTSLanguageVoices[currentLang];
+                if (!cloudLangData) {
+                    const defaultLocale = 'en-US';
+                    newSettings.language = defaultLocale;
+                    newSettings.cloudVoiceId = edgeTTSLanguageVoices[defaultLocale].voices[0].id;
+                } else if (!newSettings.cloudVoiceId?.startsWith(currentLang)) {
+                    newSettings.cloudVoiceId = cloudLangData.voices[0].id;
+                }
+            }
+        }
+        
+        if (key === 'language' && newSettings.engine === 'cloud') {
+            const newLang = value as string;
+            const langVoices = edgeTTSLanguageVoices[newLang]?.voices;
+            if (langVoices && langVoices.length > 0) {
+                newSettings.cloudVoiceId = langVoices[0].id;
+            } else {
+                newSettings.cloudVoiceId = undefined;
+            }
+        }
+
+        return newSettings;
+    });
   };
 
   const handleFavoriteSelection = () => {
@@ -1548,43 +1572,82 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
 
                   <Separator className="my-3" />
 
-                  <div>
-                    <Label htmlFor="tts-engine" className="text-xs">Engine</Label>
-                    <Select value={ttsSettings.engine} onValueChange={(v) => handleSettingChange('engine', v as 'local' | 'cloud')} disabled={isSpeaking && !isPaused}>
-                      <SelectTrigger id="tts-engine" className="h-9 text-xs"><SelectValue /></SelectTrigger>
-                      <SelectContent><SelectItem value="local"><div className="flex items-center gap-1 text-xs"><Smartphone className="h-3 w-3"/>Local</div></SelectItem><SelectItem value="cloud"><div className="flex items-center gap-1 text-xs"><CloudIcon className="h-3 w-3"/>Cloud</div></SelectItem></SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label htmlFor="tts-language" className="text-xs">Language</Label>
-                    <Input id="tts-language" className="h-9 text-xs" value={ttsSettings.language} onChange={(e) => handleSettingChange('language', e.target.value)} disabled={isSpeaking && !isPaused} />
-                  </div>
-                  {ttsSettings.engine === 'local' && (
-                    <div>
-                      <Label htmlFor="tts-voice" className="text-xs">Voice (Local)</Label>
-                      <Select value={ttsSettings.voiceURI || ""} onValueChange={(v) => handleSettingChange('voiceURI', v)} disabled={isSpeaking && !isPaused || availableVoices.length === 0}>
-                        <SelectTrigger id="tts-voice" className="h-9 text-xs"><SelectValue placeholder="Select voice" /></SelectTrigger>
-                        <SelectContent className="max-h-48">
-                          {availableVoices.map(v => (<SelectItem key={v.voiceURI || v.name} value={v.voiceURI || ""} className="text-xs">{v.name} ({v.lang})</SelectItem>))}
-                        </SelectContent>
+                  <div className="space-y-2">
+                      <Label htmlFor="tts-engine" className="text-xs">Engine</Label>
+                      <Select value={ttsSettings.engine} onValueChange={(v) => handleSettingChange('engine', v as 'local' | 'cloud')} disabled={isSpeaking && !isPaused}>
+                        <SelectTrigger id="tts-engine" className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent><SelectItem value="local"><div className="flex items-center gap-1 text-xs"><Smartphone className="h-3 w-3"/>Local</div></SelectItem><SelectItem value="cloud"><div className="flex items-center gap-1 text-xs"><CloudIcon className="h-3 w-3"/>Cloud</div></SelectItem></SelectContent>
                       </Select>
-                    </div>
+                  </div>
+
+                  {ttsSettings.engine === 'local' && (
+                    <>
+                      <div>
+                        <Label htmlFor="tts-language" className="text-xs">Language (Local)</Label>
+                        <Input id="tts-language" className="h-9 text-xs" value={ttsSettings.language} onChange={(e) => handleSettingChange('language', e.target.value)} disabled={isSpeaking && !isPaused || availableVoices.length === 0} />
+                      </div>
+                      <div>
+                        <Label htmlFor="tts-voice" className="text-xs">Voice (Local)</Label>
+                        <Select value={ttsSettings.voiceURI || ""} onValueChange={(v) => handleSettingChange('voiceURI', v)} disabled={isSpeaking && !isPaused || availableVoices.length === 0}>
+                          <SelectTrigger id="tts-voice" className="h-9 text-xs"><SelectValue placeholder="Select voice" /></SelectTrigger>
+                          <SelectContent className="max-h-48">
+                            {availableVoices.filter(voice => voice.lang && voice.lang.startsWith(ttsSettings.language.split('-')[0])).map(v => (<SelectItem key={v.voiceURI || v.name} value={v.voiceURI || ""} className="text-xs">{v.name} ({v.lang})</SelectItem>))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </>
                   )}
-                  <div className="space-y-1"><Label htmlFor="tts-rate" className="text-xs">Rate: {ttsSettings.rate.toFixed(1)}</Label><Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isSpeaking && !isPaused}/></div>
-                  <div className="space-y-1"><Label htmlFor="tts-pitch" className="text-xs">Pitch: {ttsSettings.pitch.toFixed(1)}</Label><Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isSpeaking && !isPaused}/></div>
+                  
+                  {ttsSettings.engine === 'cloud' && (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="cloud-tts-language" className="text-xs">Language (Cloud)</Label>
+                        <Select value={ttsSettings.language} onValueChange={(v) => handleSettingChange('language', v as string)} disabled={isSpeaking && !isPaused}>
+                            <SelectTrigger id="cloud-tts-language" className="h-9 text-xs"><SelectValue placeholder="Select a language" /></SelectTrigger>
+                            <SelectContent className="max-h-48">
+                                {Object.entries(edgeTTSLanguageVoices).map(([locale, { language }]) => (
+                                    <SelectItem key={locale} value={locale} className="text-xs">{language} ({locale})</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                          <Label htmlFor="cloud-tts-voice" className="text-xs">Voice (Cloud)</Label>
+                          <Select value={ttsSettings.cloudVoiceId || ""} onValueChange={(v) => handleSettingChange('cloudVoiceId', v)} disabled={isSpeaking && !isPaused || !ttsSettings.language}>
+                              <SelectTrigger id="cloud-tts-voice" className="h-9 text-xs"><SelectValue placeholder="Select a voice" /></SelectTrigger>
+                              <SelectContent className="max-h-48">
+                                  {(edgeTTSLanguageVoices[ttsSettings.language]?.voices || []).map(voice => (
+                                      <SelectItem key={voice.id} value={voice.id} className="text-xs">{voice.name}</SelectItem>
+                                  ))}
+                              </SelectContent>
+                          </Select>
+                      </div>
+                    </>
+                  )}
+
+                  <div className="space-y-1 pt-2">
+                    <Label htmlFor="tts-rate" className="text-xs">Rate: {ttsSettings.rate.toFixed(1)}</Label>
+                    <Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isSpeaking && !isPaused}/>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="tts-pitch" className="text-xs">Pitch: {ttsSettings.pitch.toFixed(1)}</Label>
+                    <Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isSpeaking && !isPaused}/>
+                  </div>
                 </CardContent>
               </Card>
               
-              <Card>
-                  <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">View Controls</CardTitle></CardHeader>
-                  <CardContent className="space-y-2 pt-0">
-                    <div className="flex items-center gap-2">
-                      <Button onClick={() => handleViewScaleChange(viewScale - 0.25)} size="icon" variant="outline" className="h-7 w-7" disabled={isRenderingPdfPage || viewScale <= 0.25}><ZoomOut className="h-4 w-4"/></Button>
-                      <Slider value={[viewScale]} min={0.25} max={5} step={0.25} onValueChange={([val]) => handleViewScaleChange(val)} disabled={isRenderingPdfPage} />
-                      <Button onClick={() => handleViewScaleChange(viewScale + 0.25)} size="icon" variant="outline" className="h-7 w-7" disabled={isRenderingPdfPage || viewScale >= 5}><ZoomIn className="h-4 w-4"/></Button>
-                    </div>
-                  </CardContent>
-                </Card>
+              {showViewControls && (
+                  <Card>
+                    <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">View Controls</CardTitle></CardHeader>
+                    <CardContent className="space-y-2 pt-0">
+                      <div className="flex items-center gap-2">
+                        <Button onClick={() => handleViewScaleChange(viewScale - 0.25)} size="icon" variant="outline" className="h-7 w-7" disabled={isRenderingPdfPage || viewScale <= 0.25}><ZoomOut className="h-4 w-4"/></Button>
+                        <Slider value={[viewScale]} min={0.25} max={5} step={0.25} onValueChange={([val]) => handleViewScaleChange(val)} disabled={isRenderingPdfPage} />
+                        <Button onClick={() => handleViewScaleChange(viewScale + 0.25)} size="icon" variant="outline" className="h-7 w-7" disabled={isRenderingPdfPage || viewScale >= 5}><ZoomIn className="h-4 w-4"/></Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+              )}
 
           </div>
         </aside>
@@ -1626,3 +1689,6 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
+
+
+    
