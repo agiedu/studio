@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Separator } from '@/components/ui/separator';
 import { Loader2, Play, Pause, Smartphone, Cloud as CloudIcon, Star, AlertTriangle, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, BookOpen, Settings2, FileText, ScanText, Trash2, Edit, Repeat, X, CaseSensitive } from 'lucide-react';
@@ -51,6 +51,18 @@ const PDF_DEFAULT_SCALE = 1.0;
 const PUNCTUATION_REGEX = /[.,?!,。？！，、\n\r"“„”'‘’`*_{}\[\]()#&@:;~<>/\\|\-—–^%$]/g;
 
 type SpeechOrigin = 'main' | 'repeat' | null;
+
+// Helper to group voices by language
+const groupVoicesByLanguage = (voices: TTSVoice[]) => {
+  return voices.reduce((acc, voice) => {
+    const lang = voice.lang || 'Unknown';
+    if (!acc[lang]) {
+      acc[lang] = [];
+    }
+    acc[lang].push(voice);
+    return acc;
+  }, {} as Record<string, TTSVoice[]>);
+};
 
 function ReaderPageContent() {
   const { toast } = useToast();
@@ -816,36 +828,30 @@ function ReaderPageContent() {
   }, [populateVoiceList, stopSpeech]);
   
   useEffect(() => {
-    if (!isMountedRef.current || ttsSettings.engine !== 'local') return;
+    if (ttsSettings.engine !== 'local' || availableVoices.length === 0 || !isMountedRef.current) return;
 
-    const currentSettings = ttsSettings;
-    if (availableVoices.length === 0) return;
+    // Check if the currently selected voice is valid and available
+    const currentVoiceIsValid = availableVoices.some(v => v.voiceURI === ttsSettings.voiceURI);
 
-    const currentVoice = availableVoices.find(v => v.voiceURI === currentSettings.voiceURI);
-    const currentVoiceIsValidForLanguage = currentVoice && currentVoice.lang && (currentVoice.lang === currentSettings.language || currentVoice.lang.startsWith(currentSettings.language.split('-')[0]));
-            
-    if (currentVoice && currentVoiceIsValidForLanguage) {
-        return; // Current voice is valid for the selected language, no changes needed.
+    if (currentVoiceIsValid) {
+        return; // No change needed if the current voice is fine
     }
     
-    // Voice is invalid or not set, find a new default
-    const defaultForLang = 
-        availableVoices.find(v => v.lang === currentSettings.language && v.default) ||
-        availableVoices.find(v => v.lang === currentSettings.language) ||
-        availableVoices.find(v => v.lang?.startsWith(currentSettings.language.split('-')[0]) && v.default) ||
-        availableVoices.find(v => v.lang?.startsWith(currentSettings.language.split('-')[0]));
+    // If the selected voice is not valid (e.g., after a browser/OS update), find a new default
+    const defaultVoice =
+        availableVoices.find(v => v.lang === ttsSettings.language && v.default) || // Default for current lang
+        availableVoices.find(v => v.lang === ttsSettings.language) || // Any for current lang
+        availableVoices.find(v => v.default && v.lang) || // Any default voice with a language
+        availableVoices[0]; // Absolute first voice
 
-    if (defaultForLang) {
-        if (defaultForLang.voiceURI !== currentSettings.voiceURI || defaultForLang.lang !== currentSettings.language) {
-            setTtsSettings(prev => ({ ...prev, voiceURI: defaultForLang.voiceURI, language: defaultForLang.lang }));
-        }
-    } else {
-        const absoluteFallback = availableVoices.find(v => v.default && v.lang) || availableVoices[0];
-        if (absoluteFallback && (absoluteFallback.voiceURI !== currentSettings.voiceURI || absoluteFallback.lang !== currentSettings.language)) {
-            setTtsSettings(prev => ({...prev, voiceURI: absoluteFallback.voiceURI, language: absoluteFallback.lang }));
-        }
+    if (defaultVoice) {
+        setTtsSettings(prev => ({
+            ...prev,
+            voiceURI: defaultVoice.voiceURI,
+            language: defaultVoice.lang,
+        }));
     }
-  }, [ttsSettings.language, ttsSettings.engine, availableVoices]);
+  }, [ttsSettings.engine, ttsSettings.voiceURI, ttsSettings.language, availableVoices]);
 
   // Persist settings whenever they change
   useEffect(() => {
@@ -915,6 +921,8 @@ function ReaderPageContent() {
 
   // The executor function for continuous reading.
   const _startSpeech = useCallback(async (origin: SpeechOrigin, startIndex = 0, _isContinuing = false) => {
+    let textToRead: string;
+    
     if (!_isContinuing) {
         const trimmedText = currentTextForTTS?.trim();
         if (!trimmedText) {
@@ -934,6 +942,8 @@ function ReaderPageContent() {
         setIsPaused(false);
         setSpeechOrigin(origin);
 
+        textToRead = trimmedText.replace(PUNCTUATION_REGEX, ' ').trim();
+        
         let charCount = 0;
         let startSegment = 0;
         for (let i = 0; i < textSegments.length; i++) {
@@ -1090,7 +1100,7 @@ function ReaderPageContent() {
     stopSpeech(true);
 
     setTtsSettings(prev => {
-        const newSettings = { ...prev };
+        let newSettings = { ...prev };
 
         if (key === 'voiceURI') {
             const selectedVoice = availableVoices.find(v => v.voiceURI === value);
@@ -1113,6 +1123,16 @@ function ReaderPageContent() {
                     newSettings.cloudVoiceId = edgeTTSLanguageVoices[defaultLocale].voices[0].id;
                 } else if (!newSettings.cloudVoiceId?.startsWith(currentLang)) {
                     newSettings.cloudVoiceId = cloudLangData.voices[0].id;
+                }
+            } else if (value === 'local') {
+                // When switching to local, ensure a valid voice is selected
+                const currentVoice = availableVoices.find(v => v.voiceURI === newSettings.voiceURI);
+                if (!currentVoice) {
+                    const defaultVoice = availableVoices.find(v => v.default) || availableVoices[0];
+                    if (defaultVoice) {
+                        newSettings.voiceURI = defaultVoice.voiceURI;
+                        newSettings.language = defaultVoice.lang;
+                    }
                 }
             }
         }
@@ -1296,6 +1316,7 @@ function ReaderPageContent() {
   const showOcrButtonForEpubPage = activeDoc?.type === 'epub' && epubPageIsImage && !isLoadingDoc && !isPerformingOcr;
 
   const showViewControls = activeDoc?.type && ['pdf', 'image', 'epub', 'txt'].includes(activeDoc.type);
+  const groupedLocalVoices = groupVoicesByLanguage(availableVoices);
 
 
   return (
@@ -1582,21 +1603,30 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                   </div>
 
                   {ttsSettings.engine === 'local' && (
-                    <>
-                      <div>
-                        <Label htmlFor="tts-language" className="text-xs">Language (Local)</Label>
-                        <Input id="tts-language" className="h-9 text-xs" value={ttsSettings.language} onChange={(e) => handleSettingChange('language', e.target.value)} disabled={isSpeaking && !isPaused || availableVoices.length === 0} />
-                      </div>
-                      <div>
-                        <Label htmlFor="tts-voice" className="text-xs">Voice (Local)</Label>
-                        <Select value={ttsSettings.voiceURI || ""} onValueChange={(v) => handleSettingChange('voiceURI', v)} disabled={isSpeaking && !isPaused || availableVoices.length === 0}>
-                          <SelectTrigger id="tts-voice" className="h-9 text-xs"><SelectValue placeholder="Select voice" /></SelectTrigger>
-                          <SelectContent className="max-h-48">
-                            {availableVoices.filter(voice => voice.lang && voice.lang.startsWith(ttsSettings.language.split('-')[0])).map(v => (<SelectItem key={v.voiceURI || v.name} value={v.voiceURI || ""} className="text-xs">{v.name} ({v.lang})</SelectItem>))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </>
+                    <div className="space-y-2">
+                      <Label htmlFor="tts-voice" className="text-xs">Voice (Local)</Label>
+                      <Select 
+                        value={ttsSettings.voiceURI || ""} 
+                        onValueChange={(v) => handleSettingChange('voiceURI', v)} 
+                        disabled={isSpeaking && !isPaused || availableVoices.length === 0}
+                      >
+                        <SelectTrigger id="tts-voice" className="h-9 text-xs"><SelectValue placeholder={availableVoices.length > 0 ? "Select voice" : "No local voices available"} /></SelectTrigger>
+                        <SelectContent className="max-h-48">
+                            {availableVoices.length === 0 ? (
+                                <SelectItem value="no-voices" disabled>No local voices found on this device</SelectItem>
+                            ) : (
+                                Object.entries(groupedLocalVoices).map(([lang, voices]) => (
+                                    <SelectGroup key={lang}>
+                                        <SelectLabel className="text-xs">{lang}</SelectLabel>
+                                        {voices.map(voice => (
+                                            <SelectItem key={voice.voiceURI} value={voice.voiceURI} className="text-xs">{voice.name}</SelectItem>
+                                        ))}
+                                    </SelectGroup>
+                                ))
+                            )}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   )}
                   
                   {ttsSettings.engine === 'cloud' && (

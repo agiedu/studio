@@ -11,7 +11,7 @@ import type { FavoriteItem, TTSVoice } from '@/types';
 import { format } from 'date-fns';
 import { getCloudSpeech } from '@/app/actions';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Input } from '@/components/ui/input';
 import { edgeTTSLanguageVoices } from '@/lib/edge-tts-voices';
@@ -29,6 +29,18 @@ interface FavoritesTTSSettings {
   cloudVoiceId?: string; // for cloud, e.g. 'af-ZA-AdriNeural'
   type?: 'local' | 'cloud'; 
 }
+
+// Helper to group voices by language
+const groupVoicesByLanguage = (voices: TTSVoice[]) => {
+  return voices.reduce((acc, voice) => {
+    const lang = voice.lang || 'Unknown';
+    if (!acc[lang]) {
+      acc[lang] = [];
+    }
+    acc[lang].push(voice);
+    return acc;
+  }, {} as Record<string, TTSVoice[]>);
+};
 
 function FavoritesPageContent() {
   const { toast } = useToast();
@@ -127,43 +139,32 @@ function FavoritesPageContent() {
     let desiredLanguage: string = ttsSettings.language;
     let settingsNeedUpdate = false;
 
-    const currentLang = ttsSettings.language;
-    const currentVoiceURI = ttsSettings.voiceURI;
+    // Check if the currently selected voice is valid
+    const currentVoice = availableVoices.find(v => v.voiceURI === ttsSettings.voiceURI);
 
-    const currentVoiceIsValidForLanguage = availableVoices.some(
-        (v) => v.voiceURI === currentVoiceURI && v.lang && v.lang.startsWith(currentLang.split('-')[0])
-    );
+    if (!currentVoice) {
+      // If no voice is selected, or the selected voice is no longer available, find a new default
+      const defaultVoice =
+          availableVoices.find((v) => v.lang === desiredLanguage && v.default) || // Default for current language
+          availableVoices.find((v) => v.lang === desiredLanguage) || // Any for current language
+          availableVoices.find((v) => v.default && v.lang) || // Any default voice
+          availableVoices[0]; // First available voice
 
-    if (!currentVoiceURI || !currentVoiceIsValidForLanguage) {
-        const defaultVoice =
-            availableVoices.find((v) => v.lang === currentLang && v.default) ||
-            availableVoices.find((v) => v.lang === currentLang) ||
-            availableVoices.find((v) => v.lang && v.lang.startsWith(currentLang.split('-')[0]) && v.default) ||
-            availableVoices.find((v) => v.lang && v.lang.startsWith(currentLang.split('-')[0])) ||
-            availableVoices.find((v) => v.default && v.lang) ||
-            availableVoices.find(v => v.lang) ||
-            (availableVoices.length > 0 ? availableVoices[0] : undefined);
-
-        if (defaultVoice && defaultVoice.lang) {
-            desiredVoiceURI = defaultVoice.voiceURI;
-            desiredLanguage = defaultVoice.lang;
-        } else {
-            desiredVoiceURI = undefined;
-        }
-
-        if (desiredVoiceURI !== ttsSettings.voiceURI || desiredLanguage !== ttsSettings.language) {
-            settingsNeedUpdate = true;
-        }
-
-        if (settingsNeedUpdate) {
-            setTtsSettings(prevSettings => ({
-                ...prevSettings,
-                voiceURI: desiredVoiceURI,
-                language: desiredLanguage,
-            }));
-        }
+      if (defaultVoice && defaultVoice.lang) {
+          desiredVoiceURI = defaultVoice.voiceURI;
+          desiredLanguage = defaultVoice.lang;
+          settingsNeedUpdate = true;
+      }
     }
-  }, [availableVoices, ttsSettings.language, ttsSettings.engine]);
+
+    if (settingsNeedUpdate) {
+        setTtsSettings(prevSettings => ({
+            ...prevSettings,
+            voiceURI: desiredVoiceURI,
+            language: desiredLanguage,
+        }));
+    }
+  }, [availableVoices, ttsSettings.language, ttsSettings.voiceURI, ttsSettings.engine]);
 
 
   useEffect(() => {
@@ -270,7 +271,7 @@ function FavoritesPageContent() {
     stopSpeechGlobal(true);
     
     setTtsSettings(prevSettings => {
-        const newSettings = { ...prevSettings, [key]: value };
+        let newSettings = { ...prevSettings, [key]: value };
 
         if (key === 'engine') {
             if (value === 'cloud') {
@@ -282,6 +283,16 @@ function FavoritesPageContent() {
                     newSettings.cloudVoiceId = edgeTTSLanguageVoices[defaultLocale].voices[0].id;
                 } else if (!newSettings.cloudVoiceId?.startsWith(currentLang)) {
                     newSettings.cloudVoiceId = cloudLangData.voices[0].id;
+                }
+            } else if (value === 'local') {
+                // When switching to local, ensure a valid voice is selected
+                const currentVoice = availableVoices.find(v => v.voiceURI === newSettings.voiceURI);
+                if (!currentVoice) {
+                    const defaultVoice = availableVoices.find(v => v.default) || availableVoices[0];
+                    if (defaultVoice) {
+                        newSettings.voiceURI = defaultVoice.voiceURI;
+                        newSettings.language = defaultVoice.lang;
+                    }
                 }
             }
         }
@@ -295,11 +306,19 @@ function FavoritesPageContent() {
                 newSettings.cloudVoiceId = undefined;
             }
         }
+
+        if (key === 'voiceURI' && newSettings.engine === 'local') {
+            const selectedVoice = availableVoices.find(v => v.voiceURI === value);
+            if (selectedVoice) {
+                newSettings.language = selectedVoice.lang;
+            }
+        }
         
         return newSettings;
     });
   };
 
+  const groupedLocalVoices = groupVoicesByLanguage(availableVoices);
 
   return (
     <>
@@ -324,30 +343,30 @@ function FavoritesPageContent() {
                               </SelectContent>
                           </Select>
                       </div>
-                      {ttsSettings.engine === 'local' && (
-                          <div>
-                              <Label htmlFor="fav-tts-language">Language</Label>
-                              <Input id="fav-tts-language" value={ttsSettings.language} onChange={(e) => handleSettingChange('language', e.target.value)} disabled={!!speakingItemId && !pausedItemId || availableVoices.length === 0} />
-                          </div>
-                      )}
                   </div>
 
                   {ttsSettings.engine === 'local' && (
                       <div className="mb-3">
                           <Label htmlFor="fav-tts-voice">Voice (Local)</Label>
-                          <Select 
-                              value={ttsSettings.voiceURI || ""} 
-                              onValueChange={(v) => handleSettingChange('voiceURI', v)} 
-                              disabled={!!speakingItemId && !pausedItemId || availableVoices.filter(voice => voice.lang && voice.lang.startsWith(ttsSettings.language.split('-')[0])).length === 0}
+                          <Select
+                              value={ttsSettings.voiceURI || ""}
+                              onValueChange={(v) => handleSettingChange('voiceURI', v)}
+                              disabled={!!speakingItemId && !pausedItemId || availableVoices.length === 0}
                           >
-                              <SelectTrigger id="fav-tts-voice"><SelectValue placeholder={availableVoices.length > 0 ? "Select voice" : "No voices available"} /></SelectTrigger>
+                              <SelectTrigger id="fav-tts-voice"><SelectValue placeholder={availableVoices.length > 0 ? "Select voice" : "No local voices found"} /></SelectTrigger>
                               <SelectContent className="max-h-60">
-                              {availableVoices.filter(voice => voice.lang && voice.lang.startsWith(ttsSettings.language.split('-')[0])).map(voice => (
-                                  <SelectItem key={voice.voiceURI || voice.name} value={voice.voiceURI}>{voice.name} ({voice.lang})</SelectItem>
-                              ))}
-                              {availableVoices.filter(voice => voice.lang && voice.lang.startsWith(ttsSettings.language.split('-')[0])).length === 0 && (
-                                  <SelectItem value="no-voice-fav" disabled>{availableVoices.length > 0 ? "No voices for language" : "No local voices"}</SelectItem>
-                              )}
+                                  {availableVoices.length === 0 ? (
+                                      <SelectItem value="no-voices" disabled>No local voices found on this device</SelectItem>
+                                  ) : (
+                                      Object.entries(groupedLocalVoices).map(([lang, voices]) => (
+                                          <SelectGroup key={lang}>
+                                              <SelectLabel>{lang}</SelectLabel>
+                                              {voices.map(voice => (
+                                                  <SelectItem key={voice.voiceURI} value={voice.voiceURI}>{voice.name}</SelectItem>
+                                              ))}
+                                          </SelectGroup>
+                                      ))
+                                  )}
                               </SelectContent>
                           </Select>
                       </div>
