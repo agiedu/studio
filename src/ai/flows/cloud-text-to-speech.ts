@@ -28,6 +28,7 @@ export async function cloudTTS(input: CloudTTSInput): Promise<CloudTTSOutput> {
 }
 
 const API_BASE_URL = 'https://yu.yayaxueyu.dpdns.org'; // Based on the user-referenced project
+const PUNCTUATION_REGEX = /[.,?!,。？！，、\n]/g;
 
 const cloudTTSFlow = ai.defineFlow(
   {
@@ -37,7 +38,15 @@ const cloudTTSFlow = ai.defineFlow(
   },
   async (input) => {
     try {
-      console.log(`[CloudTTS] Requesting speech for voice: ${input.voice}, text: "${input.text.substring(0, 50)}..."`);
+      // Pre-process the text to remove punctuation, matching local TTS behavior.
+      const processedText = input.text.replace(PUNCTUATION_REGEX, ' ').trim();
+
+      if (!processedText) {
+        // If text is only punctuation, it becomes empty. Return a silent audio to prevent errors.
+        return { audioUrl: 'data:audio/mpeg;base64,' }; // Empty MP3 data
+      }
+
+      console.log(`[CloudTTS] Requesting speech for voice: ${input.voice}, text: "${processedText.substring(0, 50)}..."`);
       
       const response = await fetch(`${API_BASE_URL}/v1/audio/speech`, {
         method: 'POST',
@@ -46,20 +55,21 @@ const cloudTTSFlow = ai.defineFlow(
         },
         body: JSON.stringify({
           model: 'edge', // This model name is specific to this API implementation
-          input: input.text,
+          input: processedText, // Use the processed text
           voice: input.voice || 'en-US-JennyNeural', // Default voice if not provided
         }),
       });
 
       if (!response.ok) {
         let errorBody = 'Unknown error';
+        const responseText = await response.text(); // Read the body once
         try {
-            // Try to parse the error response as JSON
-            const errorJson = await response.json();
+            // Try to parse the error response as JSON from the text
+            const errorJson = JSON.parse(responseText);
             errorBody = errorJson.error?.message || JSON.stringify(errorJson);
         } catch (e) {
             // If parsing fails, use the raw text body
-            errorBody = await response.text();
+            errorBody = responseText;
         }
         throw new Error(`API request failed with status ${response.status}: ${errorBody}`);
       }
