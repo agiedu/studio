@@ -27,7 +27,7 @@ export async function cloudTTS(input: CloudTTSInput): Promise<CloudTTSOutput> {
   return cloudTTSFlow(input);
 }
 
-const API_BASE_URL = 'https://api.caipacity.com'; // Based on the user-referenced project
+const API_BASE_URL = 'https://yu.yayaxueyu.dpdns.org'; // Based on the user-referenced project
 
 const cloudTTSFlow = ai.defineFlow(
   {
