@@ -780,6 +780,10 @@ function ReaderPageContent() {
     const currentVoiceIsValid = availableVoices.some(v => v.voiceURI === ttsSettings.voiceURI);
 
     if (currentVoiceIsValid) {
+        const selectedVoice = availableVoices.find(v => v.voiceURI === ttsSettings.voiceURI);
+        if (selectedVoice && selectedVoice.lang !== ttsSettings.language) {
+             setTtsSettings(prev => ({...prev, language: selectedVoice.lang}));
+        }
         return; 
     }
     
@@ -1187,7 +1191,7 @@ function ReaderPageContent() {
     if (totalPages <= 0) return;
     if (type === 'epub') {
         const book = epubBookRef.current;
-        if (!book || !book.locations || typeof book.locations.length() !== 'number' || book.locations.length() === 0) {
+        if (!book || !book.locations || typeof book.locations.length !== 'function' || book.locations.length() === 0) {
             toast({ variant: "default", title: "EPUB Info", description: "This book does not support jumping to a specific page." });
             return;
         }
@@ -1661,6 +1665,7 @@ export default function ReaderPage() {
 
 
     
+
 
 
 
