@@ -10,6 +10,7 @@ import ePub from 'epubjs';
 import type Book from 'epubjs/types/book';
 import type Rendition from 'epubjs/types/rendition';
 import type { Locations } from 'epubjs/types/locations';
+import dynamic from 'next/dynamic';
 
 
 import { useToast } from '@/hooks/use-toast';
@@ -1658,10 +1659,18 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
   );
 }
 
+const DynamicReaderPageContent = dynamic(() => Promise.resolve(ReaderPageContent), {
+  ssr: false,
+  loading: () => <div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>,
+});
+
+
 export default function ReaderPage() {
     return (
         <AuthGuard>
-            <ReaderPageContent />
+            <DynamicReaderPageContent />
         </AuthGuard>
     )
 }
+
+    
