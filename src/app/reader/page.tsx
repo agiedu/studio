@@ -452,10 +452,10 @@ function ReaderPageContent() {
                       if (!isMountedRef.current || isStale) return;
                       setIsEpubPaginating(true);
                       try {
-                          await b.locations.generate(1650);
+                          const locations = await b.locations.generate(1650);
                           if (isStale || !isMountedRef.current) return;
-                          setEpubLocations(b.locations);
-                          setEpubTotalPages(b.locations.length());
+                          setEpubLocations(locations);
+                          setEpubTotalPages(locations.length());
                       } catch (e: any) {
                           if (isStale) return;
                           console.warn("EPUB pagination failed:", e.message);
@@ -489,14 +489,17 @@ function ReaderPageContent() {
                   await rendition.display(lastLocation || undefined);
                   if (isStale) return;
                   
-                  // Generate pagination after the first render
                   await generateEpubPagination(book);
                   
-                  // After pagination, update the current page number
-                  if (isMountedRef.current && book.locations.length() > 0) {
+                  if (isMountedRef.current) {
                       const currentLocation = rendition.currentLocation();
-                      const currentPageNum = book.locations.pageFromCfi(currentLocation.start.cfi);
-                      setEpubCurrentPageNum(currentPageNum);
+                      const locs = await book.locations.generate(1650);
+                      const currentPageNum = locs.pageFromCfi(currentLocation.start.cfi);
+                      if(isMountedRef.current) {
+                        setEpubLocations(locs);
+                        setEpubTotalPages(locs.length());
+                        setEpubCurrentPageNum(currentPageNum);
+                      }
                   }
                   
               } catch (e: any) {
@@ -1661,5 +1664,3 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
-
-    
