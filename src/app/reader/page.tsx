@@ -459,11 +459,12 @@ function ReaderPageContent() {
                           
                           setEpubTotalPages(b.locations.length());
                           
-                          // After generating, set the initial page number correctly
                           const initialLocation = rendition.currentLocation();
                           if (initialLocation && initialLocation.start && b.locations.length() > 0) {
                               const pageNum = b.locations.pageFromCfi(initialLocation.start.cfi);
                               setEpubCurrentPageNum(pageNum > 0 ? pageNum : 1);
+                          } else {
+                            setEpubCurrentPageNum(1);
                           }
                       } catch (e: any) {
                           if (isStale) return;
@@ -495,7 +496,6 @@ function ReaderPageContent() {
                       if (!isMountedRef.current || isStale) return;
                       processEpubView(view);
                       
-                      // Trigger pagination only once after the first render.
                       if (epubBookRef.current && epubTotalPages === 0 && !isEpubPaginating) {
                         await generateEpubPagination(epubBookRef.current);
                       }
