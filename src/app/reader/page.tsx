@@ -459,7 +459,7 @@ function ReaderPageContent() {
                           setEpubTotalPages(b.locations.length());
 
                           const currentLocation = rendition.currentLocation();
-                          if (currentLocation && currentLocation.start) {
+                          if (currentLocation && currentLocation.start && b.locations.length() > 0) {
                               const currentPageNum = b.locations.pageFromCfi(currentLocation.start.cfi);
                               if(isMountedRef.current) setEpubCurrentPageNum(currentPageNum);
                           }
@@ -1454,7 +1454,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                   <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">PDF Navigation</CardTitle></CardHeader>
                   <CardContent className="space-y-2 pt-0">
                     <div className="flex items-center justify-between">
-                      <Button onClick={()={() => navigatePdf('prev')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum <= 1} size="sm" variant="outline" aria-label="Previous Page"><ChevronLeft /></Button>
+                      <Button onClick={() => navigatePdf('prev')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum <= 1} size="sm" variant="outline" aria-label="Previous Page"><ChevronLeft /></Button>
                       <Button variant="ghost" className="h-9 tabular-nums" onClick={() => openJumpDialog('pdf', currentPdfPageNum, pdfTotalPages)}>
                           {currentPdfPageNum} / {pdfTotalPages}
                       </Button>
