@@ -449,24 +449,6 @@ function ReaderPageContent() {
                   const rendition = book.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
                   epubRenditionRef.current = rendition;
 
-                  const onRelocated = (location: any) => {
-                      if (!isMountedRef.current || !epubRenditionRef.current || !epubBookRef.current?.locations) return;
-                      
-                      const currentDocId = (activeDoc as ActiveMangaDocument | null)?.id;
-                      if (currentDocId) {
-                          LocalStorageService.saveCurrentEpubCfiForDoc(currentDocId, location.start.cfi);
-                      }
-                      
-                      const bookInstance = epubBookRef.current;
-                      if (bookInstance.locations && typeof bookInstance.locations.pageFromCfi === 'function') {
-                          const currentPage = bookInstance.locations.pageFromCfi(location.start.cfi);
-                          if (isMountedRef.current) setEpubCurrentPageNum(currentPage);
-                      }
-
-                      processEpubView(epubRenditionRef.current.getContents()?.[0]);
-                  };
-                  rendition.on('relocated', onRelocated);
-                  
                   const generateEpubPagination = async (b: Book) => {
                       if (!isMountedRef.current || isStale || b.locations.length() > 0) return;
                       setIsEpubPaginating(true);
@@ -477,16 +459,36 @@ function ReaderPageContent() {
                           setEpubTotalPages(b.locations.length());
 
                           const currentLocation = rendition.currentLocation();
-                          const currentPageNum = b.locations.pageFromCfi(currentLocation.start.cfi);
-                          setEpubCurrentPageNum(currentPageNum);
+                          if (currentLocation && currentLocation.start) {
+                              const currentPageNum = b.locations.pageFromCfi(currentLocation.start.cfi);
+                              setEpubCurrentPageNum(currentPageNum);
+                          }
                       } catch (e: any) {
                           if (isStale) return;
-                          console.warn("EPUB pagination failed:", e.message);
+                          console.error("EPUB pagination failed:", e.message);
                           setEpubTotalPages(0);
                       } finally {
                           if (isMountedRef.current) setIsEpubPaginating(false);
                       }
                   };
+
+                  const onRelocated = (location: any) => {
+                      if (!isMountedRef.current || !epubRenditionRef.current || !epubBookRef.current?.locations) return;
+                      
+                      const currentDocId = (activeDoc as ActiveMangaDocument | null)?.id;
+                      if (currentDocId) {
+                          LocalStorageService.saveCurrentEpubCfiForDoc(currentDocId, location.start.cfi);
+                      }
+                      
+                      const bookInstance = epubBookRef.current;
+                      if (!isEpubPaginating && bookInstance.locations.length() > 0) {
+                          const currentPage = bookInstance.locations.pageFromCfi(location.start.cfi);
+                          if (isMountedRef.current) setEpubCurrentPageNum(currentPage);
+                      }
+                      
+                      processEpubView(epubRenditionRef.current.getContents()?.[0]);
+                  };
+                  rendition.on('relocated', onRelocated);
 
                   const onRendered = async (section: any, view: any) => {
                       if (!isMountedRef.current || isStale) return;
@@ -1452,7 +1454,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                   <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">PDF Navigation</CardTitle></CardHeader>
                   <CardContent className="space-y-2 pt-0">
                     <div className="flex items-center justify-between">
-                      <Button onClick={() => navigatePdf('prev')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum <= 1} size="sm" variant="outline" aria-label="Previous Page"><ChevronLeft /></Button>
+                      <Button onClick={()={() => navigatePdf('prev')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum <= 1} size="sm" variant="outline" aria-label="Previous Page"><ChevronLeft /></Button>
                       <Button variant="ghost" className="h-9 tabular-nums" onClick={() => openJumpDialog('pdf', currentPdfPageNum, pdfTotalPages)}>
                           {currentPdfPageNum} / {pdfTotalPages}
                       </Button>
