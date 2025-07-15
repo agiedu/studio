@@ -450,10 +450,10 @@ function ReaderPageContent() {
                   epubRenditionRef.current = rendition;
 
                   const generateEpubPagination = async (b: Book) => {
-                      if (!isMountedRef.current || isStale || b.locations.length() > 0) return;
+                      if (!isMountedRef.current || isStale || (b.locations.length() > 0 && epubTotalPages > 0)) return;
                       setIsEpubPaginating(true);
                       try {
-                          await b.locations.generate(1650); // A common value for word count per page
+                          await b.locations.generate(1650);
                           if (isStale || !isMountedRef.current) return;
                           
                           setEpubTotalPages(b.locations.length());
@@ -461,7 +461,7 @@ function ReaderPageContent() {
                           const currentLocation = rendition.currentLocation();
                           if (currentLocation && currentLocation.start) {
                               const currentPageNum = b.locations.pageFromCfi(currentLocation.start.cfi);
-                              setEpubCurrentPageNum(currentPageNum);
+                              if(isMountedRef.current) setEpubCurrentPageNum(currentPageNum);
                           }
                       } catch (e: any) {
                           if (isStale) return;
@@ -473,7 +473,7 @@ function ReaderPageContent() {
                   };
 
                   const onRelocated = (location: any) => {
-                      if (!isMountedRef.current || !epubRenditionRef.current || !epubBookRef.current?.locations) return;
+                      if (!isMountedRef.current || !epubRenditionRef.current || !epubBookRef.current?.locations || isEpubPaginating) return;
                       
                       const currentDocId = (activeDoc as ActiveMangaDocument | null)?.id;
                       if (currentDocId) {
@@ -481,7 +481,7 @@ function ReaderPageContent() {
                       }
                       
                       const bookInstance = epubBookRef.current;
-                      if (!isEpubPaginating && bookInstance.locations.length() > 0) {
+                      if (bookInstance.locations.length() > 0) {
                           const currentPage = bookInstance.locations.pageFromCfi(location.start.cfi);
                           if (isMountedRef.current) setEpubCurrentPageNum(currentPage);
                       }
@@ -1673,4 +1673,3 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
-
