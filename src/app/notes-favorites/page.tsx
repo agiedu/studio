@@ -13,19 +13,33 @@ import { AuthGuard } from '@/components/auth/AuthGuard';
 import { AppHeader } from '@/components/app/AppHeader';
 import { cn } from '@/lib/utils';
 import NextImage from 'next/image';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 function NotesFavoritesPageContent() {
   const { toast } = useToast();
   const [favoriteNotes, setFavoriteNotes] = useState<NoteFavoriteItem[]>([]);
+  const [noteToDelete, setNoteToDelete] = useState<NoteFavoriteItem | null>(null);
 
   useEffect(() => {
     setFavoriteNotes(LocalStorage.loadNoteFavorites());
   }, []);
 
-  const handleDeleteFavorite = (noteId: string) => {
-    LocalStorage.deleteNoteFavorite(noteId);
-    setFavoriteNotes(prev => prev.filter(item => item.id !== noteId));
+  const performDelete = () => {
+    if (!noteToDelete) return;
+
+    LocalStorage.deleteNoteFavorite(noteToDelete.id);
+    setFavoriteNotes(prev => prev.filter(item => item.id !== noteToDelete.id));
     toast({ title: "Note Favorite Removed" });
+    setNoteToDelete(null); // Close the dialog
   };
 
   return (
@@ -71,7 +85,7 @@ function NotesFavoritesPageContent() {
                           {item.sourceDocumentName && <span className="flex items-center gap-1"><FileText className="h-3 w-3"/> From: {item.sourceDocumentName} | </span>}
                           Favorited: {format(new Date(item.favoritedAt), "MMM d, yyyy HH:mm")}
                         </p>
-                        <Button size="sm" variant="ghost" onClick={() => handleDeleteFavorite(item.id)} aria-label="Delete Note Favorite">
+                        <Button size="sm" variant="ghost" onClick={() => setNoteToDelete(item)} aria-label="Delete Note Favorite">
                           <Trash2 className="h-4 w-4 text-destructive" /> <span className="ml-2 text-destructive">Delete</span>
                         </Button>
                       </div>
@@ -87,6 +101,21 @@ function NotesFavoritesPageContent() {
           )}
         </Card>
       </div>
+      
+      <AlertDialog open={!!noteToDelete} onOpenChange={(isOpen) => !isOpen && setNoteToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete this note favorite. The original annotation in the document will not be affected.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={performDelete}>Continue</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
