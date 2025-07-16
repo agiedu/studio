@@ -21,7 +21,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, Play, Pause, Smartphone, Cloud as CloudIcon, Star, AlertTriangle, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, BookOpen, Settings2, FileText, ScanText, Trash2, Edit, Repeat, X, CaseSensitive, MessageSquarePlus, ImagePlus, FileImage, Pencil } from 'lucide-react';
+import { Loader2, Play, Pause, Smartphone, Cloud as CloudIcon, Star, AlertTriangle, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, BookOpen, Settings2, FileText, ScanText, Trash2, Edit, Repeat, X, CaseSensitive, MessageSquarePlus, ImagePlus, FileImage, Pencil, Expand, Shrink } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -112,7 +112,6 @@ function ReaderPageContent() {
   
   const [scratchpadText, setScratchpadText] = useState<string>(LocalStorageService.loadScratchpadText());
   const [scratchpadAnnotations, setScratchpadAnnotations] = useState<Annotation[]>(LocalStorageService.loadScratchpadAnnotations());
-  const scrollPositionRef = useRef(0);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
   const [isPerformingOcr, setIsPerformingOcr] = useState(false);
@@ -125,6 +124,7 @@ function ReaderPageContent() {
   const [speechOrigin, setSpeechOrigin] = useState<SpeechOrigin>(null);
   const [highlightedSegmentIndex, setHighlightedSegmentIndex] = useState<number>(-1);
   const [ttsTextSize, setTtsTextSize] = useState<number>(LocalStorageService.loadTtsTextSize());
+  const [isTtsAreaExpanded, setIsTtsAreaExpanded] = useState(false);
 
 
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
@@ -348,12 +348,6 @@ function ReaderPageContent() {
       LocalStorageService.saveScratchpadAnnotations(scratchpadAnnotations);
     }
   }, [scratchpadText, scratchpadAnnotations, activeDoc, isLoadingDoc]);
-
-  useEffect(() => {
-    if (isSpeaking && scrollContainerRef.current) {
-        scrollContainerRef.current.scrollTop = scrollPositionRef.current;
-    }
-  }, [isSpeaking])
 
 
   const stopSpeech = useCallback((resetUIState = true) => {
@@ -1513,7 +1507,7 @@ function ReaderPageContent() {
       <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)]">
         <div className="flex-grow flex flex-col bg-muted/20 p-2 md:p-4 min-w-0">
           
-          <div ref={scrollContainerRef} onScroll={(e) => scrollPositionRef.current = e.currentTarget.scrollTop} className="flex-grow overflow-y-auto rounded-lg bg-background shadow-inner relative flex flex-col justify-start">
+          <div ref={scrollContainerRef} onScroll={(e) => { if(e.currentTarget) (e.currentTarget as any).scrollPosition = e.currentTarget.scrollTop} } className="flex-grow overflow-y-auto rounded-lg bg-background shadow-inner relative flex flex-col justify-start">
               {(isLoadingDoc || isEpubLoading || isRenderingPdfPage) && (
                   <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
                       <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -1594,6 +1588,15 @@ function ReaderPageContent() {
                   <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3">
                       <CardTitle className="text-sm flex items-center"><FileText className="mr-2 h-4 w-4"/> Current Text for TTS</CardTitle>
                       <div className="flex items-center gap-2">
+                            <Button
+                                onClick={() => setIsTtsAreaExpanded(!isTtsAreaExpanded)}
+                                size="icon"
+                                variant="outline"
+                                className="h-9 w-9"
+                                title={isTtsAreaExpanded ? "Shrink TTS Area" : "Expand TTS Area"}
+                            >
+                                {isTtsAreaExpanded ? <Shrink className="h-4 w-4" /> : <Expand className="h-4 w-4" />}
+                            </Button>
                           <Button
                             onClick={handleOpenAnnotationDialog}
                             size="icon"
@@ -1639,7 +1642,7 @@ function ReaderPageContent() {
                       </div>
                   </CardHeader>
                   <CardContent className="pt-0">
-                      <div ref={ttsBoxHighlightedContentRef} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 overflow-y-auto whitespace-pre-wrap select-text" style={{ fontSize: `${ttsTextSize}px` }}>
+                      <div ref={ttsBoxHighlightedContentRef} className={cn("w-full px-3 py-2 border rounded-md bg-muted/30 overflow-y-auto whitespace-pre-wrap select-text transition-all duration-300 ease-in-out", isTtsAreaExpanded ? "h-64" : "h-20")} style={{ fontSize: `${ttsTextSize}px` }}>
                         {isSpeaking || isPaused ? speakingViewContent : renderedTextWithAnnotations}
                       </div>
                   </CardContent>
@@ -2022,5 +2025,7 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
+
+    
 
     
