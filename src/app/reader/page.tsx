@@ -1330,9 +1330,8 @@ function ReaderPageContent() {
     handleCancelJump();
   };
 
-    const handleOpenAnnotationDialog = () => {
+  const handleOpenAnnotationDialog = () => {
     const selection = getSelectedText();
-    const sourceText = activeDoc ? currentTextForTTS : scratchpadText;
     
     if (!selection.text.trim()) {
       toast({
@@ -1343,21 +1342,20 @@ function ReaderPageContent() {
       return;
     }
 
-    const startIndex = sourceText.indexOf(selection.text);
-    if (startIndex === -1) {
-        toast({
-            variant: 'destructive',
-            title: 'Selection Error',
-            description: 'Could not find the selected text in the source.',
-        });
-        return;
+    if (selection.startIndex === null) {
+      toast({
+        variant: 'destructive',
+        title: 'Selection Error',
+        description: 'Could not determine the precise location of the selected text. Please try selecting again in a simpler context.',
+      });
+      return;
     }
 
     setAnnotationDialog({
       open: true,
       id: null,
       targetText: selection.text,
-      startIndex: startIndex,
+      startIndex: selection.startIndex,
       note: '',
       imageDataUrl: '',
       isSaving: false,
