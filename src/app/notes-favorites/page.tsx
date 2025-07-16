@@ -86,7 +86,7 @@ function NotesFavoritesPageContent() {
                           Favorited: {format(new Date(item.favoritedAt), "MMM d, yyyy HH:mm")}
                         </p>
                         <Button size="sm" variant="ghost" onClick={() => setNoteToDelete(item)} aria-label="Delete Note Favorite">
-                          <Trash2 className="h-4 w-4 text-destructive" /> <span className="ml-2 text-destructive">Delete</span>
+                          <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
                   </li>
