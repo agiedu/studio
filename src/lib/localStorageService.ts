@@ -1,4 +1,4 @@
-import type { TTSSettings, FavoriteItem, MangaDocumentDisplayInfo, NoteFavoriteItem } from '@/types';
+import type { TTSSettings, FavoriteItem, MangaDocumentDisplayInfo, NoteFavoriteItem, Annotation } from '@/types';
 import { getCurrentUser } from './authService';
 
 // --- KEY GENERATION ---
@@ -19,6 +19,7 @@ const TTS_SETTINGS_KEY = 'mangaTalk_ttsSettings_v2';
 const FAVORITE_ITEMS_KEY = 'mangaTalk_favoriteItems_v1';
 const NOTE_FAVORITES_KEY = 'mangaTalk_noteFavorites_v1';
 const SCRATCHPAD_TEXT_KEY = 'mangaTalk_scratchpadText_v1';
+const SCRATCHPAD_ANNOTATIONS_KEY = 'mangaTalk_scratchpadAnnotations_v1';
 const DOC_METADATA_CACHE_KEY = 'mangaTalk_docMetadataCache_v1';
 const TTS_TEXT_SIZE_KEY = 'mangaTalk_ttsTextSize_v1';
 const PDF_MANGA_DOCUMENT_PAGE_STATES_KEY = 'mangaTalk_pdfDocumentPageStates_v3';
@@ -30,6 +31,7 @@ const ALL_USER_SPECIFIC_BASE_KEYS = [
     FAVORITE_ITEMS_KEY,
     NOTE_FAVORITES_KEY,
     SCRATCHPAD_TEXT_KEY,
+    SCRATCHPAD_ANNOTATIONS_KEY,
     DOC_METADATA_CACHE_KEY,
     TTS_TEXT_SIZE_KEY,
     PDF_MANGA_DOCUMENT_PAGE_STATES_KEY,
@@ -178,7 +180,7 @@ export const deleteNoteFavorite = (annotationId: string): boolean => {
 };
 
 
-// Scratchpad Text
+// Scratchpad Text and Annotations
 export const loadScratchpadText = (): string => {
   const key = getUserKey(SCRATCHPAD_TEXT_KEY);
   if (!key) return '';
@@ -189,6 +191,24 @@ export const saveScratchpadText = (text: string): boolean => {
   if (!key) return false;
   return safeLocalStorageSet(key, text);
 };
+export const loadScratchpadAnnotations = (): Annotation[] => {
+  const key = getUserKey(SCRATCHPAD_ANNOTATIONS_KEY);
+  if (!key) return [];
+  return safeLocalStorageGet<Annotation[]>(key, []);
+};
+export const saveScratchpadAnnotations = (annotations: Annotation[]): boolean => {
+  const key = getUserKey(SCRATCHPAD_ANNOTATIONS_KEY);
+  if (!key) return false;
+  return safeLocalStorageSet(key, annotations);
+};
+export const clearScratchpad = (): void => {
+  const textKey = getUserKey(SCRATCHPAD_TEXT_KEY);
+  const annKey = getUserKey(SCRATCHPAD_ANNOTATIONS_KEY);
+  if (typeof window === 'undefined') return;
+  if(textKey) window.localStorage.removeItem(textKey);
+  if(annKey) window.localStorage.removeItem(annKey);
+}
+
 
 // Document Metadata Cache
 export const loadDocumentMetadata = (): MangaDocumentDisplayInfo[] => {

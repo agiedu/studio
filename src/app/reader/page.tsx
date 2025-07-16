@@ -111,6 +111,7 @@ function ReaderPageContent() {
   const currentImageObjectUrlRef = useRef<string | null>(null);
   
   const [scratchpadText, setScratchpadText] = useState<string>(LocalStorageService.loadScratchpadText());
+  const [scratchpadAnnotations, setScratchpadAnnotations] = useState<Annotation[]>(LocalStorageService.loadScratchpadAnnotations());
   const scrollPositionRef = useRef(0);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
@@ -159,6 +160,7 @@ function ReaderPageContent() {
   });
   const annotationImageInputRef = useRef<HTMLInputElement>(null);
   const [viewingAnnotation, setViewingAnnotation] = useState<Annotation | null>(null);
+  const [annotationToDelete, setAnnotationToDelete] = useState<Annotation | null>(null);
 
 
   const textSegments = useMemo(() => {
@@ -174,40 +176,65 @@ function ReaderPageContent() {
     }
     return segments.filter(s => s.length > 0);
   }, [currentTextForTTS]);
-
+  
   const sortedAnnotations = useMemo(() => {
-    return activeDoc?.annotations?.slice().sort((a, b) => a.startIndex - b.startIndex) || [];
-  }, [activeDoc?.annotations]);
+    const allAnnotations = activeDoc ? (activeDoc.annotations || []) : scratchpadAnnotations;
+    // Filter annotations to only those that could appear in the current text view
+    return allAnnotations
+      .filter(annotation => currentTextForTTS.includes(annotation.targetText))
+      .sort((a, b) => a.startIndex - b.startIndex);
+  }, [activeDoc, scratchpadAnnotations, currentTextForTTS]);
 
 
   const renderedTextWithAnnotations = useMemo(() => {
-    if (!currentTextForTTS) return null;
+    if (!currentTextForTTS || sortedAnnotations.length === 0) return currentTextForTTS;
 
-    let lastIndex = 0;
-    const parts: (string | JSX.Element)[] = [];
+    let parts: (string | JSX.Element)[] = [currentTextForTTS];
+    
     sortedAnnotations.forEach((annotation, index) => {
-      if (annotation.startIndex > lastIndex) {
-        parts.push(currentTextForTTS.substring(lastIndex, annotation.startIndex));
-      }
-      const annotationEndIndex = annotation.startIndex + annotation.targetText.length;
-      parts.push(
-        <span key={annotation.id} className="relative">
-          {currentTextForTTS.substring(annotation.startIndex, annotationEndIndex)}
-          <span
-            className="absolute -top-1 -right-2 w-4 h-4 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs leading-none cursor-pointer hover:bg-primary/80 transition-colors"
-            onClick={() => setViewingAnnotation(annotation)}
-            title={`View note ${index + 1}`}
-          >
-            {index + 1}
-          </span>
-        </span>
-      );
-      lastIndex = annotationEndIndex;
-    });
+        let newParts: (string | JSX.Element)[] = [];
+        let annotationApplied = false;
 
-    if (lastIndex < currentTextForTTS.length) {
-      parts.push(currentTextForTTS.substring(lastIndex));
-    }
+        for (const part of parts) {
+            if (typeof part === 'string' && !annotationApplied) {
+                const startIndexInPart = part.indexOf(annotation.targetText);
+                if (startIndexInPart !== -1) {
+                    const endIndexInPart = startIndexInPart + annotation.targetText.length;
+                    
+                    // Push text before the annotation
+                    if (startIndexInPart > 0) {
+                        newParts.push(part.substring(0, startIndexInPart));
+                    }
+                    
+                    // Push the annotation itself
+                    newParts.push(
+                        <span key={annotation.id} className="relative">
+                            {annotation.targetText}
+                            <span
+                                className="absolute -top-1 -right-2 w-4 h-4 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs leading-none cursor-pointer hover:bg-primary/80 transition-colors"
+                                onClick={() => setViewingAnnotation(annotation)}
+                                title={`View note ${index + 1}`}
+                            >
+                                {index + 1}
+                            </span>
+                        </span>
+                    );
+
+                    // Push text after the annotation
+                    if (endIndexInPart < part.length) {
+                        newParts.push(part.substring(endIndexInPart));
+                    }
+                    annotationApplied = true;
+
+                } else {
+                    newParts.push(part);
+                }
+            } else {
+                newParts.push(part);
+            }
+        }
+        parts = newParts;
+    });
 
     return <>{parts}</>;
   }, [currentTextForTTS, sortedAnnotations]);
@@ -318,8 +345,9 @@ function ReaderPageContent() {
   useEffect(() => {
     if (!activeDoc && !isLoadingDoc) {
       LocalStorageService.saveScratchpadText(scratchpadText);
+      LocalStorageService.saveScratchpadAnnotations(scratchpadAnnotations);
     }
-  }, [scratchpadText, activeDoc, isLoadingDoc]);
+  }, [scratchpadText, scratchpadAnnotations, activeDoc, isLoadingDoc]);
 
   useEffect(() => {
     if (isSpeaking && scrollContainerRef.current) {
@@ -430,7 +458,9 @@ function ReaderPageContent() {
             setActiveDoc(null);
             setIsLoadingDoc(false);
             const savedText = LocalStorageService.loadScratchpadText();
+            const savedAnnotations = LocalStorageService.loadScratchpadAnnotations();
             setScratchpadText(savedText);
+            setScratchpadAnnotations(savedAnnotations);
             setCurrentTextForTTS(savedText);
         }
         return;
@@ -1233,8 +1263,9 @@ function ReaderPageContent() {
     if (!isMountedRef.current || activeDoc) return;
     stopSpeech(true);
     setScratchpadText('');
+    setScratchpadAnnotations([]);
     setCurrentTextForTTS('');
-    LocalStorageService.saveScratchpadText('');
+    LocalStorageService.clearScratchpad();
     toast({ title: "Scratchpad Cleared" });
   };
 
@@ -1307,19 +1338,32 @@ function ReaderPageContent() {
 
     const handleOpenAnnotationDialog = () => {
     const selection = getSelectedText();
-    if (!selection.text.trim() || selection.startIndex === null) {
+    const sourceText = activeDoc ? currentTextForTTS : scratchpadText;
+    
+    if (!selection.text.trim()) {
       toast({
         variant: 'destructive',
         title: 'No Text Selected',
-        description: 'Please select text in the TTS area to add a note.',
+        description: 'Please select text to add a note.',
       });
       return;
     }
+
+    const startIndex = sourceText.indexOf(selection.text);
+    if (startIndex === -1) {
+        toast({
+            variant: 'destructive',
+            title: 'Selection Error',
+            description: 'Could not find the selected text in the source.',
+        });
+        return;
+    }
+
     setAnnotationDialog({
       open: true,
-      id: null, // It's a new annotation
+      id: null,
       targetText: selection.text,
-      startIndex: selection.startIndex,
+      startIndex: startIndex,
       note: '',
       imageDataUrl: '',
       isSaving: false,
@@ -1341,39 +1385,39 @@ function ReaderPageContent() {
   };
 
   const handleSaveAnnotation = async () => {
-    if (!activeDoc) return;
     setAnnotationDialog((prev) => ({ ...prev, isSaving: true }));
     try {
-      let updatedAnnotations;
       const { id, targetText, startIndex, note, imageDataUrl } = annotationDialog;
-
-      if (id) { // Editing existing annotation
-        updatedAnnotations = activeDoc.annotations?.map(ann => {
-          if (ann.id === id) {
-            return { ...ann, note, imageDataUrl };
-          }
-          return ann;
-        }) || [];
-      } else { // Creating new annotation
-        const newAnnotation: Annotation = {
-          id: `ann_${Date.now()}`,
-          targetText,
-          startIndex,
-          note,
-          imageDataUrl,
-          createdAt: Date.now(),
-        };
-        updatedAnnotations = [...(activeDoc.annotations || []), newAnnotation];
-      }
-
-      const updatedDoc = {
-        ...activeDoc,
-        annotations: updatedAnnotations,
+      const newOrUpdatedAnnotation: Annotation = {
+        id: id || `ann_${Date.now()}`,
+        targetText,
+        startIndex,
+        note,
+        imageDataUrl,
+        createdAt: id ? (activeDoc?.annotations?.find(a => a.id === id) || scratchpadAnnotations.find(a => a.id === id))?.createdAt || Date.now() : Date.now(),
       };
 
-      await IndexedDBService.saveDocument(updatedDoc);
-      setActiveDoc(updatedDoc);
+      if (activeDoc) {
+          let updatedAnnotations;
+          if (id) {
+              updatedAnnotations = activeDoc.annotations?.map(ann => ann.id === id ? newOrUpdatedAnnotation : ann) || [];
+          } else {
+              updatedAnnotations = [...(activeDoc.annotations || []), newOrUpdatedAnnotation];
+          }
+          const updatedDoc = { ...activeDoc, annotations: updatedAnnotations };
+          await IndexedDBService.saveDocument(updatedDoc);
+          setActiveDoc(updatedDoc);
+      } else { // Scratchpad
+          let updatedAnnotations;
+          if (id) {
+              updatedAnnotations = scratchpadAnnotations.map(ann => ann.id === id ? newOrUpdatedAnnotation : ann);
+          } else {
+              updatedAnnotations = [...scratchpadAnnotations, newOrUpdatedAnnotation];
+          }
+          setScratchpadAnnotations(updatedAnnotations);
+      }
       toast({ title: id ? 'Annotation Updated' : 'Annotation Saved' });
+
     } catch (e: any) {
       toast({ variant: 'destructive', title: 'Failed to Save', description: e.message });
     } finally {
@@ -1389,37 +1433,48 @@ function ReaderPageContent() {
     }
   };
 
-    const handleDeleteAnnotation = async (annotationId: string) => {
-    if (!activeDoc) return;
-    const updatedAnnotations = activeDoc.annotations?.filter(a => a.id !== annotationId);
-    const updatedDoc = {
-      ...activeDoc,
-      annotations: updatedAnnotations,
-    };
+  const performDeleteAnnotation = async () => {
+    if (!annotationToDelete) return;
+    const annotationId = annotationToDelete.id;
+
     try {
-      await IndexedDBService.saveDocument(updatedDoc);
-      setActiveDoc(updatedDoc);
-      setViewingAnnotation(null); // Close the dialog
-      toast({ title: 'Annotation Deleted' });
+        if (activeDoc) {
+            const updatedAnnotations = activeDoc.annotations?.filter(a => a.id !== annotationId);
+            const updatedDoc = { ...activeDoc, annotations: updatedAnnotations };
+            await IndexedDBService.saveDocument(updatedDoc);
+            setActiveDoc(updatedDoc);
+        } else { // Scratchpad
+            const updatedAnnotations = scratchpadAnnotations.filter(a => a.id !== annotationId);
+            setScratchpadAnnotations(updatedAnnotations);
+        }
+        setViewingAnnotation(null);
+        toast({ title: 'Annotation Deleted' });
     } catch (e: any) {
-      toast({ variant: 'destructive', title: 'Failed to Delete', description: e.message });
+        toast({ variant: 'destructive', title: 'Failed to Delete', description: e.message });
+    } finally {
+        setAnnotationToDelete(null); // Close the dialog
     }
+  };
+
+
+  const handleDeleteAnnotation = (annotation: Annotation) => {
+    setAnnotationToDelete(annotation);
   };
 
   const handleFavoriteAnnotation = (annotation: Annotation) => {
     const noteFavorite: NoteFavoriteItem = {
       id: annotation.id,
       annotation: annotation,
-      sourceDocumentId: activeDoc?.id,
-      sourceDocumentName: activeDoc?.title,
+      sourceDocumentId: activeDoc?.id || 'scratchpad',
+      sourceDocumentName: activeDoc?.title || 'Scratchpad',
       favoritedAt: Date.now(),
     }
     LocalStorageService.saveNoteFavorite(noteFavorite);
     toast({ title: 'Note Favorited', description: 'Saved to your notes favorites page.' });
   };
   
-    const handleEditAnnotation = (annotation: Annotation) => {
-    setViewingAnnotation(null); // Close the view dialog first
+  const handleEditAnnotation = (annotation: Annotation) => {
+    setViewingAnnotation(null);
     setAnnotationDialog({
       open: true,
       id: annotation.id,
@@ -1486,27 +1541,8 @@ function ReaderPageContent() {
               >
                 {!activeDoc && !isLoadingDoc && !docErrorMessage && (
                   <div className="w-full h-full flex flex-col">
-                    <div className="w-full flex-grow">
-                      {(isSpeaking || isPaused) ? (
-                        <div ref={mainHighlightedContentRef} className="w-full h-full whitespace-pre-wrap select-text text-sm overflow-y-auto">
-                          {speakingViewContent}
-                        </div>
-                      ) : (
-                        <Textarea
-                            ref={mainTextAreaRef}
-                            id="scratchpad-input"
-                            placeholder="Welcome to the Scratchpad!
-
-Type or paste any text here to have it read aloud or to save snippets to your favorites."
-                            className="w-full h-full text-sm resize-none border-none focus-visible:ring-0 p-0 shadow-none bg-transparent"
-                            value={scratchpadText}
-                            onChange={(e) => {
-                                setScratchpadText(e.target.value);
-                                setCurrentTextForTTS(e.target.value);
-                            }}
-                            aria-label="Scratchpad for custom text input"
-                        />
-                      )}
+                    <div ref={mainHighlightedContentRef} className="w-full h-full whitespace-pre-wrap select-text text-sm overflow-y-auto">
+                        {isSpeaking || isPaused ? speakingViewContent : renderedTextWithAnnotations}
                     </div>
                   </div>
                 )}
@@ -1560,7 +1596,6 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                       <div className="flex items-center gap-2">
                           <Button
                             onClick={handleOpenAnnotationDialog}
-                            disabled={!activeDoc}
                             size="icon"
                             variant="outline"
                             className="h-9 w-9"
@@ -1604,18 +1639,9 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                       </div>
                   </CardHeader>
                   <CardContent className="pt-0">
-                      {(isSpeaking || isPaused) ? (
-                          <div ref={ttsBoxHighlightedContentRef} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 overflow-y-auto whitespace-pre-wrap select-text" style={{ fontSize: `${ttsTextSize}px` }}>
-                              {speakingViewContent}
-                          </div>
-                      ) : (
-                         <div ref={ttsBoxHighlightedContentRef} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 overflow-y-auto whitespace-pre-wrap select-text" style={{ fontSize: `${ttsTextSize}px` }}>
-                          {renderedTextWithAnnotations || (
-                              <textarea ref={ttsBoxTextAreaRef} readOnly value={currentTextForTTS} className="w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none resize-none" placeholder="Text for TTS..." style={{ fontSize: `${ttsTextSize}px` }} />
-                            )
-                          }
-                        </div>
-                      )}
+                      <div ref={ttsBoxHighlightedContentRef} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 overflow-y-auto whitespace-pre-wrap select-text" style={{ fontSize: `${ttsTextSize}px` }}>
+                        {isSpeaking || isPaused ? speakingViewContent : renderedTextWithAnnotations}
+                      </div>
                   </CardContent>
               </Card>
           </div>
@@ -1954,13 +1980,30 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                 <Button variant="outline" size="sm" onClick={() => viewingAnnotation && handleFavoriteAnnotation(viewingAnnotation)}>
                   <Star className="mr-2 h-4 w-4" /> Favorite
                 </Button>
-                <Button variant="destructive" size="sm" onClick={() => viewingAnnotation && handleDeleteAnnotation(viewingAnnotation.id)}>
+                <Button variant="destructive" size="sm" onClick={() => viewingAnnotation && handleDeleteAnnotation(viewingAnnotation)}>
                   <Trash2 className="mr-2 h-4 w-4" /> Delete
                 </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
 
+        <AlertDialog open={!!annotationToDelete} onOpenChange={(isOpen) => !isOpen && setAnnotationToDelete(null)}>
+          <AlertDialogContent>
+              <AlertDialogHeader>
+              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                  This action cannot be undone. This will permanently delete the annotation for
+                  <span className="font-bold italic"> &quot;{annotationToDelete?.targetText}&quot;</span>.
+              </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={performDeleteAnnotation}>
+                  Continue
+              </AlertDialogAction>
+              </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </>
   );
