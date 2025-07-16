@@ -1,5 +1,6 @@
 
 
+
 export interface User {
   email: string;
   passwordHash: string;
@@ -17,6 +18,15 @@ export interface MangaSubPage { // Primarily for PDF pages rendered as images
   extractedText?: string;
 }
 
+export interface Annotation {
+  id: string; // Unique ID for the annotation
+  targetText: string; // The selected text that was annotated
+  startIndex: number; // The character index where the selection starts in the full text
+  note: string; // The user's text note
+  imageDataUrl?: string; // The optional image for the annotation, as a data URL
+  createdAt: number;
+}
+
 // Base for all stored documents
 export interface StoredDocumentBase {
   id: string;
@@ -24,6 +34,7 @@ export interface StoredDocumentBase {
   fileData: ArrayBuffer; // Store actual file content
   originalType: string; // e.g., 'image/png', 'application/pdf', 'application/epub+zip', 'text/plain'
   createdAt: number;
+  annotations?: Annotation[]; // Array to hold annotations
 }
 
 export interface StoredImageDocument extends StoredDocumentBase {

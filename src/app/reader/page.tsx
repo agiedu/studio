@@ -21,7 +21,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, Play, Pause, Smartphone, Cloud as CloudIcon, Star, AlertTriangle, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, BookOpen, Settings2, FileText, ScanText, Trash2, Edit, Repeat, X, CaseSensitive } from 'lucide-react';
+import { Loader2, Play, Pause, Smartphone, Cloud as CloudIcon, Star, AlertTriangle, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, BookOpen, Settings2, FileText, ScanText, Trash2, Edit, Repeat, X, CaseSensitive, MessageSquarePlus, ImagePlus, FileImage } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,7 +42,7 @@ import {
 import { getCloudSpeech, performOCR } from '@/app/actions';
 import * as LocalStorageService from '@/lib/localStorageService';
 import * as IndexedDBService from '@/lib/indexedDBService';
-import type { TTSSettings, TTSVoice, StoredMangaDocument, ActiveMangaDocument, StoredPdfDocument, StoredImageDocument, StoredEpubDocument, StoredTxtDocument, StoredMobiDocument, FavoriteItem } from '@/types';
+import type { TTSSettings, TTSVoice, StoredMangaDocument, ActiveMangaDocument, StoredPdfDocument, StoredImageDocument, StoredEpubDocument, StoredTxtDocument, StoredMobiDocument, FavoriteItem, Annotation } from '@/types';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { AuthGuard } from '@/components/auth/AuthGuard';
@@ -140,6 +140,16 @@ function ReaderPageContent() {
   }>({ open: false, type: null, currentPage: 0, totalPages: 0 });
   const [jumpToPageInput, setJumpToPageInput] = useState("");
 
+  const [annotationDialog, setAnnotationDialog] = useState({
+    open: false,
+    targetText: '',
+    startIndex: 0,
+    note: '',
+    imageDataUrl: '',
+    isSaving: false,
+  });
+  const annotationImageInputRef = useRef<HTMLInputElement>(null);
+
 
   const textSegments = useMemo(() => {
     if (!currentTextForTTS) return [];
@@ -155,10 +165,44 @@ function ReaderPageContent() {
     return segments.filter(s => s.length > 0);
   }, [currentTextForTTS]);
 
+  const sortedAnnotations = useMemo(() => {
+    return activeDoc?.annotations?.slice().sort((a, b) => a.startIndex - b.startIndex) || [];
+  }, [activeDoc?.annotations]);
+
+
+  const renderedTextWithAnnotations = useMemo(() => {
+    if (!currentTextForTTS) return null;
+
+    let lastIndex = 0;
+    const parts = [];
+    sortedAnnotations.forEach((annotation, index) => {
+      if (annotation.startIndex > lastIndex) {
+        parts.push(currentTextForTTS.substring(lastIndex, annotation.startIndex));
+      }
+      const annotationEndIndex = annotation.startIndex + annotation.targetText.length;
+      parts.push(
+        <span key={annotation.id} className="relative">
+          {currentTextForTTS.substring(annotation.startIndex, annotationEndIndex)}
+          <span className="absolute -top-1 -right-2 w-4 h-4 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs leading-none">
+            {index + 1}
+          </span>
+        </span>
+      );
+      lastIndex = annotationEndIndex;
+    });
+
+    if (lastIndex < currentTextForTTS.length) {
+      parts.push(currentTextForTTS.substring(lastIndex));
+    }
+
+    return <>{parts}</>;
+  }, [currentTextForTTS, sortedAnnotations]);
+
+
   const speakingViewContent = useMemo(() => {
-    if (!isSpeaking && !isPaused) return null;
+    if (!isSpeaking && !isPaused) return renderedTextWithAnnotations;
     if (highlightedSegmentIndex < 0 || !textSegments[highlightedSegmentIndex]) {
-      return currentTextForTTS;
+      return renderedTextWithAnnotations;
     }
 
     const preText = textSegments.slice(0, highlightedSegmentIndex).join('');
@@ -172,7 +216,7 @@ function ReaderPageContent() {
         {postText}
       </>
     );
-  }, [isSpeaking, isPaused, highlightedSegmentIndex, textSegments, currentTextForTTS]);
+  }, [isSpeaking, isPaused, highlightedSegmentIndex, textSegments, renderedTextWithAnnotations]);
 
 
   const getSelectedText = useCallback((): { text: string; startIndex: number | null } => {
@@ -458,8 +502,7 @@ function ReaderPageContent() {
                           if (isStale || !isMountedRef.current) return;
                           
                           setEpubTotalPages(b.locations.length());
-                          setIsEpubReadyForJumping(true);
-
+                          
                           const initialLocation = rendition.currentLocation();
                           if (initialLocation?.start && b.locations.length() > 0 && typeof b.locations.pageFromCfi === 'function') {
                               const pageNum = b.locations.pageFromCfi(initialLocation.start.cfi);
@@ -467,10 +510,13 @@ function ReaderPageContent() {
                           } else {
                             setEpubCurrentPageNum(1);
                           }
+
+                          setIsEpubReadyForJumping(true); // Unlock jumping
                       } catch (e: any) {
                           if (isStale) return;
                           console.error("EPUB pagination failed:", e.message);
                           setEpubTotalPages(0);
+                          setIsEpubReadyForJumping(false); // Keep jumping locked on failure
                       } finally {
                           if (isMountedRef.current) setIsEpubPaginating(false);
                       }
@@ -485,7 +531,7 @@ function ReaderPageContent() {
                       }
                       
                       const bookInstance = epubBookRef.current;
-                      if (bookInstance.locations.length() > 0 && typeof bookInstance.locations.pageFromCfi === 'function') {
+                      if (isEpubReadyForJumping && typeof bookInstance.locations.pageFromCfi === 'function') {
                           const currentPage = bookInstance.locations.pageFromCfi(location.start.cfi);
                           setEpubCurrentPageNum(currentPage > 0 ? currentPage : 1);
                       }
@@ -495,7 +541,8 @@ function ReaderPageContent() {
 
                   rendition.on('rendered', (section: any, view: any) => {
                       if (!isMountedRef.current || isStale) return;
-                      if (epubBookRef.current && !epubBookRef.current.locations.length()) {
+                      // Only generate pagination once, on first render
+                      if (epubBookRef.current && !epubBookRef.current.locations.length() && !isEpubReadyForJumping) {
                         generateEpubPagination(epubBookRef.current);
                       }
                       processEpubView(view);
@@ -1202,7 +1249,8 @@ function ReaderPageContent() {
         toast({ variant: "default", title: "EPUB Info", description: "This book does not support jumping to a specific page." });
         return;
     }
-    if (totalPages <= 0) return;
+    if (type === 'pdf' && totalPages <= 0) return;
+
     
     setJumpDialogInfo({ open: true, type, currentPage, totalPages });
     setJumpToPageInput(String(currentPage));
@@ -1233,7 +1281,7 @@ function ReaderPageContent() {
         }
     } else if (type === 'epub') {
         const bookInstance = epubBookRef.current;
-        if (bookInstance && bookInstance.locations && typeof bookInstance.locations.cfiFromPage === 'function' && pageNum !== epubCurrentPageNum) {
+        if (bookInstance && isEpubReadyForJumping && typeof bookInstance.locations.cfiFromPage === 'function' && pageNum !== epubCurrentPageNum) {
             const cfi = bookInstance.locations.cfiFromPage(pageNum - 1);
             if (cfi && epubRenditionRef.current) {
                 stopSpeech(true);
@@ -1242,6 +1290,75 @@ function ReaderPageContent() {
         }
     }
     handleCancelJump();
+  };
+
+    const handleOpenAnnotationDialog = () => {
+    const selection = getSelectedText();
+    if (!selection.text.trim() || selection.startIndex === null) {
+      toast({
+        variant: 'destructive',
+        title: 'No Text Selected',
+        description: 'Please select text in the TTS area to add a note.',
+      });
+      return;
+    }
+    setAnnotationDialog({
+      open: true,
+      targetText: selection.text,
+      startIndex: selection.startIndex,
+      note: '',
+      imageDataUrl: '',
+      isSaving: false,
+    });
+  };
+
+  const handleAnnotationImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setAnnotationDialog((prev) => ({
+          ...prev,
+          imageDataUrl: event.target?.result as string,
+        }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSaveAnnotation = async () => {
+    if (!activeDoc) return;
+    setAnnotationDialog((prev) => ({ ...prev, isSaving: true }));
+    try {
+      const newAnnotation: Annotation = {
+        id: `ann_${Date.now()}`,
+        targetText: annotationDialog.targetText,
+        startIndex: annotationDialog.startIndex,
+        note: annotationDialog.note,
+        imageDataUrl: annotationDialog.imageDataUrl,
+        createdAt: Date.now(),
+      };
+
+      const updatedDoc = {
+        ...activeDoc,
+        annotations: [...(activeDoc.annotations || []), newAnnotation],
+      };
+
+      await IndexedDBService.saveDocument(updatedDoc);
+      setActiveDoc(updatedDoc);
+      toast({ title: 'Annotation Saved' });
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Failed to Save', description: e.message });
+    } finally {
+      setAnnotationDialog({
+        open: false,
+        targetText: '',
+        startIndex: 0,
+        note: '',
+        imageDataUrl: '',
+        isSaving: false,
+      });
+    }
   };
 
   const mainButtonState = getMainButtonState();
@@ -1326,7 +1443,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                 {activeDoc?.type === 'pdf' && isPdfTextView && (
                   <div className="w-full h-full flex flex-col">
                       <div ref={mainHighlightedContentRef} className="w-full flex-grow whitespace-pre-wrap select-text px-3 py-2 text-sm min-h-[80px]">
-                          {(isSpeaking || isPaused) ? speakingViewContent : <>{pdfTextContent || ''}</>}
+                          {(isSpeaking || isPaused) ? speakingViewContent : renderedTextWithAnnotations}
                       </div>
                   </div>
                 )}
@@ -1350,7 +1467,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                 {activeDoc?.type === 'txt' && (
                   <div className="w-full h-full flex flex-col">
                       <div ref={mainHighlightedContentRef} className="w-full flex-grow whitespace-pre-wrap select-text px-3 py-2 text-sm min-h-[80px]">
-                          {(isSpeaking || isPaused) ? speakingViewContent : <>{txtContent}</>}
+                          {(isSpeaking || isPaused) ? speakingViewContent : renderedTextWithAnnotations}
                       </div>
                   </div>
                 )}
@@ -1370,6 +1487,16 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                   <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3">
                       <CardTitle className="text-sm flex items-center"><FileText className="mr-2 h-4 w-4"/> Current Text for TTS</CardTitle>
                       <div className="flex items-center gap-2">
+                          <Button
+                            onClick={handleOpenAnnotationDialog}
+                            disabled={!activeDoc}
+                            size="icon"
+                            variant="outline"
+                            className="h-9 w-9"
+                            title="Add Annotation"
+                          >
+                           <MessageSquarePlus className="h-4 w-4" />
+                          </Button>
                           {(showOcrButtonForPdfPage || showOcrButtonForImage || showOcrButtonForEpubPage) && (
                               <Button
                                   onClick={handlePerformOcr}
@@ -1411,7 +1538,12 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
                               {speakingViewContent}
                           </div>
                       ) : (
-                          <textarea ref={ttsBoxTextAreaRef} readOnly value={currentTextForTTS} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 overflow-y-auto whitespace-pre-wrap select-text" placeholder="Text for TTS..." style={{ fontSize: `${ttsTextSize}px` }} />
+                         <div ref={ttsBoxHighlightedContentRef} className="w-full h-20 px-3 py-2 border rounded-md bg-muted/30 overflow-y-auto whitespace-pre-wrap select-text" style={{ fontSize: `${ttsTextSize}px` }}>
+                          {renderedTextWithAnnotations || (
+                              <textarea ref={ttsBoxTextAreaRef} readOnly value={currentTextForTTS} className="w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none resize-none" placeholder="Text for TTS..." style={{ fontSize: `${ttsTextSize}px` }} />
+                            )
+                          }
+                        </div>
                       )}
                   </CardContent>
               </Card>
@@ -1658,6 +1790,72 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <AlertDialog
+          open={annotationDialog.open}
+          onOpenChange={(isOpen) =>
+            !isOpen &&
+            setAnnotationDialog((p) => ({ ...p, open: false }))
+          }
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Add Annotation</AlertDialogTitle>
+              <AlertDialogDescription>
+                Add a note and an optional image for the selected text:
+                <strong className="block mt-2 p-2 bg-muted/50 rounded text-muted-foreground italic truncate">
+                  &quot;{annotationDialog.targetText}&quot;
+                </strong>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label htmlFor="annotation-note">Your Note</Label>
+                <Textarea
+                  id="annotation-note"
+                  placeholder="Type your note here..."
+                  value={annotationDialog.note}
+                  onChange={(e) => setAnnotationDialog((p) => ({ ...p, note: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="annotation-image">Attach Image (Optional)</Label>
+                <Input
+                  id="annotation-image"
+                  type="file"
+                  accept="image/*"
+                  ref={annotationImageInputRef}
+                  onChange={handleAnnotationImageUpload}
+                />
+              </div>
+              {annotationDialog.imageDataUrl && (
+                <div className="relative group">
+                  <p className="text-sm font-medium mb-1">Image Preview:</p>
+                  <img src={annotationDialog.imageDataUrl} alt="Annotation preview" className="max-h-32 rounded-md border" />
+                  <Button
+                    variant="destructive"
+                    size="icon"
+                    className="absolute top-0 right-0 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={() => {
+                      setAnnotationDialog((p) => ({ ...p, imageDataUrl: '' }));
+                      if(annotationImageInputRef.current) annotationImageInputRef.current.value = "";
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleSaveAnnotation} disabled={annotationDialog.isSaving}>
+                {annotationDialog.isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Save Annotation
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
       </div>
     </>
   );
