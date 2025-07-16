@@ -33,6 +33,14 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -149,6 +157,7 @@ function ReaderPageContent() {
     isSaving: false,
   });
   const annotationImageInputRef = useRef<HTMLInputElement>(null);
+  const [viewingAnnotation, setViewingAnnotation] = useState<Annotation | null>(null);
 
 
   const textSegments = useMemo(() => {
@@ -174,7 +183,7 @@ function ReaderPageContent() {
     if (!currentTextForTTS) return null;
 
     let lastIndex = 0;
-    const parts = [];
+    const parts: (string | JSX.Element)[] = [];
     sortedAnnotations.forEach((annotation, index) => {
       if (annotation.startIndex > lastIndex) {
         parts.push(currentTextForTTS.substring(lastIndex, annotation.startIndex));
@@ -183,7 +192,11 @@ function ReaderPageContent() {
       parts.push(
         <span key={annotation.id} className="relative">
           {currentTextForTTS.substring(annotation.startIndex, annotationEndIndex)}
-          <span className="absolute -top-1 -right-2 w-4 h-4 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs leading-none">
+          <span
+            className="absolute -top-1 -right-2 w-4 h-4 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs leading-none cursor-pointer hover:bg-primary/80 transition-colors"
+            onClick={() => setViewingAnnotation(annotation)}
+            title={`View note ${index + 1}`}
+          >
             {index + 1}
           </span>
         </span>
@@ -1245,12 +1258,11 @@ function ReaderPageContent() {
   };
 
   const openJumpDialog = (type: 'pdf' | 'epub', currentPage: number, totalPages: number) => {
-    if (type === 'epub' && !isEpubReadyForJumping) {
-        toast({ variant: "default", title: "EPUB Info", description: "This book does not support jumping to a specific page." });
-        return;
-    }
     if (type === 'pdf' && totalPages <= 0) return;
-
+    if (type === 'epub' && !isEpubReadyForJumping) {
+      toast({ variant: "default", title: "EPUB Info", description: "This book does not support jumping to a specific page." });
+      return;
+    }
     
     setJumpDialogInfo({ open: true, type, currentPage, totalPages });
     setJumpToPageInput(String(currentPage));
@@ -1360,6 +1372,36 @@ function ReaderPageContent() {
       });
     }
   };
+
+    const handleDeleteAnnotation = async (annotationId: string) => {
+    if (!activeDoc) return;
+    const updatedAnnotations = activeDoc.annotations?.filter(a => a.id !== annotationId);
+    const updatedDoc = {
+      ...activeDoc,
+      annotations: updatedAnnotations,
+    };
+    try {
+      await IndexedDBService.saveDocument(updatedDoc);
+      setActiveDoc(updatedDoc);
+      setViewingAnnotation(null); // Close the dialog
+      toast({ title: 'Annotation Deleted' });
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Failed to Delete', description: e.message });
+    }
+  };
+
+  const handleFavoriteAnnotation = (annotation: Annotation) => {
+    const textToFavorite = `Note for "${annotation.targetText}":\n${annotation.note}`;
+    LocalStorageService.addFavoriteItem({
+      id: `ann_fav_${annotation.id}`,
+      text: textToFavorite,
+      sourceDocumentId: activeDoc?.id,
+      sourceDocumentName: activeDoc?.title,
+      createdAt: Date.now(),
+    });
+    toast({ title: 'Annotation Favorited', description: 'Added to your favorites page.' });
+  };
+
 
   const mainButtonState = getMainButtonState();
   
@@ -1855,6 +1897,37 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <Dialog open={!!viewingAnnotation} onOpenChange={(isOpen) => !isOpen && setViewingAnnotation(null)}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Annotation Details</DialogTitle>
+              <DialogDescription>
+                Note for: <span className="italic">&quot;{viewingAnnotation?.targetText}&quot;</span>
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4 space-y-4 max-h-[60vh] overflow-y-auto">
+              {viewingAnnotation?.note && (
+                <div className="p-3 bg-muted/50 rounded-md">
+                    <p className="text-sm whitespace-pre-wrap">{viewingAnnotation.note}</p>
+                </div>
+              )}
+              {viewingAnnotation?.imageDataUrl && (
+                <div>
+                    <img src={viewingAnnotation.imageDataUrl} alt="Annotation attachment" className="rounded-md border max-w-full" />
+                </div>
+              )}
+            </div>
+            <DialogFooter className="gap-2 sm:justify-end">
+              <Button variant="outline" size="sm" onClick={() => viewingAnnotation && handleFavoriteAnnotation(viewingAnnotation)}>
+                  <Star className="mr-2 h-4 w-4" /> Favorite
+              </Button>
+              <Button variant="destructive" size="sm" onClick={() => viewingAnnotation && handleDeleteAnnotation(viewingAnnotation.id)}>
+                  <Trash2 className="mr-2 h-4 w-4" /> Delete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
       </div>
     </>
