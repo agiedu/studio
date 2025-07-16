@@ -187,55 +187,52 @@ function ReaderPageContent() {
 
 
   const renderedTextWithAnnotations = useMemo(() => {
-    if (!currentTextForTTS || sortedAnnotations.length === 0) return currentTextForTTS;
-
-    let parts: (string | JSX.Element)[] = [currentTextForTTS];
-    
-    sortedAnnotations.forEach((annotation, index) => {
-        let newParts: (string | JSX.Element)[] = [];
-        let annotationApplied = false;
-
-        for (const part of parts) {
-            if (typeof part === 'string' && !annotationApplied) {
-                const startIndexInPart = part.indexOf(annotation.targetText);
-                if (startIndexInPart !== -1) {
-                    const endIndexInPart = startIndexInPart + annotation.targetText.length;
-                    
-                    // Push text before the annotation
-                    if (startIndexInPart > 0) {
-                        newParts.push(part.substring(0, startIndexInPart));
-                    }
-                    
-                    // Push the annotation itself
-                    newParts.push(
-                        <span key={annotation.id} className="relative">
-                            {annotation.targetText}
-                            <span
-                                className="absolute -top-1 -right-2 w-4 h-4 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs leading-none cursor-pointer hover:bg-primary/80 transition-colors"
-                                onClick={() => setViewingAnnotation(annotation)}
-                                title={`View note ${index + 1}`}
-                            >
-                                {index + 1}
-                            </span>
-                        </span>
-                    );
-
-                    // Push text after the annotation
-                    if (endIndexInPart < part.length) {
-                        newParts.push(part.substring(endIndexInPart));
-                    }
-                    annotationApplied = true;
-
-                } else {
-                    newParts.push(part);
-                }
-            } else {
-                newParts.push(part);
-            }
-        }
-        parts = newParts;
+    if (!currentTextForTTS) return currentTextForTTS;
+  
+    // Use only annotations that can be found in the current text.
+    // This prevents errors if annotations from a different text source are present.
+    const relevantAnnotations = sortedAnnotations.filter(annotation => {
+      // Verify that the annotation's target text is present at its specified index
+      const expectedText = currentTextForTTS.substring(annotation.startIndex, annotation.startIndex + annotation.targetText.length);
+      return expectedText === annotation.targetText;
     });
-
+  
+    if (relevantAnnotations.length === 0) {
+      return currentTextForTTS;
+    }
+  
+    const parts: (string | JSX.Element)[] = [];
+    let lastIndex = 0;
+  
+    relevantAnnotations.forEach((annotation, index) => {
+      // Push the text segment before the current annotation
+      if (annotation.startIndex > lastIndex) {
+        parts.push(currentTextForTTS.substring(lastIndex, annotation.startIndex));
+      }
+  
+      // Push the annotated text segment itself, wrapped with the number
+      const endIndex = annotation.startIndex + annotation.targetText.length;
+      parts.push(
+        <span key={annotation.id} className="relative">
+          {currentTextForTTS.substring(annotation.startIndex, endIndex)}
+          <span
+            className="absolute -top-1 -right-2 w-4 h-4 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs leading-none cursor-pointer hover:bg-primary/80 transition-colors"
+            onClick={() => setViewingAnnotation(annotation)}
+            title={`View note ${index + 1}`}
+          >
+            {index + 1}
+          </span>
+        </span>
+      );
+  
+      lastIndex = endIndex;
+    });
+  
+    // Push any remaining text after the last annotation
+    if (lastIndex < currentTextForTTS.length) {
+      parts.push(currentTextForTTS.substring(lastIndex));
+    }
+  
     return <>{parts}</>;
   }, [currentTextForTTS, sortedAnnotations]);
 
@@ -1503,9 +1500,9 @@ function ReaderPageContent() {
     <>
       <AppHeader />
       <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)]">
-        <div className="flex-grow flex flex-col bg-muted/20 p-2 md:p-4 min-w-0">
+        <div ref={scrollContainerRef} className="flex-grow flex flex-col bg-muted/20 p-2 md:p-4 min-w-0 overflow-y-auto">
           
-          <div ref={scrollContainerRef} onScroll={(e) => { if(e.currentTarget) (e.currentTarget as any).scrollPosition = e.currentTarget.scrollTop} } className="flex-grow overflow-y-auto rounded-lg bg-background shadow-inner relative flex flex-col justify-start">
+          <div className="flex-grow rounded-lg bg-background shadow-inner relative flex flex-col justify-start">
               {(isLoadingDoc || isEpubLoading || isRenderingPdfPage) && (
                   <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
                       <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -1532,18 +1529,14 @@ function ReaderPageContent() {
                 }}
               >
                 {!activeDoc && !isLoadingDoc && !docErrorMessage && (
-                  <div className="w-full h-full flex flex-col">
-                    <div ref={mainHighlightedContentRef} className="w-full h-full whitespace-pre-wrap select-text text-sm overflow-y-auto">
-                        {isSpeaking || isPaused ? speakingViewContent : renderedTextWithAnnotations}
-                    </div>
+                  <div ref={mainHighlightedContentRef} className="w-full h-full whitespace-pre-wrap select-text text-sm">
+                    {isSpeaking || isPaused ? speakingViewContent : renderedTextWithAnnotations}
                   </div>
                 )}
 
                 {activeDoc?.type === 'pdf' && isPdfTextView && (
-                  <div className="w-full h-full flex flex-col">
-                      <div ref={mainHighlightedContentRef} className="w-full flex-grow whitespace-pre-wrap select-text px-3 py-2 text-sm min-h-[80px]">
-                          {(isSpeaking || isPaused) ? speakingViewContent : renderedTextWithAnnotations}
-                      </div>
+                  <div ref={mainHighlightedContentRef} className="w-full h-full whitespace-pre-wrap select-text px-3 py-2 text-sm">
+                      {(isSpeaking || isPaused) ? speakingViewContent : renderedTextWithAnnotations}
                   </div>
                 )}
 
@@ -1564,10 +1557,8 @@ function ReaderPageContent() {
                 </div>
 
                 {activeDoc?.type === 'txt' && (
-                  <div className="w-full h-full flex flex-col">
-                      <div ref={mainHighlightedContentRef} className="w-full flex-grow whitespace-pre-wrap select-text px-3 py-2 text-sm min-h-[80px]">
-                          {(isSpeaking || isPaused) ? speakingViewContent : renderedTextWithAnnotations}
-                      </div>
+                  <div ref={mainHighlightedContentRef} className="w-full h-full whitespace-pre-wrap select-text px-3 py-2 text-sm">
+                      {(isSpeaking || isPaused) ? speakingViewContent : renderedTextWithAnnotations}
                   </div>
                 )}
 
@@ -1595,15 +1586,19 @@ function ReaderPageContent() {
                             >
                                 {isTtsAreaExpanded ? <Shrink className="h-4 w-4" /> : <Expand className="h-4 w-4" />}
                             </Button>
-                          <Button
-                            onClick={handleOpenAnnotationDialog}
-                            size="icon"
-                            variant="outline"
-                            className="h-9 w-9"
-                            title="Add Annotation"
-                          >
-                           <MessageSquarePlus className="h-4 w-4" />
-                          </Button>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                onClick={handleOpenAnnotationDialog}
+                                size="icon"
+                                variant="outline"
+                                className="h-9 w-9"
+                                title="Add Annotation"
+                              >
+                                <MessageSquarePlus className="h-4 w-4" />
+                              </Button>
+                            </PopoverTrigger>
+                          </Popover>
                           {(showOcrButtonForPdfPage || showOcrButtonForImage || showOcrButtonForEpubPage) && (
                               <Button
                                   onClick={handlePerformOcr}
@@ -2027,3 +2022,4 @@ export default function ReaderPage() {
     
 
     
+
