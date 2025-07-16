@@ -1,6 +1,7 @@
 
 
 
+
 export interface User {
   email: string;
   passwordHash: string;
@@ -105,6 +106,15 @@ export interface FavoriteItem {
   sourceDocumentName?: string;
   createdAt: number;
 }
+
+export interface NoteFavoriteItem {
+    id: string; // Should be the original annotation ID to maintain uniqueness
+    annotation: Annotation;
+    sourceDocumentId?: string;
+    sourceDocumentName?: string;
+    favoritedAt: number;
+}
+
 
 // This type might be used by the ReaderPage to hold the currently active document
 // It could be identical to StoredMangaDocument or have additional transient reader state

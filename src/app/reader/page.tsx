@@ -50,7 +50,7 @@ import {
 import { getCloudSpeech, performOCR } from '@/app/actions';
 import * as LocalStorageService from '@/lib/localStorageService';
 import * as IndexedDBService from '@/lib/indexedDBService';
-import type { TTSSettings, TTSVoice, StoredMangaDocument, ActiveMangaDocument, StoredPdfDocument, StoredImageDocument, StoredEpubDocument, StoredTxtDocument, StoredMobiDocument, FavoriteItem, Annotation } from '@/types';
+import type { TTSSettings, TTSVoice, StoredMangaDocument, ActiveMangaDocument, StoredPdfDocument, StoredImageDocument, StoredEpubDocument, StoredTxtDocument, StoredMobiDocument, FavoriteItem, Annotation, NoteFavoriteItem } from '@/types';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { AuthGuard } from '@/components/auth/AuthGuard';
@@ -1407,15 +1407,15 @@ function ReaderPageContent() {
   };
 
   const handleFavoriteAnnotation = (annotation: Annotation) => {
-    const textToFavorite = `Note for "${annotation.targetText}":\n${annotation.note}`;
-    LocalStorageService.addFavoriteItem({
-      id: `ann_fav_${annotation.id}`,
-      text: textToFavorite,
+    const noteFavorite: NoteFavoriteItem = {
+      id: annotation.id,
+      annotation: annotation,
       sourceDocumentId: activeDoc?.id,
       sourceDocumentName: activeDoc?.title,
-      createdAt: Date.now(),
-    });
-    toast({ title: 'Annotation Favorited', description: 'Added to your favorites page.' });
+      favoritedAt: Date.now(),
+    }
+    LocalStorageService.saveNoteFavorite(noteFavorite);
+    toast({ title: 'Note Favorited', description: 'Saved to your notes favorites page.' });
   };
   
     const handleEditAnnotation = (annotation: Annotation) => {

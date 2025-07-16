@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { BookOpenText, Library, Star, User, LogOut, ShieldCheck } from 'lucide-react';
+import { BookOpenText, Library, Star, User, LogOut, ShieldCheck, NotebookText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { MangaTalkLogo } from '@/components/icons/MangaTalkLogo';
 import { cn } from '@/lib/utils';
@@ -29,12 +29,7 @@ export function AppHeader() {
   };
 
   const getLinkClass = (path: string) => {
-    const isActive = (path === '/reader' && pathname.startsWith('/reader')) ||
-                     (path === '/library' && pathname.startsWith('/library')) ||
-                     (path === '/favorites' && pathname.startsWith('/favorites')) ||
-                     (path === '/profile' && pathname.startsWith('/profile')) ||
-                     (path === '/admin/management' && pathname.startsWith('/admin/management'));
-
+    const isActive = pathname.startsWith(path);
     return cn(
       "flex items-center gap-1 md:gap-2",
       isActive && "bg-accent text-accent-foreground rounded-md"
@@ -69,6 +64,11 @@ export function AppHeader() {
                 <Button variant="ghost" asChild size="sm" className={getLinkClass('/favorites')}>
                   <Link href="/favorites">
                     <Star className="mr-1 h-4 w-4" /> Favorites
+                  </Link>
+                </Button>
+                <Button variant="ghost" asChild size="sm" className={getLinkClass('/notes-favorites')}>
+                  <Link href="/notes-favorites">
+                    <NotebookText className="mr-1 h-4 w-4" /> Notes
                   </Link>
                 </Button>
                 <Button variant="ghost" asChild size="sm" className={getLinkClass('/profile')}>

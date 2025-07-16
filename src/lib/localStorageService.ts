@@ -1,4 +1,4 @@
-import type { TTSSettings, FavoriteItem, MangaDocumentDisplayInfo } from '@/types';
+import type { TTSSettings, FavoriteItem, MangaDocumentDisplayInfo, NoteFavoriteItem } from '@/types';
 import { getCurrentUser } from './authService';
 
 // --- KEY GENERATION ---
@@ -17,6 +17,7 @@ const getUserKey = (baseKey: string): string | null => {
 
 const TTS_SETTINGS_KEY = 'mangaTalk_ttsSettings_v2';
 const FAVORITE_ITEMS_KEY = 'mangaTalk_favoriteItems_v1';
+const NOTE_FAVORITES_KEY = 'mangaTalk_noteFavorites_v1';
 const SCRATCHPAD_TEXT_KEY = 'mangaTalk_scratchpadText_v1';
 const DOC_METADATA_CACHE_KEY = 'mangaTalk_docMetadataCache_v1';
 const TTS_TEXT_SIZE_KEY = 'mangaTalk_ttsTextSize_v1';
@@ -27,6 +28,7 @@ const REMEMBERED_EMAIL_KEY = 'mangaTalk_rememberedEmail_v1';
 const ALL_USER_SPECIFIC_BASE_KEYS = [
     TTS_SETTINGS_KEY,
     FAVORITE_ITEMS_KEY,
+    NOTE_FAVORITES_KEY,
     SCRATCHPAD_TEXT_KEY,
     DOC_METADATA_CACHE_KEY,
     TTS_TEXT_SIZE_KEY,
@@ -127,30 +129,54 @@ export const saveTTSSettings = (settings: TTSSettings): boolean => {
   return safeLocalStorageSet(key, settings);
 };
 
-// Favorites Page specific storage
+// Favorites Page (Text Snippets) specific storage
 export const loadFavoriteItems = (): FavoriteItem[] => {
     const key = getUserKey(FAVORITE_ITEMS_KEY);
     if (!key) return [];
     return safeLocalStorageGet<FavoriteItem[]>(key, []);
 };
-
 export const saveFavoriteItems = (items: FavoriteItem[]): boolean => {
     const key = getUserKey(FAVORITE_ITEMS_KEY);
     if (!key) return false;
     return safeLocalStorageSet(key, items);
 };
-
 export const addFavoriteItem = (item: FavoriteItem): boolean => {
     const items = loadFavoriteItems();
     items.unshift(item); // Add new to the beginning
     return saveFavoriteItems(items);
 };
-
 export const deleteFavoriteItem = (itemId: string): boolean => {
     let items = loadFavoriteItems();
     items = items.filter(item => item.id !== itemId);
     return saveFavoriteItems(items);
 };
+
+// Notes Favorites (Annotations) specific storage
+export const loadNoteFavorites = (): NoteFavoriteItem[] => {
+    const key = getUserKey(NOTE_FAVORITES_KEY);
+    if (!key) return [];
+    return safeLocalStorageGet<NoteFavoriteItem[]>(key, []);
+};
+export const saveNoteFavorites = (items: NoteFavoriteItem[]): boolean => {
+    const key = getUserKey(NOTE_FAVORITES_KEY);
+    if (!key) return false;
+    return safeLocalStorageSet(key, items);
+};
+export const saveNoteFavorite = (item: NoteFavoriteItem): boolean => {
+    const items = loadNoteFavorites();
+    // Prevent duplicates by checking ID
+    if (items.some(fav => fav.id === item.id)) {
+        return true; // Already exists, do nothing
+    }
+    items.unshift(item); // Add new to the beginning
+    return saveNoteFavorites(items);
+};
+export const deleteNoteFavorite = (annotationId: string): boolean => {
+    let items = loadNoteFavorites();
+    items = items.filter(item => item.id !== annotationId);
+    return saveNoteFavorites(items);
+};
+
 
 // Scratchpad Text
 export const loadScratchpadText = (): string => {
@@ -158,7 +184,6 @@ export const loadScratchpadText = (): string => {
   if (!key) return '';
   return safeLocalStorageGet<string>(key, '');
 };
-
 export const saveScratchpadText = (text: string): boolean => {
   const key = getUserKey(SCRATCHPAD_TEXT_KEY);
   if (!key) return false;
@@ -171,7 +196,6 @@ export const loadDocumentMetadata = (): MangaDocumentDisplayInfo[] => {
   if (!key) return [];
   return safeLocalStorageGet<MangaDocumentDisplayInfo[]>(key, []);
 };
-
 export const saveDocumentMetadata = (metadata: MangaDocumentDisplayInfo[]): boolean => {
   const key = getUserKey(DOC_METADATA_CACHE_KEY);
   if (!key) return false;
@@ -195,11 +219,9 @@ export const saveTtsTextSize = (size: number): boolean => {
 export const saveRememberedEmail = (email: string): boolean => {
   return safeLocalStorageSet(REMEMBERED_EMAIL_KEY, email);
 };
-
 export const getRememberedEmail = (): string | null => {
   return safeLocalStorageGet<string | null>(REMEMBERED_EMAIL_KEY, null);
 };
-
 export const clearRememberedEmail = (): void => {
   if (typeof window === 'undefined') return;
   window.localStorage.removeItem(REMEMBERED_EMAIL_KEY);
