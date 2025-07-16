@@ -21,7 +21,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, Play, Pause, Smartphone, Cloud as CloudIcon, Star, AlertTriangle, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, BookOpen, Settings2, FileText, ScanText, Trash2, Edit, Repeat, X, CaseSensitive, MessageSquarePlus, ImagePlus, FileImage } from 'lucide-react';
+import { Loader2, Play, Pause, Smartphone, Cloud as CloudIcon, Star, AlertTriangle, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, BookOpen, Settings2, FileText, ScanText, Trash2, Edit, Repeat, X, CaseSensitive, MessageSquarePlus, ImagePlus, FileImage, Pencil } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -150,6 +150,7 @@ function ReaderPageContent() {
 
   const [annotationDialog, setAnnotationDialog] = useState({
     open: false,
+    id: null as string | null, // Add id for editing
     targetText: '',
     startIndex: 0,
     note: '',
@@ -1316,6 +1317,7 @@ function ReaderPageContent() {
     }
     setAnnotationDialog({
       open: true,
+      id: null, // It's a new annotation
       targetText: selection.text,
       startIndex: selection.startIndex,
       note: '',
@@ -1342,28 +1344,42 @@ function ReaderPageContent() {
     if (!activeDoc) return;
     setAnnotationDialog((prev) => ({ ...prev, isSaving: true }));
     try {
-      const newAnnotation: Annotation = {
-        id: `ann_${Date.now()}`,
-        targetText: annotationDialog.targetText,
-        startIndex: annotationDialog.startIndex,
-        note: annotationDialog.note,
-        imageDataUrl: annotationDialog.imageDataUrl,
-        createdAt: Date.now(),
-      };
+      let updatedAnnotations;
+      const { id, targetText, startIndex, note, imageDataUrl } = annotationDialog;
+
+      if (id) { // Editing existing annotation
+        updatedAnnotations = activeDoc.annotations?.map(ann => {
+          if (ann.id === id) {
+            return { ...ann, note, imageDataUrl };
+          }
+          return ann;
+        }) || [];
+      } else { // Creating new annotation
+        const newAnnotation: Annotation = {
+          id: `ann_${Date.now()}`,
+          targetText,
+          startIndex,
+          note,
+          imageDataUrl,
+          createdAt: Date.now(),
+        };
+        updatedAnnotations = [...(activeDoc.annotations || []), newAnnotation];
+      }
 
       const updatedDoc = {
         ...activeDoc,
-        annotations: [...(activeDoc.annotations || []), newAnnotation],
+        annotations: updatedAnnotations,
       };
 
       await IndexedDBService.saveDocument(updatedDoc);
       setActiveDoc(updatedDoc);
-      toast({ title: 'Annotation Saved' });
+      toast({ title: id ? 'Annotation Updated' : 'Annotation Saved' });
     } catch (e: any) {
       toast({ variant: 'destructive', title: 'Failed to Save', description: e.message });
     } finally {
       setAnnotationDialog({
         open: false,
+        id: null,
         targetText: '',
         startIndex: 0,
         note: '',
@@ -1400,6 +1416,19 @@ function ReaderPageContent() {
       createdAt: Date.now(),
     });
     toast({ title: 'Annotation Favorited', description: 'Added to your favorites page.' });
+  };
+  
+    const handleEditAnnotation = (annotation: Annotation) => {
+    setViewingAnnotation(null); // Close the view dialog first
+    setAnnotationDialog({
+      open: true,
+      id: annotation.id,
+      targetText: annotation.targetText,
+      startIndex: annotation.startIndex,
+      note: annotation.note,
+      imageDataUrl: annotation.imageDataUrl || '',
+      isSaving: false,
+    });
   };
 
 
@@ -1842,9 +1871,9 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
         >
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Add Annotation</AlertDialogTitle>
+              <AlertDialogTitle>{annotationDialog.id ? 'Edit Annotation' : 'Add Annotation'}</AlertDialogTitle>
               <AlertDialogDescription>
-                Add a note and an optional image for the selected text:
+                {annotationDialog.id ? 'Edit your note for the selected text:' : 'Add a note and an optional image for the selected text:'}
                 <strong className="block mt-2 p-2 bg-muted/50 rounded text-muted-foreground italic truncate">
                   &quot;{annotationDialog.targetText}&quot;
                 </strong>
@@ -1892,7 +1921,7 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction onClick={handleSaveAnnotation} disabled={annotationDialog.isSaving}>
                 {annotationDialog.isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Save Annotation
+                Save
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -1919,12 +1948,15 @@ Type or paste any text here to have it read aloud or to save snippets to your fa
               )}
             </div>
             <DialogFooter className="gap-2 sm:justify-end">
-              <Button variant="outline" size="sm" onClick={() => viewingAnnotation && handleFavoriteAnnotation(viewingAnnotation)}>
+                <Button variant="outline" size="sm" onClick={() => viewingAnnotation && handleEditAnnotation(viewingAnnotation)}>
+                    <Pencil className="mr-2 h-4 w-4" /> Edit
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => viewingAnnotation && handleFavoriteAnnotation(viewingAnnotation)}>
                   <Star className="mr-2 h-4 w-4" /> Favorite
-              </Button>
-              <Button variant="destructive" size="sm" onClick={() => viewingAnnotation && handleDeleteAnnotation(viewingAnnotation.id)}>
+                </Button>
+                <Button variant="destructive" size="sm" onClick={() => viewingAnnotation && handleDeleteAnnotation(viewingAnnotation.id)}>
                   <Trash2 className="mr-2 h-4 w-4" /> Delete
-              </Button>
+                </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -1947,3 +1979,5 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
+
+    
