@@ -179,42 +179,40 @@ function ReaderPageContent() {
   
   const sortedAnnotations = useMemo(() => {
     const allAnnotations = activeDoc ? (activeDoc.annotations || []) : scratchpadAnnotations;
-    // Filter annotations to only those that could appear in the current text view
     return allAnnotations
-      .filter(annotation => currentTextForTTS.includes(annotation.targetText))
       .sort((a, b) => a.startIndex - b.startIndex);
-  }, [activeDoc, scratchpadAnnotations, currentTextForTTS]);
+  }, [activeDoc, scratchpadAnnotations]);
 
 
   const renderedTextWithAnnotations = useMemo(() => {
-    if (!currentTextForTTS) return currentTextForTTS;
-  
-    // Use only annotations that can be found in the current text.
-    // This prevents errors if annotations from a different text source are present.
-    const relevantAnnotations = sortedAnnotations.filter(annotation => {
-      // Verify that the annotation's target text is present at its specified index
-      const expectedText = currentTextForTTS.substring(annotation.startIndex, annotation.startIndex + annotation.targetText.length);
-      return expectedText === annotation.targetText;
-    });
-  
-    if (relevantAnnotations.length === 0) {
-      return currentTextForTTS;
-    }
+    if (!currentTextForTTS) return null;
+    if (sortedAnnotations.length === 0) return [currentTextForTTS];
   
     const parts: (string | JSX.Element)[] = [];
     let lastIndex = 0;
   
-    relevantAnnotations.forEach((annotation, index) => {
-      // Push the text segment before the current annotation
+    sortedAnnotations.forEach((annotation, index) => {
+      // Check if annotation is valid and within bounds
+      if (annotation.startIndex < lastIndex || annotation.startIndex >= currentTextForTTS.length) {
+        return; // Skip invalid or overlapping annotations
+      }
+      const annotationEndIndex = annotation.startIndex + annotation.targetText.length;
+      if (annotationEndIndex > currentTextForTTS.length) {
+        return; // Skip invalid annotation that goes out of bounds
+      }
+       if (currentTextForTTS.substring(annotation.startIndex, annotationEndIndex) !== annotation.targetText) {
+        return; // Skip if text doesn't match
+      }
+
+      // 1. Add text before the annotation
       if (annotation.startIndex > lastIndex) {
         parts.push(currentTextForTTS.substring(lastIndex, annotation.startIndex));
       }
   
-      // Push the annotated text segment itself, wrapped with the number
-      const endIndex = annotation.startIndex + annotation.targetText.length;
+      // 2. Add the annotated text with the marker
       parts.push(
         <span key={annotation.id} className="relative">
-          {currentTextForTTS.substring(annotation.startIndex, endIndex)}
+          {annotation.targetText}
           <span
             className="absolute -top-1 -right-2 w-4 h-4 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs leading-none cursor-pointer hover:bg-primary/80 transition-colors"
             onClick={() => setViewingAnnotation(annotation)}
@@ -225,10 +223,10 @@ function ReaderPageContent() {
         </span>
       );
   
-      lastIndex = endIndex;
+      lastIndex = annotationEndIndex;
     });
   
-    // Push any remaining text after the last annotation
+    // 3. Add any remaining text after the last annotation
     if (lastIndex < currentTextForTTS.length) {
       parts.push(currentTextForTTS.substring(lastIndex));
     }
@@ -2022,4 +2020,5 @@ export default function ReaderPage() {
     
 
     
+
 
