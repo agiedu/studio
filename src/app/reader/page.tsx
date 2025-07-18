@@ -202,43 +202,38 @@ function ReaderPageContent() {
     
     const currentPage = getCurrentPage();
   
-    const filteredByPage = allAnnotations.filter(ann => ann.pageNumber === currentPage);
-  
-    return filteredByPage.sort((a, b) => a.startIndex - b.startIndex);
+    return allAnnotations
+        .filter(ann => ann.pageNumber === currentPage)
+        .sort((a, b) => a.startIndex - b.startIndex);
+
   }, [activeDoc, scratchpadAnnotations, isPdfTextView, currentPdfPageNum, epubCurrentPageNum]);
 
 
   const renderedTextWithAnnotations = useMemo(() => {
     const text = currentTextForTTS;
-    const annotations = sortedAnnotations;
+    if (!text) return null;
 
-    if (!text || annotations.length === 0) {
-      return text;
+    if (sortedAnnotations.length === 0) {
+      return <>{text}</>;
     }
 
     const parts: (string | JSX.Element)[] = [];
     let lastIndex = 0;
 
-    annotations.forEach((annotation, index) => {
-      // Validate annotation to prevent crashes from bad data.
-      if (typeof annotation.startIndex !== 'number' || annotation.startIndex < lastIndex || !annotation.targetText) {
-        console.warn('Skipping invalid annotation (bad start index or missing text):', annotation);
+    sortedAnnotations.forEach((annotation, index) => {
+      if (annotation.startIndex < lastIndex) {
+        // Skip overlapping or invalid annotations
         return;
       }
-
-      const annotationEndIndex = annotation.startIndex + annotation.targetText.length;
-      if (annotationEndIndex > text.length) {
-        console.warn('Skipping annotation with out-of-bounds length:', annotation);
-        return;
-      }
-
-      // 1. Add the text segment *before* the current annotation.
+      
+      // Add the text segment before the current annotation
       if (annotation.startIndex > lastIndex) {
         parts.push(text.substring(lastIndex, annotation.startIndex));
       }
 
-      // 2. Add the annotated text segment itself, wrapped for interaction.
+      const annotationEndIndex = annotation.startIndex + annotation.targetText.length;
       const annotatedTextSegment = text.substring(annotation.startIndex, annotationEndIndex);
+      
       parts.push(
         <span key={annotation.id} className="relative inline-block">
           {annotatedTextSegment}
@@ -254,11 +249,11 @@ function ReaderPageContent() {
           </sup>
         </span>
       );
-
+      
       lastIndex = annotationEndIndex;
     });
 
-    // 3. Add any remaining text after the last annotation.
+    // Add any remaining text after the last annotation
     if (lastIndex < text.length) {
       parts.push(text.substring(lastIndex));
     }
@@ -1359,7 +1354,7 @@ function ReaderPageContent() {
   
   const handleOpenAnnotationDialog = () => {
     const selectionInfo = getSelectedText();
-
+  
     if (!selectionInfo.text.trim()) {
       toast({
         variant: 'destructive',
@@ -1390,12 +1385,14 @@ function ReaderPageContent() {
       }
     };
   
+    // "Lock" the selection by setting it into state
     setSelectionForAnnotation({
       text: selectionInfo.text,
       startIndex: selectionInfo.startIndex,
       pageNumber: getCurrentPage(),
     });
   
+    // Open the dialog
     setAnnotationDialog({
       open: true,
       id: null,
