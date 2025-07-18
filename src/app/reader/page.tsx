@@ -186,6 +186,7 @@ function ReaderPageContent() {
         activeDoc.type === 'epub' ||
         activeDoc.type === 'image'
     );
+    
     const currentPage = activeDoc?.type === 'pdf' ? currentPdfPageNum : (activeDoc?.type === 'epub' ? epubCurrentPageNum : 1);
   
     const filteredByPage = isPagedView
@@ -205,36 +206,33 @@ function ReaderPageContent() {
   
     sortedAnnotations.forEach((annotation, index) => {
       // Basic validation to prevent crashes from bad data
-      if (typeof annotation.startIndex !== 'number' || annotation.startIndex < lastIndex || annotation.startIndex >= currentTextForTTS.length) {
-        console.warn('Skipping invalid annotation:', annotation);
+      if (typeof annotation.startIndex !== 'number' || annotation.startIndex < lastIndex) {
+        console.warn('Skipping invalid annotation (bad start index):', annotation);
         return; 
       }
+      
       const annotationEndIndex = annotation.startIndex + annotation.targetText.length;
       if (annotationEndIndex > currentTextForTTS.length) {
         console.warn('Skipping annotation with invalid length:', annotation);
         return; 
       }
-
-      // Check if the text at the stored location still matches. If not, the source has changed.
-      // This is a safety check; ideally, annotations would be updated/cleared if the source text changes.
+  
       if (currentTextForTTS.substring(annotation.startIndex, annotationEndIndex) !== annotation.targetText) {
-        console.warn('Skipping mismatched annotation:', annotation);
+        console.warn('Skipping mismatched annotation (source text changed):', annotation);
         return;
       }
-
-      // Add the text segment before the current annotation
+  
       if (annotation.startIndex > lastIndex) {
         parts.push(currentTextForTTS.substring(lastIndex, annotation.startIndex));
       }
   
-      // Add the annotated text, wrapped in a span with the superscript number
       parts.push(
-        <span key={annotation.id} className="relative inline-block" style={{ display: 'inline-block' }}>
+        <span key={annotation.id} className="relative inline-block">
           {annotation.targetText}
           <sup
             className="absolute -top-1 -right-2 w-4 h-4 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs leading-none cursor-pointer hover:bg-primary/80 transition-colors"
             onClick={(e) => {
-                e.stopPropagation(); // Prevent clicks from bubbling up
+                e.stopPropagation();
                 setViewingAnnotation(annotation);
             }}
             title={`View note ${index + 1}`}
@@ -247,7 +245,6 @@ function ReaderPageContent() {
       lastIndex = annotationEndIndex;
     });
   
-    // Add any remaining text after the last annotation
     if (lastIndex < currentTextForTTS.length) {
       parts.push(currentTextForTTS.substring(lastIndex));
     }
@@ -1610,19 +1607,17 @@ function ReaderPageContent() {
                             >
                                 {isTtsAreaExpanded ? <Shrink className="h-4 w-4" /> : <Expand className="h-4 w-4" />}
                             </Button>
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button
+                          
+                            <Button
                                 onClick={handleOpenAnnotationDialog}
                                 size="icon"
                                 variant="outline"
                                 className="h-9 w-9"
                                 title="Add Annotation"
-                              >
+                            >
                                 <MessageSquarePlus className="h-4 w-4" />
-                              </Button>
-                            </PopoverTrigger>
-                          </Popover>
+                            </Button>
+                          
                           {(showOcrButtonForPdfPage || showOcrButtonForImage || showOcrButtonForEpubPage) && (
                               <Button
                                   onClick={handlePerformOcr}
