@@ -186,10 +186,22 @@ function ReaderPageContent() {
   const renderedTextWithAnnotations = useMemo(() => {
     const text = currentTextForTTS;
     if (!text || sortedAnnotations.length === 0) return text;
+
     let lastIndex = 0;
     const parts: (string | JSX.Element)[] = [];
-    sortedAnnotations.forEach((annotation, index) => {
-        parts.push(text.substring(lastIndex, annotation.startIndex));
+
+    // Create a temporary array of annotations that are within the current text length
+    const visibleAnnotations = sortedAnnotations.filter(
+        (ann) => ann.startIndex < text.length && ann.startIndex + ann.targetText.length <= text.length
+    );
+
+    visibleAnnotations.forEach((annotation, index) => {
+        // Push the text segment before the current annotation
+        if (annotation.startIndex > lastIndex) {
+            parts.push(text.substring(lastIndex, annotation.startIndex));
+        }
+
+        // Push the annotated text with its superscript
         parts.push(
             <span key={annotation.id} className="relative">
                 {annotation.targetText}
@@ -201,11 +213,18 @@ function ReaderPageContent() {
                 </sup>
             </span>
         );
+
+        // Update the last index to the end of the current annotation
         lastIndex = annotation.startIndex + annotation.targetText.length;
     });
-    parts.push(text.substring(lastIndex));
+
+    // Push any remaining text after the last annotation
+    if (lastIndex < text.length) {
+        parts.push(text.substring(lastIndex));
+    }
+
     return <>{parts}</>;
-  }, [currentTextForTTS, sortedAnnotations]);
+}, [currentTextForTTS, sortedAnnotations]);
 
 
   const speakingViewContent = useMemo(() => {
