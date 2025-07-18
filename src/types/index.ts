@@ -1,9 +1,4 @@
 
-
-
-
-
-
 export interface User {
   email: string;
   passwordHash: string;
@@ -92,6 +87,7 @@ export interface TTSSettings {
   rate: number;
   pitch: number;
   engine?: 'local' | 'cloud'; // engine can be derived from type, or explicit
+  cloudVoiceId?: string; // Add this to store the specific cloud voice ID
 }
 
 export interface TTSVoice {

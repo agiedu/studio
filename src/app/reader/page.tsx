@@ -183,9 +183,10 @@ function ReaderPageContent() {
     // Determine if we need to filter by page number
     const isPagedView = activeDoc && (
         (activeDoc.type === 'pdf' && !isPdfTextView) ||
-        activeDoc.type === 'epub'
+        activeDoc.type === 'epub' ||
+        activeDoc.type === 'image'
     );
-    const currentPage = activeDoc?.type === 'pdf' ? currentPdfPageNum : epubCurrentPageNum;
+    const currentPage = activeDoc?.type === 'pdf' ? currentPdfPageNum : (activeDoc?.type === 'epub' ? epubCurrentPageNum : 1);
   
     const filteredByPage = isPagedView
       ? allAnnotations.filter(ann => ann.pageNumber === currentPage)
@@ -1396,8 +1397,8 @@ function ReaderPageContent() {
     try {
       const { id, targetText, startIndex, note, imageDataUrl } = annotationDialog;
       
-      const isPagedView = activeDoc && ((activeDoc.type === 'pdf' && !isPdfTextView) || activeDoc.type === 'epub');
-      const currentPage = activeDoc?.type === 'pdf' ? currentPdfPageNum : epubCurrentPageNum;
+      const isPagedView = activeDoc && ((activeDoc.type === 'pdf' && !isPdfTextView) || activeDoc.type === 'epub' || activeDoc.type === 'image');
+      const currentPage = activeDoc?.type === 'pdf' ? currentPdfPageNum : (activeDoc?.type === 'epub' ? epubCurrentPageNum : 1);
 
       const newOrUpdatedAnnotation: Annotation = {
         id: id || `ann_${Date.now()}`,
