@@ -203,28 +203,39 @@ function ReaderPageContent() {
     let lastIndex = 0;
   
     sortedAnnotations.forEach((annotation, index) => {
-      if (annotation.startIndex < lastIndex || annotation.startIndex >= currentTextForTTS.length) {
+      // Basic validation to prevent crashes from bad data
+      if (typeof annotation.startIndex !== 'number' || annotation.startIndex < lastIndex || annotation.startIndex >= currentTextForTTS.length) {
+        console.warn('Skipping invalid annotation:', annotation);
         return; 
       }
       const annotationEndIndex = annotation.startIndex + annotation.targetText.length;
       if (annotationEndIndex > currentTextForTTS.length) {
+        console.warn('Skipping annotation with invalid length:', annotation);
         return; 
       }
 
+      // Check if the text at the stored location still matches. If not, the source has changed.
+      // This is a safety check; ideally, annotations would be updated/cleared if the source text changes.
       if (currentTextForTTS.substring(annotation.startIndex, annotationEndIndex) !== annotation.targetText) {
+        console.warn('Skipping mismatched annotation:', annotation);
         return;
       }
 
+      // Add the text segment before the current annotation
       if (annotation.startIndex > lastIndex) {
         parts.push(currentTextForTTS.substring(lastIndex, annotation.startIndex));
       }
   
+      // Add the annotated text, wrapped in a span with the superscript number
       parts.push(
         <span key={annotation.id} className="relative inline-block" style={{ display: 'inline-block' }}>
           {annotation.targetText}
           <sup
             className="absolute -top-1 -right-2 w-4 h-4 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs leading-none cursor-pointer hover:bg-primary/80 transition-colors"
-            onClick={() => setViewingAnnotation(annotation)}
+            onClick={(e) => {
+                e.stopPropagation(); // Prevent clicks from bubbling up
+                setViewingAnnotation(annotation);
+            }}
             title={`View note ${index + 1}`}
           >
             {index + 1}
@@ -235,6 +246,7 @@ function ReaderPageContent() {
       lastIndex = annotationEndIndex;
     });
   
+    // Add any remaining text after the last annotation
     if (lastIndex < currentTextForTTS.length) {
       parts.push(currentTextForTTS.substring(lastIndex));
     }
