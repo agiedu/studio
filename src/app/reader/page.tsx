@@ -203,26 +203,24 @@ function ReaderPageContent() {
     let lastIndex = 0;
   
     sortedAnnotations.forEach((annotation, index) => {
-      // Check if annotation is valid and within bounds
       if (annotation.startIndex < lastIndex || annotation.startIndex >= currentTextForTTS.length) {
-        return; // Skip invalid or overlapping annotations
+        return; 
       }
       const annotationEndIndex = annotation.startIndex + annotation.targetText.length;
       if (annotationEndIndex > currentTextForTTS.length) {
-        return; // Skip invalid annotation that goes out of bounds
-      }
-       if (currentTextForTTS.substring(annotation.startIndex, annotationEndIndex) !== annotation.targetText) {
-        return; // Skip if text doesn't match
+        return; 
       }
 
-      // 1. Add text before the annotation
+      if (currentTextForTTS.substring(annotation.startIndex, annotationEndIndex) !== annotation.targetText) {
+        return;
+      }
+
       if (annotation.startIndex > lastIndex) {
         parts.push(currentTextForTTS.substring(lastIndex, annotation.startIndex));
       }
   
-      // 2. Add the annotated text with the marker
       parts.push(
-        <span key={annotation.id} className="relative inline-block">
+        <span key={annotation.id} className="relative inline-block" style={{ display: 'inline-block' }}>
           {annotation.targetText}
           <sup
             className="absolute -top-1 -right-2 w-4 h-4 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs leading-none cursor-pointer hover:bg-primary/80 transition-colors"
@@ -237,7 +235,6 @@ function ReaderPageContent() {
       lastIndex = annotationEndIndex;
     });
   
-    // 3. Add any remaining text after the last annotation
     if (lastIndex < currentTextForTTS.length) {
       parts.push(currentTextForTTS.substring(lastIndex));
     }
