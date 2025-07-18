@@ -1,3 +1,4 @@
+
 import type { TTSSettings, FavoriteItem, MangaDocumentDisplayInfo, NoteFavoriteItem, Annotation } from '@/types';
 import { getCurrentUser } from './authService';
 
@@ -246,3 +247,5 @@ export const clearRememberedEmail = (): void => {
   if (typeof window === 'undefined') return;
   window.localStorage.removeItem(REMEMBERED_EMAIL_KEY);
 };
+
+    

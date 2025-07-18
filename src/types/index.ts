@@ -134,3 +134,5 @@ export interface MangaDocumentDisplayInfo {
   createdAt: number;
   numPages?: number;
 }
+
+    
