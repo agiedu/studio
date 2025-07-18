@@ -62,13 +62,6 @@ const PUNCTUATION_REGEX = /[.,?!,。？！，、\n\r"“„”'‘’`*_{}\[\]()
 
 type SpeechOrigin = 'main' | 'repeat' | null;
 
-// New type to "freeze" the selection state when the annotation button is clicked
-type SelectionForAnnotation = {
-  text: string;
-  startIndex: number;
-  pageNumber: number;
-};
-
 
 const groupVoicesByLanguage = (voices: TTSVoice[]) => {
   return voices.reduce((acc, voice) => {
@@ -146,8 +139,6 @@ function ReaderPageContent() {
   const segmentIndexRef = useRef(0);
   const selectionInfoRef = useRef<{ text: string; startIndex: number | null } | null>(null);
 
-  const [selectionForAnnotation, setSelectionForAnnotation] = useState<SelectionForAnnotation | null>(null);
-
   const mainTextAreaRef = useRef<HTMLTextAreaElement | null>(null); 
   const ttsBoxTextAreaRef = useRef<HTMLTextAreaElement | null>(null); 
 
@@ -188,76 +179,31 @@ function ReaderPageContent() {
   
   const sortedAnnotations = useMemo(() => {
     const allAnnotations = activeDoc ? (activeDoc.annotations || []) : scratchpadAnnotations;
-  
-    const getCurrentPage = () => {
-      if (!activeDoc) return 1; // Scratchpad is effectively page 1
-      switch (activeDoc.type) {
-        case 'pdf': return isPdfTextView ? 1 : currentPdfPageNum;
-        case 'epub': return epubCurrentPageNum;
-        case 'image': return 1;
-        case 'txt': return 1;
-        default: return 1;
-      }
-    };
-    
-    const currentPage = getCurrentPage();
-  
-    return allAnnotations
-        .filter(ann => ann.pageNumber === currentPage)
-        .sort((a, b) => a.startIndex - b.startIndex);
-
-  }, [activeDoc, scratchpadAnnotations, isPdfTextView, currentPdfPageNum, epubCurrentPageNum]);
+    return allAnnotations.sort((a, b) => a.startIndex - b.startIndex);
+  }, [activeDoc, scratchpadAnnotations]);
 
 
   const renderedTextWithAnnotations = useMemo(() => {
     const text = currentTextForTTS;
-    if (!text) return null;
-
-    if (sortedAnnotations.length === 0) {
-      return <>{text}</>;
-    }
-
-    const parts: (string | JSX.Element)[] = [];
+    if (!text || sortedAnnotations.length === 0) return text;
     let lastIndex = 0;
-
+    const parts: (string | JSX.Element)[] = [];
     sortedAnnotations.forEach((annotation, index) => {
-      if (annotation.startIndex < lastIndex) {
-        // Skip overlapping or invalid annotations
-        return;
-      }
-      
-      // Add the text segment before the current annotation
-      if (annotation.startIndex > lastIndex) {
         parts.push(text.substring(lastIndex, annotation.startIndex));
-      }
-
-      const annotationEndIndex = annotation.startIndex + annotation.targetText.length;
-      const annotatedTextSegment = text.substring(annotation.startIndex, annotationEndIndex);
-      
-      parts.push(
-        <span key={annotation.id} className="relative inline-block">
-          {annotatedTextSegment}
-          <sup
-            className="absolute -top-1 -right-2 w-4 h-4 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs leading-none cursor-pointer hover:bg-primary/80 transition-colors"
-            onClick={(e) => {
-              e.stopPropagation();
-              setViewingAnnotation(annotation);
-            }}
-            title={`View note ${index + 1}`}
-          >
-            {index + 1}
-          </sup>
-        </span>
-      );
-      
-      lastIndex = annotationEndIndex;
+        parts.push(
+            <span key={annotation.id} className="relative">
+                {annotation.targetText}
+                <sup 
+                    className="absolute -top-1 -right-2 w-4 h-4 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs leading-none cursor-pointer"
+                    onClick={(e) => { e.stopPropagation(); setViewingAnnotation(annotation); }}
+                >
+                    {index + 1}
+                </sup>
+            </span>
+        );
+        lastIndex = annotation.startIndex + annotation.targetText.length;
     });
-
-    // Add any remaining text after the last annotation
-    if (lastIndex < text.length) {
-      parts.push(text.substring(lastIndex));
-    }
-
+    parts.push(text.substring(lastIndex));
     return <>{parts}</>;
   }, [currentTextForTTS, sortedAnnotations]);
 
@@ -1354,7 +1300,6 @@ function ReaderPageContent() {
   
   const handleOpenAnnotationDialog = () => {
     const selectionInfo = getSelectedText();
-  
     if (!selectionInfo.text.trim()) {
       toast({
         variant: 'destructive',
@@ -1363,8 +1308,7 @@ function ReaderPageContent() {
       });
       return;
     }
-  
-    if (selectionInfo.startIndex === null) {
+    if(selectionInfo.startIndex === null) {
       toast({
         variant: 'destructive',
         title: 'Selection Error',
@@ -1372,27 +1316,7 @@ function ReaderPageContent() {
       });
       return;
     }
-  
-    const getCurrentPage = () => {
-      if (!activeDoc) return 1;
-      switch (activeDoc.type) {
-        case 'pdf': return isPdfTextView ? 1 : currentPdfPageNum;
-        case 'epub': return epubCurrentPageNum;
-        case 'image':
-        case 'txt':
-        default:
-          return 1;
-      }
-    };
-  
-    // "Lock" the selection by setting it into state
-    setSelectionForAnnotation({
-      text: selectionInfo.text,
-      startIndex: selectionInfo.startIndex,
-      pageNumber: getCurrentPage(),
-    });
-  
-    // Open the dialog
+
     setAnnotationDialog({
       open: true,
       id: null,
@@ -1401,7 +1325,6 @@ function ReaderPageContent() {
       isSaving: false,
     });
   };
-  
 
   const handleAnnotationImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1418,56 +1341,50 @@ function ReaderPageContent() {
   };
 
   const handleSaveAnnotation = async () => {
-    if (!selectionForAnnotation) {
-      toast({ variant: 'destructive', title: 'Failed to Save', description: 'No selection was locked for annotation.' });
-      return;
-    }
-  
     setAnnotationDialog((prev) => ({ ...prev, isSaving: true }));
     try {
-      const { id, note, imageDataUrl } = annotationDialog;
-      const { text, startIndex, pageNumber } = selectionForAnnotation;
-  
-      const newOrUpdatedAnnotation: Annotation = {
-        id: id || `ann_${Date.now()}`,
-        targetText: text,
-        startIndex: startIndex,
-        note,
-        imageDataUrl: imageDataUrl || '',
-        createdAt: id ? (activeDoc?.annotations?.find(a => a.id === id) || scratchpadAnnotations.find(a => a.id === id))?.createdAt || Date.now() : Date.now(),
-        pageNumber,
-      };
-  
-      if (activeDoc) {
-          let updatedAnnotations;
-          if (id) {
-              updatedAnnotations = (activeDoc.annotations || []).map(ann => ann.id === id ? newOrUpdatedAnnotation : ann);
-          } else {
-              updatedAnnotations = [...(activeDoc.annotations || []), newOrUpdatedAnnotation];
-          }
-          const updatedDoc = { ...activeDoc, annotations: updatedAnnotations };
-          await IndexedDBService.saveDocument(updatedDoc);
-          setActiveDoc(updatedDoc);
-      } else { // Scratchpad
-          let updatedAnnotations;
-          if (id) {
-              updatedAnnotations = scratchpadAnnotations.map(ann => ann.id === id ? newOrUpdatedAnnotation : ann);
-          } else {
-              updatedAnnotations = [...scratchpadAnnotations, newOrUpdatedAnnotation];
-          }
-          setScratchpadAnnotations(updatedAnnotations);
-      }
-      toast({ title: id ? 'Annotation Updated' : 'Annotation Saved' });
-  
+        const selectionInfo = getSelectedText();
+        if (!selectionInfo.text || selectionInfo.startIndex === null) {
+            throw new Error("Could not get valid selection info to save annotation.");
+        }
+
+        const { id, note, imageDataUrl } = annotationDialog;
+        const newOrUpdatedAnnotation: Annotation = {
+            id: id || `ann_${Date.now()}`,
+            targetText: selectionInfo.text,
+            startIndex: selectionInfo.startIndex,
+            note,
+            imageDataUrl: imageDataUrl || '',
+            createdAt: id ? (activeDoc?.annotations?.find(a => a.id === id) || scratchpadAnnotations.find(a => a.id === id))?.createdAt || Date.now() : Date.now(),
+        };
+
+        if (activeDoc) {
+            let updatedAnnotations;
+            if (id) {
+                updatedAnnotations = (activeDoc.annotations || []).map(ann => ann.id === id ? newOrUpdatedAnnotation : ann);
+            } else {
+                updatedAnnotations = [...(activeDoc.annotations || []), newOrUpdatedAnnotation];
+            }
+            const updatedDoc = { ...activeDoc, annotations: updatedAnnotations };
+            await IndexedDBService.saveDocument(updatedDoc);
+            setActiveDoc(updatedDoc);
+        } else { // Scratchpad
+            let updatedAnnotations;
+            if (id) {
+                updatedAnnotations = scratchpadAnnotations.map(ann => ann.id === id ? newOrUpdatedAnnotation : ann);
+            } else {
+                updatedAnnotations = [...scratchpadAnnotations, newOrUpdatedAnnotation];
+            }
+            setScratchpadAnnotations(updatedAnnotations);
+        }
+        toast({ title: id ? 'Annotation Updated' : 'Annotation Saved' });
     } catch (e: any) {
-      toast({ variant: 'destructive', title: 'Failed to Save', description: e.message });
+        toast({ variant: 'destructive', title: 'Failed to Save', description: e.message });
     } finally {
-      // Reset dialog and the locked selection
-      setAnnotationDialog({ open: false, id: null, note: '', imageDataUrl: '', isSaving: false });
-      setSelectionForAnnotation(null);
+        setAnnotationDialog({ open: false, id: null, note: '', imageDataUrl: '', isSaving: false });
     }
   };
-  
+
   const performDeleteAnnotation = async () => {
     if (!annotationToDelete) return;
     const annotationId = annotationToDelete.id;
@@ -1510,11 +1427,6 @@ function ReaderPageContent() {
   
   const handleEditAnnotation = (annotation: Annotation) => {
     setViewingAnnotation(null);
-    setSelectionForAnnotation({
-      text: annotation.targetText,
-      startIndex: annotation.startIndex,
-      pageNumber: annotation.pageNumber,
-    });
     setAnnotationDialog({
       open: true,
       id: annotation.id,
@@ -1932,21 +1844,13 @@ function ReaderPageContent() {
 
         <AlertDialog
           open={annotationDialog.open}
-          onOpenChange={(isOpen) => {
-            if (!isOpen) {
-              setAnnotationDialog((p) => ({ ...p, open: false }));
-              setSelectionForAnnotation(null); // Clear locked selection on close
-            }
-          }}
+          onOpenChange={(isOpen) => !isOpen && setAnnotationDialog((p) => ({ ...p, open: false }))}
         >
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>{annotationDialog.id ? 'Edit Annotation' : 'Add Annotation'}</AlertDialogTitle>
               <AlertDialogDescription>
-                {annotationDialog.id ? 'Edit your note for the selected text:' : 'Add a note and an optional image for the selected text:'}
-                <strong className="block mt-2 p-2 bg-muted/50 rounded text-muted-foreground italic truncate">
-                  &quot;{selectionForAnnotation?.text}&quot;
-                </strong>
+                Add a note and an optional image for the selected text.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <div className="space-y-4 py-2">

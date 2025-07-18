@@ -23,7 +23,6 @@ export interface Annotation {
   note: string; // The user's text note
   imageDataUrl?: string; // The optional image for the annotation, as a data URL
   createdAt: number;
-  pageNumber: number; // For paged documents like PDF/EPUB, this is essential.
 }
 
 // Base for all stored documents
