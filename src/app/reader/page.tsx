@@ -199,7 +199,9 @@ function ReaderPageContent() {
 
   const renderedTextWithAnnotations = useMemo(() => {
     if (!currentTextForTTS) return null;
-    if (sortedAnnotations.length === 0) return [currentTextForTTS];
+    if (sortedAnnotations.length === 0) {
+      return [currentTextForTTS];
+    }
   
     const parts: (string | JSX.Element)[] = [];
     let lastIndex = 0;
@@ -218,14 +220,16 @@ function ReaderPageContent() {
       }
   
       if (currentTextForTTS.substring(annotation.startIndex, annotationEndIndex) !== annotation.targetText) {
-        console.warn('Skipping mismatched annotation (source text changed):', annotation);
+        console.warn('Skipping mismatched annotation (source text changed):', annotation, `Expected: "${currentTextForTTS.substring(annotation.startIndex, annotationEndIndex)}"`);
         return;
       }
   
+      // Add the text part before the current annotation
       if (annotation.startIndex > lastIndex) {
         parts.push(currentTextForTTS.substring(lastIndex, annotation.startIndex));
       }
   
+      // Add the annotated text, wrapped in a span with the superscript number
       parts.push(
         <span key={annotation.id} className="relative inline-block">
           {annotation.targetText}
@@ -245,6 +249,7 @@ function ReaderPageContent() {
       lastIndex = annotationEndIndex;
     });
   
+    // Add any remaining text after the last annotation
     if (lastIndex < currentTextForTTS.length) {
       parts.push(currentTextForTTS.substring(lastIndex));
     }
@@ -2037,3 +2042,5 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
+
+    
