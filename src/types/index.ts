@@ -21,6 +21,7 @@ export interface Annotation {
   id: string; // Unique ID for the annotation
   targetText: string; // The selected text that was annotated
   startIndex: number; // The character index where the selection starts in the full text
+  pageNumber: number; // The page number where the annotation was made. CRITICAL for correct rendering.
   note: string; // The user's text note
   imageDataUrl?: string; // The optional image for the annotation, as a data URL
   createdAt: number;
@@ -135,5 +136,3 @@ export interface MangaDocumentDisplayInfo {
   createdAt: number;
   numPages?: number;
 }
-
-    
