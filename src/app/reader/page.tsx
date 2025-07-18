@@ -62,6 +62,14 @@ const PUNCTUATION_REGEX = /[.,?!,。？！，、\n\r"“„”'‘’`*_{}\[\]()
 
 type SpeechOrigin = 'main' | 'repeat' | null;
 
+// New type to "freeze" the selection state when the annotation button is clicked
+type SelectionForAnnotation = {
+  text: string;
+  startIndex: number;
+  pageNumber: number;
+};
+
+
 const groupVoicesByLanguage = (voices: TTSVoice[]) => {
   return voices.reduce((acc, voice) => {
     const lang = voice.lang || 'Unknown';
@@ -101,7 +109,7 @@ function ReaderPageContent() {
   const [epubPageIsImage, setEpubPageIsImage] = useState(false);
   const epubImageForOcrRef = useRef<string | null>(null);
   const [epubTotalPages, setEpubTotalPages] = useState(0);
-  const [epubCurrentPageNum, setEpubCurrentPageNum] = useState(0);
+  const [epubCurrentPageNum, setEpubCurrentPageNum] = useState(1);
   const [isEpubPaginating, setIsEpubPaginating] = useState(true);
   const [isEpubReadyForJumping, setIsEpubReadyForJumping] = useState(false);
 
@@ -138,6 +146,8 @@ function ReaderPageContent() {
   const segmentIndexRef = useRef(0);
   const selectionInfoRef = useRef<{ text: string; startIndex: number | null } | null>(null);
 
+  const [selectionForAnnotation, setSelectionForAnnotation] = useState<SelectionForAnnotation | null>(null);
+
   const mainTextAreaRef = useRef<HTMLTextAreaElement | null>(null); 
   const ttsBoxTextAreaRef = useRef<HTMLTextAreaElement | null>(null); 
 
@@ -152,8 +162,6 @@ function ReaderPageContent() {
   const [annotationDialog, setAnnotationDialog] = useState({
     open: false,
     id: null as string | null, // Add id for editing
-    targetText: '',
-    startIndex: 0,
     note: '',
     imageDataUrl: '',
     isSaving: false,
@@ -177,22 +185,29 @@ function ReaderPageContent() {
     return segments.filter(s => s.length > 0);
   }, [currentTextForTTS]);
   
+  
   const sortedAnnotations = useMemo(() => {
+    // Determine the source of annotations: active document or scratchpad
     const allAnnotations = activeDoc ? (activeDoc.annotations || []) : scratchpadAnnotations;
   
-    // Determine if we need to filter by page number
-    const isPagedView = activeDoc && (
-        (activeDoc.type === 'pdf' && !isPdfTextView) ||
-        activeDoc.type === 'epub' ||
-        activeDoc.type === 'image'
-    );
+    // Determine the current page number based on document type
+    const getCurrentPage = () => {
+      if (!activeDoc) return 1; // Scratchpad is effectively page 1
+      switch (activeDoc.type) {
+        case 'pdf': return isPdfTextView ? 1 : currentPdfPageNum;
+        case 'epub': return epubCurrentPageNum;
+        case 'image': return 1;
+        case 'txt': return 1;
+        default: return 1;
+      }
+    };
     
-    const currentPage = activeDoc?.type === 'pdf' ? currentPdfPageNum : (activeDoc?.type === 'epub' ? epubCurrentPageNum : 1);
+    const currentPage = getCurrentPage();
   
-    const filteredByPage = isPagedView
-      ? allAnnotations.filter(ann => ann.pageNumber === currentPage)
-      : allAnnotations;
+    // Filter annotations to only include those for the current page
+    const filteredByPage = allAnnotations.filter(ann => ann.pageNumber === currentPage);
   
+    // Sort the filtered annotations by their starting index
     return filteredByPage.sort((a, b) => a.startIndex - b.startIndex);
   }, [activeDoc, scratchpadAnnotations, isPdfTextView, currentPdfPageNum, epubCurrentPageNum]);
 
@@ -200,36 +215,33 @@ function ReaderPageContent() {
   const renderedTextWithAnnotations = useMemo(() => {
     if (!currentTextForTTS) return null;
     if (sortedAnnotations.length === 0) {
-      return [currentTextForTTS];
+      // If no annotations, just return the plain text.
+      return currentTextForTTS;
     }
   
     const parts: (string | JSX.Element)[] = [];
     let lastIndex = 0;
   
     sortedAnnotations.forEach((annotation, index) => {
-      // Basic validation to prevent crashes from bad data
-      if (typeof annotation.startIndex !== 'number' || annotation.startIndex < lastIndex) {
-        console.warn('Skipping invalid annotation (bad start index):', annotation);
+      // Validate annotation to prevent crashes from bad data.
+      if (typeof annotation.startIndex !== 'number' || annotation.startIndex < lastIndex || !annotation.targetText) {
+        console.warn('Skipping invalid annotation (bad start index or missing text):', annotation);
         return; 
       }
       
       const annotationEndIndex = annotation.startIndex + annotation.targetText.length;
       if (annotationEndIndex > currentTextForTTS.length) {
-        console.warn('Skipping annotation with invalid length:', annotation);
+        console.warn('Skipping annotation with out-of-bounds length:', annotation);
         return; 
       }
-  
-      if (currentTextForTTS.substring(annotation.startIndex, annotationEndIndex) !== annotation.targetText) {
-        console.warn('Skipping mismatched annotation (source text changed):', annotation, `Expected: "${currentTextForTTS.substring(annotation.startIndex, annotationEndIndex)}"`);
-        return;
-      }
-  
-      // Add the text part before the current annotation
+      
+      // Add the text part *before* the current annotation.
       if (annotation.startIndex > lastIndex) {
         parts.push(currentTextForTTS.substring(lastIndex, annotation.startIndex));
       }
   
-      // Add the annotated text, wrapped in a span with the superscript number
+      // Add the annotated text, wrapped in a span with the superscript number.
+      // This part is crucial: we render the original text from the annotation object.
       parts.push(
         <span key={annotation.id} className="relative inline-block">
           {annotation.targetText}
@@ -249,11 +261,12 @@ function ReaderPageContent() {
       lastIndex = annotationEndIndex;
     });
   
-    // Add any remaining text after the last annotation
+    // Add any remaining text after the last annotation.
     if (lastIndex < currentTextForTTS.length) {
       parts.push(currentTextForTTS.substring(lastIndex));
     }
   
+    // Join all parts into a single fragment.
     return <>{parts}</>;
   }, [currentTextForTTS, sortedAnnotations]);
 
@@ -665,7 +678,7 @@ function ReaderPageContent() {
     setIsEpubLoading(false);
     setCurrentTextForTTS("");
     setEpubTotalPages(0);
-    setEpubCurrentPageNum(0);
+    setEpubCurrentPageNum(1);
     setIsEpubPaginating(true);
     setIsEpubReadyForJumping(false);
     
@@ -1347,10 +1360,10 @@ function ReaderPageContent() {
     }
     handleCancelJump();
   };
-
+  
   const handleOpenAnnotationDialog = () => {
     const selection = getSelectedText();
-    
+  
     if (!selection.text.trim()) {
       toast({
         variant: 'destructive',
@@ -1359,26 +1372,45 @@ function ReaderPageContent() {
       });
       return;
     }
-
+  
     if (selection.startIndex === null) {
       toast({
         variant: 'destructive',
         title: 'Selection Error',
-        description: 'Could not determine the precise location of the selected text. Please try selecting again in a simpler context.',
+        description: 'Could not determine the precise location of the selected text. Please try again.',
       });
       return;
     }
-
+  
+    // Determine the current page number for the annotation
+    const getCurrentPage = () => {
+        if (!activeDoc) return 1; // Scratchpad
+        switch (activeDoc.type) {
+          case 'pdf': return isPdfTextView ? 1 : currentPdfPageNum;
+          case 'epub': return epubCurrentPageNum;
+          case 'image': return 1;
+          case 'txt': return 1;
+          default: return 1;
+        }
+    };
+  
+    // Lock in the selection and page number
+    setSelectionForAnnotation({
+      text: selection.text,
+      startIndex: selection.startIndex,
+      pageNumber: getCurrentPage(),
+    });
+  
+    // Open the dialog
     setAnnotationDialog({
       open: true,
       id: null,
-      targetText: selection.text,
-      startIndex: selection.startIndex,
       note: '',
       imageDataUrl: '',
       isSaving: false,
     });
   };
+  
 
   const handleAnnotationImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1395,27 +1427,31 @@ function ReaderPageContent() {
   };
 
   const handleSaveAnnotation = async () => {
+    // Use the locked-in selection info
+    if (!selectionForAnnotation) {
+      toast({ variant: 'destructive', title: 'Failed to Save', description: 'No selection was locked for annotation.' });
+      return;
+    }
+  
     setAnnotationDialog((prev) => ({ ...prev, isSaving: true }));
     try {
-      const { id, targetText, startIndex, note, imageDataUrl } = annotationDialog;
-      
-      const isPagedView = activeDoc && ((activeDoc.type === 'pdf' && !isPdfTextView) || activeDoc.type === 'epub' || activeDoc.type === 'image');
-      const currentPage = activeDoc?.type === 'pdf' ? currentPdfPageNum : (activeDoc?.type === 'epub' ? epubCurrentPageNum : 1);
-
+      const { id, note, imageDataUrl } = annotationDialog;
+      const { text, startIndex, pageNumber } = selectionForAnnotation;
+  
       const newOrUpdatedAnnotation: Annotation = {
         id: id || `ann_${Date.now()}`,
-        targetText,
-        startIndex,
+        targetText: text,
+        startIndex: startIndex,
         note,
-        imageDataUrl,
+        imageDataUrl: imageDataUrl || '',
         createdAt: id ? (activeDoc?.annotations?.find(a => a.id === id) || scratchpadAnnotations.find(a => a.id === id))?.createdAt || Date.now() : Date.now(),
-        pageNumber: isPagedView ? currentPage : undefined,
+        pageNumber: pageNumber,
       };
-
+  
       if (activeDoc) {
           let updatedAnnotations;
           if (id) {
-              updatedAnnotations = activeDoc.annotations?.map(ann => ann.id === id ? newOrUpdatedAnnotation : ann) || [];
+              updatedAnnotations = (activeDoc.annotations || []).map(ann => ann.id === id ? newOrUpdatedAnnotation : ann);
           } else {
               updatedAnnotations = [...(activeDoc.annotations || []), newOrUpdatedAnnotation];
           }
@@ -1432,22 +1468,16 @@ function ReaderPageContent() {
           setScratchpadAnnotations(updatedAnnotations);
       }
       toast({ title: id ? 'Annotation Updated' : 'Annotation Saved' });
-
+  
     } catch (e: any) {
       toast({ variant: 'destructive', title: 'Failed to Save', description: e.message });
     } finally {
-      setAnnotationDialog({
-        open: false,
-        id: null,
-        targetText: '',
-        startIndex: 0,
-        note: '',
-        imageDataUrl: '',
-        isSaving: false,
-      });
+      // Reset dialog and the locked selection
+      setAnnotationDialog({ open: false, id: null, note: '', imageDataUrl: '', isSaving: false });
+      setSelectionForAnnotation(null);
     }
   };
-
+  
   const performDeleteAnnotation = async () => {
     if (!annotationToDelete) return;
     const annotationId = annotationToDelete.id;
@@ -1490,18 +1520,21 @@ function ReaderPageContent() {
   
   const handleEditAnnotation = (annotation: Annotation) => {
     setViewingAnnotation(null);
+    // Lock in the existing annotation's data to allow editing its note/image
+    setSelectionForAnnotation({
+      text: annotation.targetText,
+      startIndex: annotation.startIndex,
+      pageNumber: annotation.pageNumber,
+    });
     setAnnotationDialog({
       open: true,
       id: annotation.id,
-      targetText: annotation.targetText,
-      startIndex: annotation.startIndex,
       note: annotation.note,
       imageDataUrl: annotation.imageDataUrl || '',
       isSaving: false,
     });
   };
-
-
+  
   const mainButtonState = getMainButtonState();
   
   const showInitialLoader = isLoadingDoc && !activeDoc && !docErrorMessage;
@@ -1910,10 +1943,12 @@ function ReaderPageContent() {
 
         <AlertDialog
           open={annotationDialog.open}
-          onOpenChange={(isOpen) =>
-            !isOpen &&
-            setAnnotationDialog((p) => ({ ...p, open: false }))
-          }
+          onOpenChange={(isOpen) => {
+            if (!isOpen) {
+              setAnnotationDialog((p) => ({ ...p, open: false }));
+              setSelectionForAnnotation(null); // Clear locked selection on close
+            }
+          }}
         >
           <AlertDialogContent>
             <AlertDialogHeader>
@@ -1921,7 +1956,7 @@ function ReaderPageContent() {
               <AlertDialogDescription>
                 {annotationDialog.id ? 'Edit your note for the selected text:' : 'Add a note and an optional image for the selected text:'}
                 <strong className="block mt-2 p-2 bg-muted/50 rounded text-muted-foreground italic truncate">
-                  &quot;{annotationDialog.targetText}&quot;
+                  &quot;{selectionForAnnotation?.text}&quot;
                 </strong>
               </AlertDialogDescription>
             </AlertDialogHeader>
@@ -2042,5 +2077,3 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
-
-    
