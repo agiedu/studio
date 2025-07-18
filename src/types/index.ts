@@ -2,6 +2,7 @@
 
 
 
+
 export interface User {
   email: string;
   passwordHash: string;
@@ -26,6 +27,7 @@ export interface Annotation {
   note: string; // The user's text note
   imageDataUrl?: string; // The optional image for the annotation, as a data URL
   createdAt: number;
+  pageNumber?: number; // Added to associate annotation with a specific page
 }
 
 // Base for all stored documents

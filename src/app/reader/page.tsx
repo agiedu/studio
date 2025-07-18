@@ -179,9 +179,20 @@ function ReaderPageContent() {
   
   const sortedAnnotations = useMemo(() => {
     const allAnnotations = activeDoc ? (activeDoc.annotations || []) : scratchpadAnnotations;
-    return allAnnotations
-      .sort((a, b) => a.startIndex - b.startIndex);
-  }, [activeDoc, scratchpadAnnotations]);
+  
+    // Determine if we need to filter by page number
+    const isPagedView = activeDoc && (
+        (activeDoc.type === 'pdf' && !isPdfTextView) ||
+        activeDoc.type === 'epub'
+    );
+    const currentPage = activeDoc?.type === 'pdf' ? currentPdfPageNum : epubCurrentPageNum;
+  
+    const filteredByPage = isPagedView
+      ? allAnnotations.filter(ann => ann.pageNumber === currentPage)
+      : allAnnotations;
+  
+    return filteredByPage.sort((a, b) => a.startIndex - b.startIndex);
+  }, [activeDoc, scratchpadAnnotations, isPdfTextView, currentPdfPageNum, epubCurrentPageNum]);
 
 
   const renderedTextWithAnnotations = useMemo(() => {
@@ -211,15 +222,15 @@ function ReaderPageContent() {
   
       // 2. Add the annotated text with the marker
       parts.push(
-        <span key={annotation.id} className="relative">
+        <span key={annotation.id} className="relative inline-block">
           {annotation.targetText}
-          <span
+          <sup
             className="absolute -top-1 -right-2 w-4 h-4 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs leading-none cursor-pointer hover:bg-primary/80 transition-colors"
             onClick={() => setViewingAnnotation(annotation)}
             title={`View note ${index + 1}`}
           >
             {index + 1}
-          </span>
+          </sup>
         </span>
       );
   
@@ -1375,6 +1386,10 @@ function ReaderPageContent() {
     setAnnotationDialog((prev) => ({ ...prev, isSaving: true }));
     try {
       const { id, targetText, startIndex, note, imageDataUrl } = annotationDialog;
+      
+      const isPagedView = activeDoc && ((activeDoc.type === 'pdf' && !isPdfTextView) || activeDoc.type === 'epub');
+      const currentPage = activeDoc?.type === 'pdf' ? currentPdfPageNum : epubCurrentPageNum;
+
       const newOrUpdatedAnnotation: Annotation = {
         id: id || `ann_${Date.now()}`,
         targetText,
@@ -1382,6 +1397,7 @@ function ReaderPageContent() {
         note,
         imageDataUrl,
         createdAt: id ? (activeDoc?.annotations?.find(a => a.id === id) || scratchpadAnnotations.find(a => a.id === id))?.createdAt || Date.now() : Date.now(),
+        pageNumber: isPagedView ? currentPage : undefined,
       };
 
       if (activeDoc) {
@@ -2016,9 +2032,3 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
-
-    
-
-    
-
-
