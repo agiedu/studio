@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
@@ -62,7 +62,7 @@ const HighlightableText: React.FC<{
   return (
     <>
       &quot;{preText}
-      <span className="text-green-600 dark:text-green-500 bg-green-500/10 rounded">{highlightedText}</span>
+      <span className="text-green-600 dark:text-green-500">{highlightedText}</span>
       {postText}&quot;
     </>
   );
