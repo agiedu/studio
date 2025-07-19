@@ -331,7 +331,7 @@ const renderedTextWithAnnotations = useMemo(() => {
     if (typeof window !== 'undefined') {
       // Use a CDN to load the PDF.js worker to avoid Next.js chunking issues.
       // Make sure the version in the URL matches the version of pdfjs-dist in package.json
-      GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${version}/pdf.worker.mjs`;
+      GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.mjs`;
     }
     return () => {
       isMountedRef.current = false;
