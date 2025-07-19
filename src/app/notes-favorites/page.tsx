@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
@@ -30,6 +30,8 @@ import { getCloudSpeech } from '@/app/actions';
 import { edgeTTSLanguageVoices } from '@/lib/edge-tts-voices';
 import { Separator } from '@/components/ui/separator';
 
+const PUNCTUATION_REGEX_FOR_SPLIT = /([.,?!,。？！，、\n\r]+)/g;
+const PUNCTUATION_REGEX_FOR_CLEANUP = /[.,?!,。？！，、\n\r"“„”'‘’`*_{}\[\]()#&@:;~<>/\\|\-—–^%$]/g;
 
 const groupVoicesByLanguage = (voices: TTSVoice[]) => {
   return voices.reduce((acc, voice) => {
@@ -40,6 +42,30 @@ const groupVoicesByLanguage = (voices: TTSVoice[]) => {
     acc[lang].push(voice);
     return acc;
   }, {} as Record<string, TTSVoice[]>);
+};
+
+// A new component to render text with highlighting
+const HighlightableText: React.FC<{
+  text: string;
+  isSpeaking: boolean;
+  highlightedSegmentIndex: number;
+  segments: string[];
+}> = ({ text, isSpeaking, highlightedSegmentIndex, segments }) => {
+  if (!isSpeaking || highlightedSegmentIndex < 0) {
+    return <>{text ? `"${text}"` : "No original text."}</>;
+  }
+
+  const preText = segments.slice(0, highlightedSegmentIndex).join('');
+  const highlightedText = segments[highlightedSegmentIndex];
+  const postText = segments.slice(highlightedSegmentIndex + 1).join('');
+
+  return (
+    <>
+      &quot;{preText}
+      <span className="text-green-600 dark:text-green-500 bg-green-500/10 rounded">{highlightedText}</span>
+      {postText}&quot;
+    </>
+  );
 };
 
 function NotesFavoritesPageContent() {
@@ -55,9 +81,14 @@ function NotesFavoritesPageContent() {
   const [yourNoteTtsSettings, setYourNoteTtsSettings] = useState<TTSSettings>(LocalStorage.defaultTTSSettings);
   const [availableVoices, setAvailableVoices] = useState<TTSVoice[]>([]);
 
+  const [highlightedSegmentIndex, setHighlightedSegmentIndex] = useState(-1);
+  const [currentlySpeakingPart, setCurrentlySpeakingPart] = useState<'original' | 'note' | null>(null);
+  const segmentIndexRef = useRef(0);
+  const isSpeakingRef = useRef(false);
+
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
-  const speechQueueRef = useRef<{ text: string; settings: TTSSettings }[]>([]);
+  const speechQueueRef = useRef<{ text: string; settings: TTSSettings; part: 'original' | 'note', segments: string[] }[]>([]);
   const isMountedRef = useRef(false);
 
   useEffect(() => {
@@ -99,6 +130,7 @@ function NotesFavoritesPageContent() {
   }, [yourNoteTtsSettings]);
   
   const stopSpeechGlobal = useCallback((resetUIState = true) => {
+    isSpeakingRef.current = false;
     speechQueueRef.current = [];
     if (utteranceRef.current) {
       utteranceRef.current.onend = null;
@@ -118,6 +150,8 @@ function NotesFavoritesPageContent() {
       setIsLoadingTTS(false);
       setSpeakingItemId(null);
       setPausedItemId(null);
+      setHighlightedSegmentIndex(-1);
+      setCurrentlySpeakingPart(null);
     }
   }, []);
 
@@ -149,34 +183,50 @@ function NotesFavoritesPageContent() {
     };
   }, [populateVoiceList, stopSpeechGlobal]);
 
-  const processNextInQueue = useCallback(async () => {
-    if (speechQueueRef.current.length === 0) {
-      if (isMountedRef.current) stopSpeechGlobal(true);
+  const speakNextSegment = useCallback(async () => {
+    if (!isSpeakingRef.current || speechQueueRef.current.length === 0) {
+      stopSpeechGlobal(true);
+      return;
+    }
+
+    const currentPart = speechQueueRef.current[0];
+    if (segmentIndexRef.current >= currentPart.segments.length) {
+      // Finished with current part (original/note), move to next in queue
+      speechQueueRef.current.shift();
+      segmentIndexRef.current = 0;
+      speakNextSegment();
       return;
     }
     
-    const { text, settings } = speechQueueRef.current.shift()!;
-    if (!text.trim()) {
-      processNextInQueue();
-      return;
+    if (isMountedRef.current) {
+      setIsLoadingTTS(true);
+      setCurrentlySpeakingPart(currentPart.part);
+      setHighlightedSegmentIndex(segmentIndexRef.current);
     }
 
-    if (isMountedRef.current) setIsLoadingTTS(true);
+    const segmentText = currentPart.segments[segmentIndexRef.current];
+    const cleanedText = segmentText.replace(PUNCTUATION_REGEX_FOR_CLEANUP, ' ').trim();
 
-    if (settings.engine === 'local') {
+    if (!cleanedText) { // Skip empty segments
+      segmentIndexRef.current++;
+      speakNextSegment();
+      return;
+    }
+    
+    if (currentPart.settings.engine === 'local') {
       if (typeof window === 'undefined' || !window.speechSynthesis) {
         toast({ variant: "destructive", title: "TTS Error", description: "Browser Speech Synthesis not supported." });
         stopSpeechGlobal(true);
         return;
       }
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = settings.language;
-      utterance.pitch = settings.pitch;
-      utterance.rate = settings.rate;
-      const voice = availableVoices.find(v => v.voiceURI === settings.voiceURI);
+      const utterance = new SpeechSynthesisUtterance(cleanedText);
+      utterance.lang = currentPart.settings.language;
+      utterance.pitch = currentPart.settings.pitch;
+      utterance.rate = currentPart.settings.rate;
+      const voice = availableVoices.find(v => v.voiceURI === currentPart.settings.voiceURI);
       if (voice) utterance.voice = window.speechSynthesis.getVoices().find(v => v.voiceURI === voice.voiceURI);
       
-      utterance.onend = () => { if(utteranceRef.current === utterance) processNextInQueue(); };
+      utterance.onend = () => { if(utteranceRef.current === utterance) { segmentIndexRef.current++; speakNextSegment(); } };
       utterance.onerror = (event) => {
           if(utteranceRef.current === utterance) {
               toast({ variant: "destructive", title: "TTS Error", description: event.error || "Speech failed." });
@@ -188,12 +238,11 @@ function NotesFavoritesPageContent() {
       window.speechSynthesis.speak(utterance);
     } else { // Cloud engine
       try {
-        const result = await getCloudSpeech(text, settings.language, settings.cloudVoiceId);
-        if (!isMountedRef.current) return;
-
+        const result = await getCloudSpeech(cleanedText, currentPart.settings.language, currentPart.settings.cloudVoiceId);
+        if (!isMountedRef.current || !isSpeakingRef.current) return;
         if ('audioUrl' in result && audioPlayerRef.current) {
           audioPlayerRef.current.src = result.audioUrl;
-          await audioPlayerRef.current.play();
+          await audioPlayerRef.current.play(); // The 'ended' event will trigger next segment
         } else if ('error' in result) {
           toast({ variant: "destructive", title: "Cloud TTS Error", description: result.error });
           stopSpeechGlobal(true);
@@ -205,12 +254,16 @@ function NotesFavoritesPageContent() {
       }
     }
   }, [availableVoices, stopSpeechGlobal, toast]);
-  
 
   useEffect(() => {
     const player = new Audio();
     audioPlayerRef.current = player;
-    const handleAudioEnded = () => processNextInQueue();
+    const handleAudioEnded = () => {
+      if(isSpeakingRef.current){
+        segmentIndexRef.current++;
+        speakNextSegment();
+      }
+    };
     const handleAudioPlaying = () => {
       if (isMountedRef.current && speakingItemId) setIsLoadingTTS(false);
     };
@@ -231,24 +284,24 @@ function NotesFavoritesPageContent() {
       player.src = "";
       if(audioPlayerRef.current === player) audioPlayerRef.current = null;
     };
-  }, [speakingItemId, toast, stopSpeechGlobal, processNextInQueue]);
+  }, [speakingItemId, toast, stopSpeechGlobal, speakNextSegment]);
 
   const handlePlayPauseNote = async (item: NoteFavoriteItem) => {
       if (speakingItemId === item.id) { // This item is currently speaking or paused
           if (pausedItemId === item.id) { // It's paused, so resume it
               setPausedItemId(null);
-              if (utteranceRef.current) { // Local TTS was paused
+              if (utteranceRef.current) {
                   if (typeof window !== 'undefined' && window.speechSynthesis) {
                       window.speechSynthesis.resume();
                   }
-              } else if (audioPlayerRef.current) { // Cloud TTS was paused
+              } else if (audioPlayerRef.current) {
                   audioPlayerRef.current.play().catch(() => stopSpeechGlobal(true));
               }
           } else { // It's playing, so pause it
               setPausedItemId(item.id);
-              if (utteranceRef.current && typeof window !== 'undefined' && window.speechSynthesis) { // Local TTS is playing
+              if (utteranceRef.current && typeof window !== 'undefined' && window.speechSynthesis) {
                   window.speechSynthesis.pause();
-              } else if (audioPlayerRef.current) { // Cloud TTS is playing
+              } else if (audioPlayerRef.current) {
                   audioPlayerRef.current.pause();
               }
           }
@@ -256,13 +309,29 @@ function NotesFavoritesPageContent() {
           stopSpeechGlobal(false);
           setSpeakingItemId(item.id);
           setPausedItemId(null);
+          isSpeakingRef.current = true;
+          segmentIndexRef.current = 0;
           
           speechQueueRef.current = [];
           if (item.annotation.targetText) {
-              speechQueueRef.current.push({ text: item.annotation.targetText, settings: originalTextTtsSettings });
+              const parts = item.annotation.targetText.split(PUNCTUATION_REGEX_FOR_SPLIT);
+              const segments = [];
+              for (let i = 0; i < parts.length; i += 2) {
+                  const text = parts[i];
+                  const delimiter = parts[i + 1] || '';
+                  if (text || delimiter) segments.push(text + delimiter);
+              }
+              speechQueueRef.current.push({ text: item.annotation.targetText, settings: originalTextTtsSettings, part: 'original', segments });
           }
           if (item.annotation.note) {
-              speechQueueRef.current.push({ text: item.annotation.note, settings: yourNoteTtsSettings });
+              const parts = item.annotation.note.split(PUNCTUATION_REGEX_FOR_SPLIT);
+              const segments = [];
+              for (let i = 0; i < parts.length; i += 2) {
+                  const text = parts[i];
+                  const delimiter = parts[i + 1] || '';
+                  if (text || delimiter) segments.push(text + delimiter);
+              }
+              speechQueueRef.current.push({ text: item.annotation.note, settings: yourNoteTtsSettings, part: 'note', segments });
           }
   
           if (speechQueueRef.current.length === 0) {
@@ -271,7 +340,7 @@ function NotesFavoritesPageContent() {
               return;
           }
           
-          processNextInQueue();
+          speakNextSegment();
       }
   };
 
@@ -457,11 +526,11 @@ function NotesFavoritesPageContent() {
             ) : (
               <ul className="space-y-4">
                 {favoriteNotes.map(item => {
-                  const isCurrentlySpeaking = speakingItemId === item.id;
+                  const isCurrentlySpeakingThisItem = speakingItemId === item.id;
                   const isCurrentlyPaused = pausedItemId === item.id;
                   let buttonIcon = <Play className="mr-1.5 h-4 w-4" />;
                   let buttonText = "Play";
-                  if (isCurrentlySpeaking) {
+                  if (isCurrentlySpeakingThisItem) {
                     if (isCurrentlyPaused) {
                       buttonIcon = <Play className="mr-1.5 h-4 w-4" />;
                       buttonText = "Resume";
@@ -470,26 +539,60 @@ function NotesFavoritesPageContent() {
                       buttonText = "Pause";
                     }
                   }
-                  if (isLoadingTTS && isCurrentlySpeaking && !isCurrentlyPaused) {
+                  if (isLoadingTTS && isCurrentlySpeakingThisItem && !isCurrentlyPaused) {
                     buttonIcon = <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />;
                     buttonText = "Loading...";
                   }
                   const hasContentToPlay = item.annotation.targetText || item.annotation.note;
 
+                  const originalTextSegments = useMemo(() => {
+                    if (!item.annotation.targetText) return [];
+                    const parts = item.annotation.targetText.split(PUNCTUATION_REGEX_FOR_SPLIT);
+                    const segments = [];
+                    for (let i = 0; i < parts.length; i += 2) {
+                        const text = parts[i];
+                        const delimiter = parts[i + 1] || '';
+                        if (text || delimiter) segments.push(text + delimiter);
+                    }
+                    return segments;
+                  }, [item.annotation.targetText]);
+
+                  const noteTextSegments = useMemo(() => {
+                      if (!item.annotation.note) return [];
+                      const parts = item.annotation.note.split(PUNCTUATION_REGEX_FOR_SPLIT);
+                      const segments = [];
+                      for (let i = 0; i < parts.length; i += 2) {
+                          const text = parts[i];
+                          const delimiter = parts[i + 1] || '';
+                          if (text || delimiter) segments.push(text + delimiter);
+                      }
+                      return segments;
+                  }, [item.annotation.note]);
+
                   return (
                     <li key={item.id} className="p-4 border rounded-md flex flex-col justify-between gap-4 bg-card hover:shadow-md transition-shadow">
                       <div className="flex-grow space-y-3 w-full">
-                          <div className={cn("p-3 bg-muted/50 rounded-md", (isCurrentlySpeaking) && "ring-2 ring-green-500/50")}>
+                          <div className="p-3 bg-muted/50 rounded-md">
                               <p className="text-xs text-muted-foreground mb-1">Original Text:</p>
                               <p className={cn("text-sm italic", !item.annotation.targetText && "text-muted-foreground")}>
-                                  {item.annotation.targetText ? `"${item.annotation.targetText}"` : "No original text."}
+                                <HighlightableText 
+                                  text={item.annotation.targetText || ''}
+                                  isSpeaking={isCurrentlySpeakingThisItem && currentlySpeakingPart === 'original'}
+                                  highlightedSegmentIndex={highlightedSegmentIndex}
+                                  segments={originalTextSegments}
+                                />
                               </p>
                           </div>
 
-                          <div className={cn("p-3 bg-background rounded-md border", (isCurrentlySpeaking) && "border-green-500 ring-2 ring-green-500/50")}>
+                          <div className="p-3 bg-background rounded-md border">
                                <p className="text-xs text-muted-foreground mb-1">Your Note:</p>
                               <p className={cn("text-sm whitespace-pre-wrap", !item.annotation.note && "italic text-muted-foreground")}>
-                                  {item.annotation.note || "No text note provided."}
+                                <HighlightableText 
+                                    text={item.annotation.note || ''}
+                                    isSpeaking={isCurrentlySpeakingThisItem && currentlySpeakingPart === 'note'}
+                                    highlightedSegmentIndex={highlightedSegmentIndex}
+                                    segments={noteTextSegments}
+                                  />
                               </p>
                           </div>
                         
@@ -510,15 +613,15 @@ function NotesFavoritesPageContent() {
                           <div className="flex gap-2 self-end sm:self-center">
                             <Button 
                               size="sm" 
-                              variant={isCurrentlySpeaking && !isCurrentlyPaused ? "outline" : "default"}
+                              variant={isCurrentlySpeakingThisItem && !isCurrentlyPaused ? "outline" : "default"}
                               onClick={() => handlePlayPauseNote(item)} 
-                              disabled={(isLoadingTTS && !isCurrentlySpeaking) || !hasContentToPlay}
+                              disabled={(isLoadingTTS && !isCurrentlySpeakingThisItem) || !hasContentToPlay}
                               className="w-[100px]"
                               title={hasContentToPlay ? "Play/Pause Note" : "No text in note to play"}
                               >
                               {buttonIcon} {buttonText}
                             </Button>
-                            <Button size="sm" variant="ghost" onClick={() => setNoteToDelete(item)} aria-label="Delete Note Favorite" disabled={isLoadingTTS && isCurrentlySpeaking}>
+                            <Button size="sm" variant="ghost" onClick={() => setNoteToDelete(item)} aria-label="Delete Note Favorite" disabled={isLoadingTTS && isCurrentlySpeakingThisItem}>
                               <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
                           </div>
