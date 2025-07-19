@@ -161,9 +161,10 @@ function NotesFavoritesPageContent() {
         setSpeakingItemId(item.id);
         setPausedItemId(null);
         isSpeakingRef.current = true;
+        // CRITICAL FIX: Reset progress for new item playback
         segmentIndexRef.current = 0;
-        
         speechQueueRef.current = [];
+        
         if (item.annotation.targetText) {
             const parts = item.annotation.targetText.split(PUNCTUATION_REGEX_FOR_SPLIT);
             const segments = [];
