@@ -78,7 +78,9 @@ const groupVoicesByLanguage = (voices: TTSVoice[]) => {
 type SelectionForAnnotation = {
   text: string;
   startIndex: number;
+  pageNumber?: number; // Optional because not all contexts (like scratchpad) have a page number
 } | null;
+
 
 
 function ReaderPageContent() {
@@ -187,9 +189,18 @@ function ReaderPageContent() {
   
   
   const sortedAnnotations = useMemo(() => {
-    const allAnnotations = activeDoc ? (activeDoc.annotations || []) : scratchpadAnnotations;
+    let allAnnotations: Annotation[] = [];
+    if (activeDoc) {
+        // For documents, filter annotations by the current page number
+        const pageNum = activeDoc.type === 'pdf' ? currentPdfPageNum : activeDoc.type === 'epub' ? epubCurrentPageNum : 1;
+        allAnnotations = (activeDoc.annotations || []).filter(ann => ann.pageNumber === pageNum);
+    } else {
+        // For scratchpad, there are no page numbers
+        allAnnotations = scratchpadAnnotations;
+    }
     return allAnnotations.sort((a, b) => a.startIndex - b.startIndex);
-}, [activeDoc, scratchpadAnnotations]);
+}, [activeDoc, scratchpadAnnotations, currentPdfPageNum, epubCurrentPageNum]);
+
 
 
 const renderedTextWithAnnotations = useMemo(() => {
@@ -329,9 +340,8 @@ const renderedTextWithAnnotations = useMemo(() => {
   useEffect(() => {
     isMountedRef.current = true;
     if (typeof window !== 'undefined') {
-      // Use a CDN to load the PDF.js worker to avoid Next.js chunking issues.
-      // Make sure the version in the URL matches the version of pdfjs-dist in package.json
-      GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.mjs`;
+      // Use a reliable CDN like unpkg to load the PDF.js worker.
+      GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${version}/build/pdf.worker.mjs`;
     }
     return () => {
       isMountedRef.current = false;
@@ -1349,10 +1359,16 @@ const renderedTextWithAnnotations = useMemo(() => {
       return;
     }
 
+    let pageNum: number | undefined;
+    if (activeDoc?.type === 'pdf' && !isPdfTextView) pageNum = currentPdfPageNum;
+    else if (activeDoc?.type === 'epub') pageNum = epubCurrentPageNum;
+    else if (activeDoc) pageNum = 1;
+
     // CRITICAL: Lock the selection info into state here
     setSelectionForAnnotation({
         text: selectionInfo.text,
         startIndex: selectionInfo.startIndex,
+        pageNumber: pageNum,
     });
 
     setAnnotationDialog({
@@ -1381,16 +1397,20 @@ const renderedTextWithAnnotations = useMemo(() => {
   const handleSaveAnnotation = async () => {
     setAnnotationDialog((prev) => ({ ...prev, isSaving: true }));
     try {
-      // CRITICAL: Use the locked-in selection info from state, NOT a fresh call to getSelectedText()
-      if (!selectionForAnnotation) {
+      if (!selectionForAnnotation || selectionForAnnotation.startIndex === null) {
         throw new Error("Could not get valid selection info to save annotation.");
       }
   
       const { id, note, imageDataUrl } = annotationDialog;
-      const { text, startIndex } = selectionForAnnotation;
+      const { text, startIndex, pageNumber } = selectionForAnnotation;
   
+      if (activeDoc && pageNumber === undefined) {
+        throw new Error("Cannot save annotation without a page number for a document.");
+      }
+
       const newOrUpdatedAnnotation: Annotation = {
         id: id || `ann_${Date.now()}`,
+        pageNumber: pageNumber!,
         targetText: text,
         startIndex: startIndex,
         note,
@@ -1469,6 +1489,11 @@ const renderedTextWithAnnotations = useMemo(() => {
   
   const handleEditAnnotation = (annotation: Annotation) => {
     setViewingAnnotation(null);
+    setSelectionForAnnotation({
+        text: annotation.targetText,
+        startIndex: annotation.startIndex,
+        pageNumber: annotation.pageNumber,
+    });
     setAnnotationDialog({
       open: true,
       id: annotation.id,
@@ -1978,10 +2003,6 @@ const renderedTextWithAnnotations = useMemo(() => {
             <DialogFooter className="gap-2 sm:justify-end">
                 <Button variant="outline" size="sm" onClick={() => {
                   if (viewingAnnotation) {
-                    setSelectionForAnnotation({
-                      text: viewingAnnotation.targetText,
-                      startIndex: viewingAnnotation.startIndex
-                    });
                     handleEditAnnotation(viewingAnnotation);
                   }
                 }}>
