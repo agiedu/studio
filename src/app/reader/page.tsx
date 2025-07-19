@@ -78,7 +78,6 @@ const groupVoicesByLanguage = (voices: TTSVoice[]) => {
 type SelectionForAnnotation = {
   text: string;
   startIndex: number;
-  pageNumber: number;
 } | null;
 
 
@@ -189,11 +188,8 @@ function ReaderPageContent() {
   
   const sortedAnnotations = useMemo(() => {
     const allAnnotations = activeDoc ? (activeDoc.annotations || []) : scratchpadAnnotations;
-    // CRITICAL FIX: Filter annotations to only show ones for the current page.
-    const currentPageNumber = activeDoc?.type === 'epub' ? epubCurrentPageNum : currentPdfPageNum;
-    const pageAnnotations = allAnnotations.filter(ann => ann.pageNumber === currentPageNumber);
-    return pageAnnotations.sort((a, b) => a.startIndex - b.startIndex);
-}, [activeDoc, scratchpadAnnotations, currentPdfPageNum, epubCurrentPageNum]);
+    return allAnnotations.sort((a, b) => a.startIndex - b.startIndex);
+}, [activeDoc, scratchpadAnnotations]);
 
 
 const renderedTextWithAnnotations = useMemo(() => {
@@ -333,6 +329,8 @@ const renderedTextWithAnnotations = useMemo(() => {
   useEffect(() => {
     isMountedRef.current = true;
     if (typeof window !== 'undefined') {
+      // Use a CDN to load the PDF.js worker to avoid Next.js chunking issues.
+      // Make sure the version in the URL matches the version of pdfjs-dist in package.json
       GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${version}/pdf.worker.mjs`;
     }
     return () => {
@@ -1352,11 +1350,9 @@ const renderedTextWithAnnotations = useMemo(() => {
     }
 
     // CRITICAL: Lock the selection info into state here
-    const currentPageNumber = activeDoc?.type === 'epub' ? epubCurrentPageNum : currentPdfPageNum;
     setSelectionForAnnotation({
         text: selectionInfo.text,
         startIndex: selectionInfo.startIndex,
-        pageNumber: currentPageNumber,
     });
 
     setAnnotationDialog({
@@ -1391,13 +1387,12 @@ const renderedTextWithAnnotations = useMemo(() => {
       }
   
       const { id, note, imageDataUrl } = annotationDialog;
-      const { text, startIndex, pageNumber } = selectionForAnnotation;
+      const { text, startIndex } = selectionForAnnotation;
   
       const newOrUpdatedAnnotation: Annotation = {
         id: id || `ann_${Date.now()}`,
         targetText: text,
         startIndex: startIndex,
-        pageNumber: pageNumber, // Save the locked page number
         note,
         imageDataUrl: imageDataUrl || '',
         createdAt: id ? (activeDoc?.annotations?.find(a => a.id === id) || scratchpadAnnotations.find(a => a.id === id))?.createdAt || Date.now() : Date.now(),
@@ -1474,12 +1469,6 @@ const renderedTextWithAnnotations = useMemo(() => {
   
   const handleEditAnnotation = (annotation: Annotation) => {
     setViewingAnnotation(null);
-    // Lock in selection info for editing
-    setSelectionForAnnotation({
-        text: annotation.targetText,
-        startIndex: annotation.startIndex,
-        pageNumber: annotation.pageNumber,
-    });
     setAnnotationDialog({
       open: true,
       id: annotation.id,
@@ -1517,7 +1506,7 @@ const renderedTextWithAnnotations = useMemo(() => {
           
           <div className="flex-grow flex flex-col min-h-0">
             <Card className="flex-grow flex flex-col min-h-0 shadow-inner">
-              <CardContent ref={scrollContainerRef} className="flex-grow p-2 md:p-4 overflow-y-auto overflow-x-auto">
+              <CardContent ref={scrollContainerRef} className="flex-grow p-2 md:p-4 overflow-auto">
                 {(isLoadingDoc || isEpubLoading || isRenderingPdfPage) && (
                     <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
                         <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -1578,7 +1567,7 @@ const renderedTextWithAnnotations = useMemo(() => {
                   </div>
 
                   {activeDoc?.type === 'txt' && (
-                    <div ref={mainHighlightedContentRef} className="w-full h-full whitespace-pre-wrap select-text px-3 py-2 text-sm">
+                    <div ref={mainHighlightedContentRef} className="w-full h-full whitespace-pre-wrap select-text px-3 py-2 text-sm max-h-[calc(100vh-24rem)] overflow-auto">
                         {(isSpeaking || isPaused) ? speakingViewContent : renderedTextWithAnnotations}
                     </div>
                   )}
@@ -1987,7 +1976,15 @@ const renderedTextWithAnnotations = useMemo(() => {
               )}
             </div>
             <DialogFooter className="gap-2 sm:justify-end">
-                <Button variant="outline" size="sm" onClick={() => viewingAnnotation && handleEditAnnotation(viewingAnnotation)}>
+                <Button variant="outline" size="sm" onClick={() => {
+                  if (viewingAnnotation) {
+                    setSelectionForAnnotation({
+                      text: viewingAnnotation.targetText,
+                      startIndex: viewingAnnotation.startIndex
+                    });
+                    handleEditAnnotation(viewingAnnotation);
+                  }
+                }}>
                     <Pencil className="mr-2 h-4 w-4" /> Edit
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => viewingAnnotation && handleFavoriteAnnotation(viewingAnnotation)}>
