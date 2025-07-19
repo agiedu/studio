@@ -28,6 +28,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGr
 import { Slider } from '@/components/ui/slider';
 import { getCloudSpeech } from '@/app/actions';
 import { edgeTTSLanguageVoices } from '@/lib/edge-tts-voices';
+import { Separator } from '@/components/ui/separator';
 
 
 const groupVoicesByLanguage = (voices: TTSVoice[]) => {
@@ -50,23 +51,31 @@ function NotesFavoritesPageContent() {
   const [speakingItemId, setSpeakingItemId] = useState<string | null>(null);
   const [pausedItemId, setPausedItemId] = useState<string | null>(null);
   
-  const [ttsSettings, setTtsSettings] = useState<TTSSettings>(LocalStorage.defaultTTSSettings);
+  const [originalTextTtsSettings, setOriginalTextTtsSettings] = useState<TTSSettings>(LocalStorage.defaultTTSSettings);
+  const [yourNoteTtsSettings, setYourNoteTtsSettings] = useState<TTSSettings>(LocalStorage.defaultTTSSettings);
   const [availableVoices, setAvailableVoices] = useState<TTSVoice[]>([]);
 
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const speechQueueRef = useRef<{ text: string; settings: TTSSettings }[]>([]);
+  const isMountedRef = useRef(false);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
 
   // Load initial settings and favorite items
   useEffect(() => {
     setFavoriteNotes(LocalStorage.loadNoteFavorites());
-    const loadedSettings = LocalStorage.loadTTSSettings();
-    setTtsSettings(prevGlobalDefaults => {
+
+    const loadAndSetSettings = (loader: () => TTSSettings, setter: React.Dispatch<React.SetStateAction<TTSSettings>>) => {
+        const loadedSettings = loader();
         const merged = {
-            ...prevGlobalDefaults, 
-            ...loadedSettings,    
+            ...LocalStorage.defaultTTSSettings,
+            ...loadedSettings,
             engine: loadedSettings.engine || loadedSettings.type || 'local',
         };
-
         if (merged.engine === 'cloud' && (!merged.language || !merged.cloudVoiceId)) {
             const defaultLocale = 'en-US';
             merged.language = defaultLocale;
@@ -74,35 +83,43 @@ function NotesFavoritesPageContent() {
               merged.cloudVoiceId = edgeTTSLanguageVoices[defaultLocale].voices[0].id;
             }
         }
-        return merged;
-    });
+        setter(merged);
+    };
+
+    loadAndSetSettings(LocalStorage.loadOriginalTextTTSSettings, setOriginalTextTtsSettings);
+    loadAndSetSettings(LocalStorage.loadYourNoteTTSSettings, setYourNoteTtsSettings);
   }, []);
 
   // Save TTS settings to LocalStorage whenever they change
   useEffect(() => {
-    LocalStorage.saveTTSSettings(ttsSettings);
-  }, [ttsSettings]);
+    LocalStorage.saveOriginalTextTTSSettings(originalTextTtsSettings);
+  }, [originalTextTtsSettings]);
+  useEffect(() => {
+    LocalStorage.saveYourNoteTTSSettings(yourNoteTtsSettings);
+  }, [yourNoteTtsSettings]);
   
   const stopSpeechGlobal = useCallback((resetUIState = true) => {
-    if (ttsSettings.engine === 'local' && typeof window !== 'undefined' && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-    } else if (audioPlayerRef.current) {
-      audioPlayerRef.current.pause();
-      if (audioPlayerRef.current.src && audioPlayerRef.current.readyState >= HTMLMediaElement.HAVE_METADATA) {
-        try { audioPlayerRef.current.currentTime = 0; } catch (e) { /* ignore */ }
-      }
-    }
+    speechQueueRef.current = [];
     if (utteranceRef.current) {
       utteranceRef.current.onend = null;
       utteranceRef.current.onerror = null;
       utteranceRef.current = null;
     }
-    if (resetUIState) {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.pause();
+      if (audioPlayerRef.current.src && audioPlayerRef.current.readyState >= HTMLMediaElement.HAVE_METADATA) {
+        try { audioPlayerRef.current.currentTime = 0; } catch (e) { /* ignore */ }
+      }
+    }
+    if (resetUIState && isMountedRef.current) {
       setIsLoadingTTS(false);
       setSpeakingItemId(null);
       setPausedItemId(null);
     }
-  }, [ttsSettings.engine]);
+  }, []);
 
   const populateVoiceList = useCallback(() => {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
@@ -113,7 +130,9 @@ function NotesFavoritesPageContent() {
         localService: v.localService,
         default: v.default,
       }));
-      setAvailableVoices(voices);
+      if (isMountedRef.current) {
+        setAvailableVoices(voices);
+      }
     }
   }, []);
 
@@ -130,50 +149,76 @@ function NotesFavoritesPageContent() {
     };
   }, [populateVoiceList, stopSpeechGlobal]);
 
-  // Effect to select/update default voice based on language for LOCAL engine
-  useEffect(() => {
-    if (ttsSettings.engine !== 'local' || availableVoices.length === 0) return;
+  const processNextInQueue = useCallback(async () => {
+    if (speechQueueRef.current.length === 0) {
+      if (isMountedRef.current) stopSpeechGlobal(true);
+      return;
+    }
+    
+    const { text, settings } = speechQueueRef.current.shift()!;
+    if (!text.trim()) {
+      processNextInQueue();
+      return;
+    }
 
-    let desiredVoiceURI: string | undefined = ttsSettings.voiceURI;
-    let desiredLanguage: string = ttsSettings.language;
-    let settingsNeedUpdate = false;
+    if (isMountedRef.current) setIsLoadingTTS(true);
 
-    const currentVoice = availableVoices.find(v => v.voiceURI === ttsSettings.voiceURI);
+    if (settings.engine === 'local') {
+      if (typeof window === 'undefined' || !window.speechSynthesis) {
+        toast({ variant: "destructive", title: "TTS Error", description: "Browser Speech Synthesis not supported." });
+        stopSpeechGlobal(true);
+        return;
+      }
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = settings.language;
+      utterance.pitch = settings.pitch;
+      utterance.rate = settings.rate;
+      const voice = availableVoices.find(v => v.voiceURI === settings.voiceURI);
+      if (voice) utterance.voice = window.speechSynthesis.getVoices().find(v => v.voiceURI === voice.voiceURI);
+      
+      utterance.onend = () => { if(utteranceRef.current === utterance) processNextInQueue(); };
+      utterance.onerror = (event) => {
+          if(utteranceRef.current === utterance) {
+              toast({ variant: "destructive", title: "TTS Error", description: event.error || "Speech failed." });
+              stopSpeechGlobal(true);
+          }
+      };
+      utteranceRef.current = utterance;
+      if (isMountedRef.current) setIsLoadingTTS(false);
+      window.speechSynthesis.speak(utterance);
+    } else { // Cloud engine
+      try {
+        const result = await getCloudSpeech(text, settings.language, settings.cloudVoiceId);
+        if (!isMountedRef.current) return;
 
-    if (!currentVoice) {
-      const defaultVoice =
-          availableVoices.find((v) => v.lang === desiredLanguage && v.default) ||
-          availableVoices.find((v) => v.lang === desiredLanguage) ||
-          availableVoices.find((v) => v.default && v.lang) ||
-          availableVoices[0];
-
-      if (defaultVoice && defaultVoice.lang) {
-          desiredVoiceURI = defaultVoice.voiceURI;
-          desiredLanguage = defaultVoice.lang;
-          settingsNeedUpdate = true;
+        if ('audioUrl' in result && audioPlayerRef.current) {
+          audioPlayerRef.current.src = result.audioUrl;
+          await audioPlayerRef.current.play();
+        } else if ('error' in result) {
+          toast({ variant: "destructive", title: "Cloud TTS Error", description: result.error });
+          stopSpeechGlobal(true);
+        }
+      } catch (error: any) {
+        if (!isMountedRef.current) return;
+        toast({ variant: "destructive", title: "Cloud TTS Failed", description: error.message });
+        stopSpeechGlobal(true);
       }
     }
-
-    if (settingsNeedUpdate) {
-        setTtsSettings(prevSettings => ({
-            ...prevSettings,
-            voiceURI: desiredVoiceURI,
-            language: desiredLanguage,
-        }));
-    }
-  }, [availableVoices, ttsSettings.language, ttsSettings.voiceURI, ttsSettings.engine]);
-
+  }, [availableVoices, stopSpeechGlobal, toast]);
+  
 
   useEffect(() => {
     const player = new Audio();
     audioPlayerRef.current = player;
-    const handleAudioEnded = () => stopSpeechGlobal(true);
+    const handleAudioEnded = () => processNextInQueue();
     const handleAudioPlaying = () => {
-      if (ttsSettings.engine === 'cloud' && speakingItemId) setIsLoadingTTS(false);
+      if (isMountedRef.current && speakingItemId) setIsLoadingTTS(false);
     };
     const handleAudioError = () => {
-      toast({variant: "destructive", title: "Audio Error", description: "Failed to play audio."});
-      stopSpeechGlobal(true);
+      if (isMountedRef.current) {
+          toast({variant: "destructive", title: "Audio Error", description: "Failed to play audio."});
+          stopSpeechGlobal(true);
+      }
     };
     player.addEventListener('ended', handleAudioEnded);
     player.addEventListener('playing', handleAudioPlaying);
@@ -186,82 +231,50 @@ function NotesFavoritesPageContent() {
       player.src = "";
       if(audioPlayerRef.current === player) audioPlayerRef.current = null;
     };
-  }, [ttsSettings.engine, speakingItemId, toast, stopSpeechGlobal]);
+  }, [speakingItemId, toast, stopSpeechGlobal, processNextInQueue]);
 
   const handlePlayPauseNote = async (item: NoteFavoriteItem) => {
-    const textToPlay = item.annotation.note;
-    if (!textToPlay) {
-      toast({ variant: 'destructive', title: 'No Text', description: 'This note has no text to read.' });
-      return;
-    }
-
-    if (speakingItemId === item.id) { 
-      if (pausedItemId === item.id) { 
-        if (ttsSettings.engine === 'local' && typeof window !== 'undefined' && window.speechSynthesis && utteranceRef.current) {
-          if(window.speechSynthesis.paused) {
-            window.speechSynthesis.resume();
-            setPausedItemId(null);
-          } else {
-            stopSpeechGlobal(true);
+      if (speakingItemId === item.id) { // This item is currently speaking or paused
+          if (pausedItemId === item.id) { // It's paused, so resume it
+              setPausedItemId(null);
+              if (utteranceRef.current) { // Local TTS was paused
+                  if (typeof window !== 'undefined' && window.speechSynthesis) {
+                      window.speechSynthesis.resume();
+                  }
+              } else if (audioPlayerRef.current) { // Cloud TTS was paused
+                  audioPlayerRef.current.play().catch(() => stopSpeechGlobal(true));
+              }
+          } else { // It's playing, so pause it
+              setPausedItemId(item.id);
+              if (utteranceRef.current && typeof window !== 'undefined' && window.speechSynthesis) { // Local TTS is playing
+                  window.speechSynthesis.pause();
+              } else if (audioPlayerRef.current) { // Cloud TTS is playing
+                  audioPlayerRef.current.pause();
+              }
           }
-        } else if (ttsSettings.engine === 'cloud' && audioPlayerRef.current?.paused) {
-          audioPlayerRef.current.play().catch(() => stopSpeechGlobal(true));
+      } else { // A new item is being played
+          stopSpeechGlobal(false);
+          setSpeakingItemId(item.id);
           setPausedItemId(null);
-        }
-      } else { 
-        if (ttsSettings.engine === 'local' && typeof window !== 'undefined' && window.speechSynthesis && utteranceRef.current) {
-          window.speechSynthesis.pause();
-          setPausedItemId(item.id);
-        } else if (ttsSettings.engine === 'cloud' && audioPlayerRef.current && !audioPlayerRef.current.paused) {
-          audioPlayerRef.current.pause();
-          setPausedItemId(item.id);
-        }
-      }
-    } else { 
-      stopSpeechGlobal(false);
-      setIsLoadingTTS(true);
-      setSpeakingItemId(item.id);
-      setPausedItemId(null);
-
-      if (ttsSettings.engine === 'local') {
-        if (typeof window === 'undefined' || !window.speechSynthesis) {
-          toast({ variant: "destructive", title: "TTS Error", description: "Browser Speech Synthesis not supported." });
-          stopSpeechGlobal(true); return;
-        }
-        const utterance = new SpeechSynthesisUtterance(textToPlay);
-        utterance.lang = ttsSettings.language;
-        utterance.pitch = ttsSettings.pitch;
-        utterance.rate = ttsSettings.rate;
-        const voice = availableVoices.find(v => v.voiceURI === ttsSettings.voiceURI);
-        if (voice) utterance.voice = window.speechSynthesis.getVoices().find(v => v.voiceURI === voice.voiceURI);
-        
-        utterance.onend = () => { if(utteranceRef.current === utterance) stopSpeechGlobal(true); };
-        utterance.onerror = (event) => {
-            if(utteranceRef.current === utterance) {
-                toast({ variant: "destructive", title: "TTS Error", description: event.error || "Speech failed." });
-                stopSpeechGlobal(true);
-            }
-        };
-        utteranceRef.current = utterance;
-        window.speechSynthesis.speak(utterance);
-        setIsLoadingTTS(false);
-      } else { 
-        try {
-          const result = await getCloudSpeech(textToPlay, ttsSettings.language, ttsSettings.cloudVoiceId);
-          if ('audioUrl' in result && audioPlayerRef.current) {
-            audioPlayerRef.current.src = result.audioUrl;
-            await audioPlayerRef.current.play();
-          } else if ('error' in result) {
-            toast({ variant: "destructive", title: "Cloud TTS Error", description: result.error });
-            stopSpeechGlobal(true);
+          
+          speechQueueRef.current = [];
+          if (item.annotation.targetText) {
+              speechQueueRef.current.push({ text: item.annotation.targetText, settings: originalTextTtsSettings });
           }
-        } catch (error: any) {
-          toast({ variant: "destructive", title: "Cloud TTS Failed", description: error.message });
-          stopSpeechGlobal(true);
-        }
+          if (item.annotation.note) {
+              speechQueueRef.current.push({ text: item.annotation.note, settings: yourNoteTtsSettings });
+          }
+  
+          if (speechQueueRef.current.length === 0) {
+              toast({ variant: 'destructive', title: 'No Text', description: 'This note has no text to read.' });
+              stopSpeechGlobal(true);
+              return;
+          }
+          
+          processNextInQueue();
       }
-    }
   };
+
 
   const performDelete = () => {
     if (!noteToDelete) return;
@@ -272,58 +285,156 @@ function NotesFavoritesPageContent() {
     setNoteToDelete(null); // Close the dialog
   };
   
-  const handleSettingChange = <K extends keyof TTSSettings>(key: K, value: TTSSettings[K]) => {
-    stopSpeechGlobal(true);
-    
-    setTtsSettings(prevSettings => {
-        let newSettings = { ...prevSettings, [key]: value };
-
-        if (key === 'engine') {
-            newSettings.type = value as 'local' | 'cloud';
-            if (value === 'cloud') {
-                const currentLang = newSettings.language;
-                const cloudLangData = edgeTTSLanguageVoices[currentLang];
-                if (!cloudLangData) {
-                    const defaultLocale = 'en-US';
-                    newSettings.language = defaultLocale;
-                    newSettings.cloudVoiceId = edgeTTSLanguageVoices[defaultLocale].voices[0].id;
-                } else if (!newSettings.cloudVoiceId?.startsWith(currentLang)) {
-                    newSettings.cloudVoiceId = cloudLangData.voices[0].id;
-                }
-            } else if (value === 'local') {
-                const currentVoice = availableVoices.find(v => v.voiceURI === newSettings.voiceURI);
-                if (!currentVoice) {
-                    const defaultVoice = availableVoices.find(v => v.default) || availableVoices[0];
-                    if (defaultVoice) {
-                        newSettings.voiceURI = defaultVoice.voiceURI;
-                        newSettings.language = defaultVoice.lang;
-                    }
-                }
-            }
-        }
-
-        if (key === 'language' && newSettings.engine === 'cloud') {
-            const newLang = value as string;
-            const langVoices = edgeTTSLanguageVoices[newLang]?.voices;
-            if (langVoices && langVoices.length > 0) {
-                newSettings.cloudVoiceId = langVoices[0].id;
-            } else {
-                newSettings.cloudVoiceId = undefined;
-            }
-        }
-
-        if (key === 'voiceURI' && newSettings.engine === 'local' && value) {
-            const selectedVoice = availableVoices.find(v => v.voiceURI === value);
-            if (selectedVoice) {
-                newSettings.language = selectedVoice.lang;
-            }
-        }
-        
-        return newSettings;
-    });
+  const handleSettingChange = (
+      panel: 'original' | 'note',
+      key: keyof TTSSettings,
+      value: any
+  ) => {
+      stopSpeechGlobal(true);
+  
+      const setter = panel === 'original' ? setOriginalTextTtsSettings : setYourNoteTtsSettings;
+  
+      setter(prevSettings => {
+          let newSettings = { ...prevSettings, [key]: value };
+  
+          if (key === 'engine') {
+              newSettings.type = value as 'local' | 'cloud';
+              if (value === 'cloud') {
+                  const currentLang = newSettings.language;
+                  const cloudLangData = edgeTTSLanguageVoices[currentLang];
+                  if (!cloudLangData || !cloudLangData.voices.length) {
+                      const defaultLocale = 'en-US';
+                      newSettings.language = defaultLocale;
+                      newSettings.cloudVoiceId = edgeTTSLanguageVoices[defaultLocale].voices[0].id;
+                  } else if (!newSettings.cloudVoiceId?.startsWith(currentLang)) {
+                      newSettings.cloudVoiceId = cloudLangData.voices[0].id;
+                  }
+              } else if (value === 'local') {
+                  const currentVoice = availableVoices.find(v => v.voiceURI === newSettings.voiceURI);
+                  if (!currentVoice) {
+                      const defaultVoice = availableVoices.find(v => v.default && v.lang) || availableVoices[0];
+                      if (defaultVoice) {
+                          newSettings.voiceURI = defaultVoice.voiceURI;
+                          newSettings.language = defaultVoice.lang;
+                      }
+                  }
+              }
+          }
+  
+          if (key === 'language' && newSettings.engine === 'cloud') {
+              const newLang = value as string;
+              const langVoices = edgeTTSLanguageVoices[newLang]?.voices;
+              if (langVoices && langVoices.length > 0) {
+                  newSettings.cloudVoiceId = langVoices[0].id;
+              } else {
+                  newSettings.cloudVoiceId = undefined;
+              }
+          }
+  
+          if (key === 'voiceURI' && newSettings.engine === 'local' && value) {
+              const selectedVoice = availableVoices.find(v => v.voiceURI === value);
+              if (selectedVoice) {
+                  newSettings.language = selectedVoice.lang;
+              }
+          }
+          
+          return newSettings;
+      });
   };
 
   const groupedLocalVoices = groupVoicesByLanguage(availableVoices);
+
+  const renderTtsPanel = (
+    panelType: 'original' | 'note',
+    title: string,
+    settings: TTSSettings,
+  ) => {
+    const handlePanelChange = <K extends keyof TTSSettings>(key: K, value: TTSSettings[K]) => {
+      handleSettingChange(panelType, key, value);
+    };
+
+    return (
+      <div className="mb-4">
+        <h3 className="text-lg font-medium mb-3">{title}</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+            <div>
+                <Label htmlFor={`${panelType}-tts-engine`}>TTS Engine</Label>
+                <Select value={settings.engine} onValueChange={(v) => handlePanelChange('engine', v as 'local' | 'cloud')} disabled={!!speakingItemId && !pausedItemId}>
+                    <SelectTrigger id={`${panelType}-tts-engine`}><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="local"><div className="flex items-center gap-1"><Smartphone className="h-4 w-4" /> Local</div></SelectItem>
+                      <SelectItem value="cloud"><div className="flex items-center gap-1"><CloudIcon className="h-4 w-4"/> Cloud</div></SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+        </div>
+
+        {settings.engine === 'local' && (
+            <div className="mb-3">
+                <Label htmlFor={`${panelType}-tts-voice`}>Voice (Local)</Label>
+                <Select
+                    value={settings.voiceURI || ""}
+                    onValueChange={(v) => handlePanelChange('voiceURI', v)}
+                    disabled={!!speakingItemId && !pausedItemId || availableVoices.length === 0}
+                >
+                    <SelectTrigger id={`${panelType}-tts-voice`}><SelectValue placeholder={availableVoices.length > 0 ? "Select voice" : "No local voices found"} /></SelectTrigger>
+                    <SelectContent className="max-h-60">
+                        {availableVoices.length === 0 ? (
+                            <SelectItem value="no-voices" disabled>No local voices found on this device</SelectItem>
+                        ) : (
+                            Object.entries(groupedLocalVoices).map(([lang, voices]) => (
+                                <SelectGroup key={lang}>
+                                    <SelectLabel>{lang}</SelectLabel>
+                                    {voices.map(voice => (
+                                        <SelectItem key={voice.voiceURI} value={voice.voiceURI}>{voice.name}</SelectItem>
+                                    ))}
+                                </SelectGroup>
+                            ))
+                        )}
+                    </SelectContent>
+                </Select>
+            </div>
+        )}
+
+        {settings.engine === 'cloud' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                <div>
+                    <Label htmlFor={`${panelType}-cloud-tts-language`}>Language (Cloud)</Label>
+                    <Select value={settings.language} onValueChange={(v) => handlePanelChange('language', v as string)} disabled={!!speakingItemId && !pausedItemId}>
+                        <SelectTrigger id={`${panelType}-cloud-tts-language`}><SelectValue placeholder="Select a language" /></SelectTrigger>
+                        <SelectContent className="max-h-60">
+                            {Object.entries(edgeTTSLanguageVoices).map(([locale, { language }]) => (
+                                <SelectItem key={locale} value={locale}>{language} ({locale})</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div>
+                    <Label htmlFor={`${panelType}-cloud-tts-voice`}>Voice (Cloud)</Label>
+                    <Select value={settings.cloudVoiceId || ""} onValueChange={(v) => handlePanelChange('cloudVoiceId', v)} disabled={!!speakingItemId && !pausedItemId || !settings.language}>
+                        <SelectTrigger id={`${panelType}-cloud-tts-voice`}><SelectValue placeholder="Select a voice" /></SelectTrigger>
+                        <SelectContent className="max-h-60">
+                            {(edgeTTSLanguageVoices[settings.language]?.voices || []).map(voice => (
+                                <SelectItem key={voice.id} value={voice.id}>{voice.name}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+            </div>
+        )}
+
+        <div className="space-y-2 mb-3">
+            <Label htmlFor={`${panelType}-tts-rate`}>Rate: {settings.rate.toFixed(1)}</Label>
+            <Slider id={`${panelType}-tts-rate`} min={0.5} max={2} step={0.1} value={[settings.rate]} onValueChange={([v]) => handlePanelChange('rate', v)} disabled={!!speakingItemId && !pausedItemId}/>
+        </div>
+        <div className="space-y-2">
+            <Label htmlFor={`${panelType}-tts-pitch`}>Pitch: {settings.pitch.toFixed(1)}</Label>
+            <Slider id={`${panelType}-tts-pitch`} min={0} max={2} step={0.1} value={[settings.pitch]} onValueChange={([v]) => handlePanelChange('pitch', v)} disabled={!!speakingItemId && !pausedItemId}/>
+        </div>
+      </div>
+    );
+  };
+
 
   return (
     <>
@@ -336,82 +447,9 @@ function NotesFavoritesPageContent() {
           </CardHeader>
           <CardContent>
             <div className="mb-6 p-4 border rounded-md bg-muted/20">
-                  <h3 className="text-lg font-medium mb-3">Global TTS Settings for Notes</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
-                      <div>
-                          <Label htmlFor="fav-tts-engine">TTS Engine</Label>
-                          <Select value={ttsSettings.engine} onValueChange={(v) => handleSettingChange('engine', v as 'local' | 'cloud')} disabled={!!speakingItemId && !pausedItemId}>
-                              <SelectTrigger id="fav-tts-engine"><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                              <SelectItem value="local"><div className="flex items-center gap-1"><Smartphone className="h-4 w-4" /> Local</div></SelectItem>
-                              <SelectItem value="cloud"><div className="flex items-center gap-1"><CloudIcon className="h-4 w-4"/> Cloud</div></SelectItem>
-                              </SelectContent>
-                          </Select>
-                      </div>
-                  </div>
-
-                  {ttsSettings.engine === 'local' && (
-                      <div className="mb-3">
-                          <Label htmlFor="fav-tts-voice">Voice (Local)</Label>
-                          <Select
-                              value={ttsSettings.voiceURI || ""}
-                              onValueChange={(v) => handleSettingChange('voiceURI', v)}
-                              disabled={!!speakingItemId && !pausedItemId || availableVoices.length === 0}
-                          >
-                              <SelectTrigger id="fav-tts-voice"><SelectValue placeholder={availableVoices.length > 0 ? "Select voice" : "No local voices found"} /></SelectTrigger>
-                              <SelectContent className="max-h-60">
-                                  {availableVoices.length === 0 ? (
-                                      <SelectItem value="no-voices" disabled>No local voices found on this device</SelectItem>
-                                  ) : (
-                                      Object.entries(groupedLocalVoices).map(([lang, voices]) => (
-                                          <SelectGroup key={lang}>
-                                              <SelectLabel>{lang}</SelectLabel>
-                                              {voices.map(voice => (
-                                                  <SelectItem key={voice.voiceURI} value={voice.voiceURI}>{voice.name}</SelectItem>
-                                              ))}
-                                          </SelectGroup>
-                                      ))
-                                  )}
-                              </SelectContent>
-                          </Select>
-                      </div>
-                  )}
-
-                  {ttsSettings.engine === 'cloud' && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
-                          <div>
-                              <Label htmlFor="fav-cloud-tts-language">Language (Cloud)</Label>
-                              <Select value={ttsSettings.language} onValueChange={(v) => handleSettingChange('language', v as string)} disabled={!!speakingItemId && !pausedItemId}>
-                                  <SelectTrigger id="fav-cloud-tts-language"><SelectValue placeholder="Select a language" /></SelectTrigger>
-                                  <SelectContent className="max-h-60">
-                                      {Object.entries(edgeTTSLanguageVoices).map(([locale, { language }]) => (
-                                          <SelectItem key={locale} value={locale}>{language} ({locale})</SelectItem>
-                                      ))}
-                                  </SelectContent>
-                              </Select>
-                          </div>
-                          <div>
-                              <Label htmlFor="fav-cloud-tts-voice">Voice (Cloud)</Label>
-                              <Select value={ttsSettings.cloudVoiceId || ""} onValueChange={(v) => handleSettingChange('cloudVoiceId', v)} disabled={!!speakingItemId && !pausedItemId || !ttsSettings.language}>
-                                  <SelectTrigger id="fav-cloud-tts-voice"><SelectValue placeholder="Select a voice" /></SelectTrigger>
-                                  <SelectContent className="max-h-60">
-                                      {(edgeTTSLanguageVoices[ttsSettings.language]?.voices || []).map(voice => (
-                                          <SelectItem key={voice.id} value={voice.id}>{voice.name}</SelectItem>
-                                      ))}
-                                  </SelectContent>
-                              </Select>
-                          </div>
-                      </div>
-                  )}
-
-                  <div className="space-y-2 mb-3">
-                      <Label htmlFor="fav-tts-rate">Rate: {ttsSettings.rate.toFixed(1)}</Label>
-                      <Slider id="fav-tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={!!speakingItemId && !pausedItemId}/>
-                  </div>
-                  <div className="space-y-2">
-                      <Label htmlFor="fav-tts-pitch">Pitch: {ttsSettings.pitch.toFixed(1)}</Label>
-                      <Slider id="fav-tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={!!speakingItemId && !pausedItemId}/>
-                  </div>
+                {renderTtsPanel('original', 'Original Text TTS Settings', originalTextTtsSettings)}
+                <Separator className="my-6" />
+                {renderTtsPanel('note', 'Your Note TTS Settings', yourNoteTtsSettings)}
             </div>
 
             {favoriteNotes.length === 0 ? (
@@ -436,16 +474,19 @@ function NotesFavoritesPageContent() {
                     buttonIcon = <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />;
                     buttonText = "Loading...";
                   }
+                  const hasContentToPlay = item.annotation.targetText || item.annotation.note;
 
                   return (
                     <li key={item.id} className="p-4 border rounded-md flex flex-col justify-between gap-4 bg-card hover:shadow-md transition-shadow">
                       <div className="flex-grow space-y-3 w-full">
-                          <div className="p-3 bg-muted/50 rounded-md">
+                          <div className={cn("p-3 bg-muted/50 rounded-md", (isCurrentlySpeaking) && "ring-2 ring-green-500/50")}>
                               <p className="text-xs text-muted-foreground mb-1">Original Text:</p>
-                              <p className="text-sm italic">&quot;{item.annotation.targetText}&quot;</p>
+                              <p className={cn("text-sm italic", !item.annotation.targetText && "text-muted-foreground")}>
+                                  {item.annotation.targetText ? `"${item.annotation.targetText}"` : "No original text."}
+                              </p>
                           </div>
 
-                          <div className={cn("p-3 bg-background rounded-md border", (isCurrentlySpeaking || isCurrentlyPaused) && "border-green-500 ring-2 ring-green-500/50")}>
+                          <div className={cn("p-3 bg-background rounded-md border", (isCurrentlySpeaking) && "border-green-500 ring-2 ring-green-500/50")}>
                                <p className="text-xs text-muted-foreground mb-1">Your Note:</p>
                               <p className={cn("text-sm whitespace-pre-wrap", !item.annotation.note && "italic text-muted-foreground")}>
                                   {item.annotation.note || "No text note provided."}
@@ -471,9 +512,9 @@ function NotesFavoritesPageContent() {
                               size="sm" 
                               variant={isCurrentlySpeaking && !isCurrentlyPaused ? "outline" : "default"}
                               onClick={() => handlePlayPauseNote(item)} 
-                              disabled={(isLoadingTTS && !isCurrentlySpeaking) || !item.annotation.note}
+                              disabled={(isLoadingTTS && !isCurrentlySpeaking) || !hasContentToPlay}
                               className="w-[100px]"
-                              title={item.annotation.note ? "Play/Pause Note" : "No text in note to play"}
+                              title={hasContentToPlay ? "Play/Pause Note" : "No text in note to play"}
                               >
                               {buttonIcon} {buttonText}
                             </Button>
@@ -521,5 +562,3 @@ export default function NotesFavoritesPage() {
         </AuthGuard>
     );
 }
-
-      
