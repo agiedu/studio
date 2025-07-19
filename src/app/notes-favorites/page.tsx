@@ -545,7 +545,7 @@ function NotesFavoritesPageContent() {
                   }
                   const hasContentToPlay = item.annotation.targetText || item.annotation.note;
 
-                  const originalTextSegments = useMemo(() => {
+                  const originalTextSegments = (() => {
                     if (!item.annotation.targetText) return [];
                     const parts = item.annotation.targetText.split(PUNCTUATION_REGEX_FOR_SPLIT);
                     const segments = [];
@@ -555,9 +555,9 @@ function NotesFavoritesPageContent() {
                         if (text || delimiter) segments.push(text + delimiter);
                     }
                     return segments;
-                  }, [item.annotation.targetText]);
+                  })();
 
-                  const noteTextSegments = useMemo(() => {
+                  const noteTextSegments = (() => {
                       if (!item.annotation.note) return [];
                       const parts = item.annotation.note.split(PUNCTUATION_REGEX_FOR_SPLIT);
                       const segments = [];
@@ -567,7 +567,7 @@ function NotesFavoritesPageContent() {
                           if (text || delimiter) segments.push(text + delimiter);
                       }
                       return segments;
-                  }, [item.annotation.note]);
+                  })();
 
                   return (
                     <li key={item.id} className="p-4 border rounded-md flex flex-col justify-between gap-4 bg-card hover:shadow-md transition-shadow">
