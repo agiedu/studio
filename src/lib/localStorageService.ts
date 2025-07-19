@@ -29,6 +29,8 @@ const REMEMBERED_EMAIL_KEY = 'mangaTalk_rememberedEmail_v1';
 // New keys for separate TTS settings for notes page
 const NOTE_FAVORITES_ORIGINAL_TTS_SETTINGS_KEY = 'mangaTalk_noteFavsOriginalTts_v1';
 const NOTE_FAVORITES_NOTE_TTS_SETTINGS_KEY = 'mangaTalk_noteFavsNoteTts_v1';
+const FAVORITES_PLAYBACK_MODE_KEY = 'mangaTalk_favoritesPlaybackMode_v1';
+const NOTES_PLAYBACK_MODE_KEY = 'mangaTalk_notesPlaybackMode_v1';
 
 const ALL_USER_SPECIFIC_BASE_KEYS = [
     TTS_SETTINGS_KEY,
@@ -42,6 +44,8 @@ const ALL_USER_SPECIFIC_BASE_KEYS = [
     EPUB_MANGA_DOCUMENT_CFI_KEY,
     NOTE_FAVORITES_ORIGINAL_TTS_SETTINGS_KEY, // Add to cleanup list
     NOTE_FAVORITES_NOTE_TTS_SETTINGS_KEY, // Add to cleanup list
+    FAVORITES_PLAYBACK_MODE_KEY,
+    NOTES_PLAYBACK_MODE_KEY,
 ];
 
 
@@ -276,4 +280,28 @@ export const getRememberedEmail = (): string | null => {
 export const clearRememberedEmail = (): void => {
   if (typeof window === 'undefined') return;
   window.localStorage.removeItem(REMEMBERED_EMAIL_KEY);
+};
+
+// Playback Modes
+type PlaybackMode = 'default' | 'loop-single' | 'sequential';
+
+export const loadFavoritesPlaybackMode = (): PlaybackMode => {
+    const key = getUserKey(FAVORITES_PLAYBACK_MODE_KEY);
+    if (!key) return 'default';
+    return safeLocalStorageGet<PlaybackMode>(key, 'default');
+};
+export const saveFavoritesPlaybackMode = (mode: PlaybackMode): boolean => {
+    const key = getUserKey(FAVORITES_PLAYBACK_MODE_KEY);
+    if (!key) return false;
+    return safeLocalStorageSet(key, mode);
+};
+export const loadNotesPlaybackMode = (): PlaybackMode => {
+    const key = getUserKey(NOTES_PLAYBACK_MODE_KEY);
+    if (!key) return 'default';
+    return safeLocalStorageGet<PlaybackMode>(key, 'default');
+};
+export const saveNotesPlaybackMode = (mode: PlaybackMode): boolean => {
+    const key = getUserKey(NOTES_PLAYBACK_MODE_KEY);
+    if (!key) return false;
+    return safeLocalStorageSet(key, mode);
 };

@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Trash2, Info, NotebookText, FileText, Play, Pause, Loader2, Smartphone, Cloud as CloudIcon, Star } from 'lucide-react';
+import { Trash2, Info, NotebookText, FileText, Play, Pause, Loader2, Smartphone, Cloud as CloudIcon, Star, Repeat1, ListOrdered } from 'lucide-react';
 import * as LocalStorage from '@/lib/localStorageService';
 import type { NoteFavoriteItem, TTSVoice, TTSSettings } from '@/types';
 import { format } from 'date-fns';
@@ -29,9 +29,12 @@ import { Slider } from '@/components/ui/slider';
 import { getCloudSpeech } from '@/app/actions';
 import { edgeTTSLanguageVoices } from '@/lib/edge-tts-voices';
 import { Separator } from '@/components/ui/separator';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 const PUNCTUATION_REGEX_FOR_SPLIT = /([.,?!,。？！，、\n\r]+)/g;
 const PUNCTUATION_REGEX_FOR_CLEANUP = /[.,?!,。？！，、\n\r"“„”'‘’`*_{}\[\]()#&@:;~<>/\\|\-—–^%$]/g;
+
+type PlaybackMode = 'default' | 'loop-single' | 'sequential';
 
 const groupVoicesByLanguage = (voices: TTSVoice[]) => {
   return voices.reduce((acc, voice) => {
@@ -79,6 +82,7 @@ function NotesFavoritesPageContent() {
   
   const [originalTextTtsSettings, setOriginalTextTtsSettings] = useState<TTSSettings>(LocalStorage.defaultTTSSettings);
   const [yourNoteTtsSettings, setYourNoteTtsSettings] = useState<TTSSettings>(LocalStorage.defaultTTSSettings);
+  const [playbackMode, setPlaybackMode] = useState<PlaybackMode>('default');
   const [availableVoices, setAvailableVoices] = useState<TTSVoice[]>([]);
 
   const [highlightedSegmentIndex, setHighlightedSegmentIndex] = useState(-1);
@@ -99,6 +103,7 @@ function NotesFavoritesPageContent() {
   // Load initial settings and favorite items
   useEffect(() => {
     setFavoriteNotes(LocalStorage.loadNoteFavorites());
+    setPlaybackMode(LocalStorage.loadNotesPlaybackMode());
 
     const loadAndSetSettings = (loader: () => TTSSettings, setter: React.Dispatch<React.SetStateAction<TTSSettings>>) => {
         const loadedSettings = loader();
@@ -128,6 +133,93 @@ function NotesFavoritesPageContent() {
   useEffect(() => {
     LocalStorage.saveYourNoteTTSSettings(yourNoteTtsSettings);
   }, [yourNoteTtsSettings]);
+  useEffect(() => {
+      LocalStorage.saveNotesPlaybackMode(playbackMode);
+  }, [playbackMode]);
+
+  const handlePlayPauseNote = useCallback(async (item: NoteFavoriteItem, isContinuation = false) => {
+    if (!isContinuation && speakingItemId === item.id) { // This item is currently speaking or paused
+        if (pausedItemId === item.id) { // It's paused, so resume it
+            setPausedItemId(null);
+            if (utteranceRef.current) {
+                if (typeof window !== 'undefined' && window.speechSynthesis) {
+                    window.speechSynthesis.resume();
+                }
+            } else if (audioPlayerRef.current) {
+                audioPlayerRef.current.play().catch(() => stopSpeechGlobal(true));
+            }
+        } else { // It's playing, so pause it
+            setPausedItemId(item.id);
+            if (utteranceRef.current && typeof window !== 'undefined' && window.speechSynthesis) {
+                window.speechSynthesis.pause();
+            } else if (audioPlayerRef.current) {
+                audioPlayerRef.current.pause();
+            }
+        }
+    } else { // A new item is being played
+        stopSpeechGlobal(false);
+        setSpeakingItemId(item.id);
+        setPausedItemId(null);
+        isSpeakingRef.current = true;
+        segmentIndexRef.current = 0;
+        
+        speechQueueRef.current = [];
+        if (item.annotation.targetText) {
+            const parts = item.annotation.targetText.split(PUNCTUATION_REGEX_FOR_SPLIT);
+            const segments = [];
+            for (let i = 0; i < parts.length; i += 2) {
+                const text = parts[i];
+                const delimiter = parts[i + 1] || '';
+                if (text || delimiter) segments.push(text + delimiter);
+            }
+            speechQueueRef.current.push({ text: item.annotation.targetText, settings: originalTextTtsSettings, part: 'original', segments });
+        }
+        if (item.annotation.note) {
+            const parts = item.annotation.note.split(PUNCTUATION_REGEX_FOR_SPLIT);
+            const segments = [];
+            for (let i = 0; i < parts.length; i += 2) {
+                const text = parts[i];
+                const delimiter = parts[i + 1] || '';
+                if (text || delimiter) segments.push(text + delimiter);
+            }
+            speechQueueRef.current.push({ text: item.annotation.note, settings: yourNoteTtsSettings, part: 'note', segments });
+        }
+
+        if (speechQueueRef.current.length === 0) {
+            toast({ variant: 'destructive', title: 'No Text', description: 'This note has no text to read.' });
+            stopSpeechGlobal(true);
+            return;
+        }
+        
+        speakNextSegment();
+    }
+  }, [originalTextTtsSettings, yourNoteTtsSettings, speakingItemId, pausedItemId]);
+
+  const handlePlaybackEnd = useCallback(() => {
+    switch (playbackMode) {
+      case 'loop-single':
+        const itemToLoop = favoriteNotes.find(item => item.id === speakingItemId);
+        if (itemToLoop) {
+            setTimeout(() => handlePlayPauseNote(itemToLoop, true), 100);
+        } else {
+            stopSpeechGlobal(true);
+        }
+        break;
+      case 'sequential':
+        const currentIndex = favoriteNotes.findIndex(item => item.id === speakingItemId);
+        if (currentIndex > -1 && currentIndex < favoriteNotes.length - 1) {
+            const nextItem = favoriteNotes[currentIndex + 1];
+            setTimeout(() => handlePlayPauseNote(nextItem, true), 100);
+        } else {
+            stopSpeechGlobal(true);
+        }
+        break;
+      case 'default':
+      default:
+        stopSpeechGlobal(true);
+        break;
+    }
+  }, [playbackMode, favoriteNotes, speakingItemId, handlePlayPauseNote]);
   
   const stopSpeechGlobal = useCallback((resetUIState = true) => {
     isSpeakingRef.current = false;
@@ -185,7 +277,7 @@ function NotesFavoritesPageContent() {
 
   const speakNextSegment = useCallback(async () => {
     if (!isSpeakingRef.current || speechQueueRef.current.length === 0) {
-      stopSpeechGlobal(true);
+      handlePlaybackEnd();
       return;
     }
 
@@ -253,7 +345,7 @@ function NotesFavoritesPageContent() {
         stopSpeechGlobal(true);
       }
     }
-  }, [availableVoices, stopSpeechGlobal, toast]);
+  }, [availableVoices, stopSpeechGlobal, toast, handlePlaybackEnd]);
 
   useEffect(() => {
     const player = new Audio();
@@ -285,64 +377,6 @@ function NotesFavoritesPageContent() {
       if(audioPlayerRef.current === player) audioPlayerRef.current = null;
     };
   }, [speakingItemId, toast, stopSpeechGlobal, speakNextSegment]);
-
-  const handlePlayPauseNote = async (item: NoteFavoriteItem) => {
-      if (speakingItemId === item.id) { // This item is currently speaking or paused
-          if (pausedItemId === item.id) { // It's paused, so resume it
-              setPausedItemId(null);
-              if (utteranceRef.current) {
-                  if (typeof window !== 'undefined' && window.speechSynthesis) {
-                      window.speechSynthesis.resume();
-                  }
-              } else if (audioPlayerRef.current) {
-                  audioPlayerRef.current.play().catch(() => stopSpeechGlobal(true));
-              }
-          } else { // It's playing, so pause it
-              setPausedItemId(item.id);
-              if (utteranceRef.current && typeof window !== 'undefined' && window.speechSynthesis) {
-                  window.speechSynthesis.pause();
-              } else if (audioPlayerRef.current) {
-                  audioPlayerRef.current.pause();
-              }
-          }
-      } else { // A new item is being played
-          stopSpeechGlobal(false);
-          setSpeakingItemId(item.id);
-          setPausedItemId(null);
-          isSpeakingRef.current = true;
-          segmentIndexRef.current = 0;
-          
-          speechQueueRef.current = [];
-          if (item.annotation.targetText) {
-              const parts = item.annotation.targetText.split(PUNCTUATION_REGEX_FOR_SPLIT);
-              const segments = [];
-              for (let i = 0; i < parts.length; i += 2) {
-                  const text = parts[i];
-                  const delimiter = parts[i + 1] || '';
-                  if (text || delimiter) segments.push(text + delimiter);
-              }
-              speechQueueRef.current.push({ text: item.annotation.targetText, settings: originalTextTtsSettings, part: 'original', segments });
-          }
-          if (item.annotation.note) {
-              const parts = item.annotation.note.split(PUNCTUATION_REGEX_FOR_SPLIT);
-              const segments = [];
-              for (let i = 0; i < parts.length; i += 2) {
-                  const text = parts[i];
-                  const delimiter = parts[i + 1] || '';
-                  if (text || delimiter) segments.push(text + delimiter);
-              }
-              speechQueueRef.current.push({ text: item.annotation.note, settings: yourNoteTtsSettings, part: 'note', segments });
-          }
-  
-          if (speechQueueRef.current.length === 0) {
-              toast({ variant: 'destructive', title: 'No Text', description: 'This note has no text to read.' });
-              stopSpeechGlobal(true);
-              return;
-          }
-          
-          speakNextSegment();
-      }
-  };
 
 
   const performDelete = () => {
@@ -516,6 +550,32 @@ function NotesFavoritesPageContent() {
           </CardHeader>
           <CardContent>
             <div className="mb-6 p-4 border rounded-md bg-muted/20">
+                <div className="mb-4">
+                      <Label className="font-medium text-sm">Playback Mode</Label>
+                      <RadioGroup
+                        value={playbackMode}
+                        onValueChange={(v) => {
+                          stopSpeechGlobal(true);
+                          setPlaybackMode(v as PlaybackMode);
+                        }}
+                        className="flex items-center gap-4 mt-2"
+                        disabled={!!speakingItemId}
+                      >
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="default" id="mode-default" />
+                          <Label htmlFor="mode-default" className="flex items-center gap-1 cursor-pointer"><Play className="h-4 w-4"/>Default</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="loop-single" id="mode-loop" />
+                          <Label htmlFor="mode-loop" className="flex items-center gap-1 cursor-pointer"><Repeat1 className="h-4 w-4"/>Loop Single</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="sequential" id="mode-sequential" />
+                          <Label htmlFor="mode-sequential" className="flex items-center gap-1 cursor-pointer"><ListOrdered className="h-4 w-4"/>Sequential</Label>
+                        </div>
+                      </RadioGroup>
+                  </div>
+                <Separator className="my-6" />
                 {renderTtsPanel('original', 'Original Text TTS Settings', originalTextTtsSettings)}
                 <Separator className="my-6" />
                 {renderTtsPanel('note', 'Your Note TTS Settings', yourNoteTtsSettings)}
