@@ -78,7 +78,7 @@ const groupVoicesByLanguage = (voices: TTSVoice[]) => {
 type SelectionForAnnotation = {
   text: string;
   startIndex: number;
-  pageNumber?: number; // Optional because not all contexts (like scratchpad) have a page number
+  pageNumber: number; // Optional because not all contexts (like scratchpad) have a page number
 } | null;
 
 
@@ -1359,10 +1359,11 @@ const renderedTextWithAnnotations = useMemo(() => {
       return;
     }
 
-    let pageNum: number | undefined;
+    let pageNum: number;
     if (activeDoc?.type === 'pdf' && !isPdfTextView) pageNum = currentPdfPageNum;
     else if (activeDoc?.type === 'epub') pageNum = epubCurrentPageNum;
     else if (activeDoc) pageNum = 1;
+    else pageNum = 1; // For scratchpad
 
     // CRITICAL: Lock the selection info into state here
     setSelectionForAnnotation({
