@@ -137,8 +137,8 @@ function NotesFavoritesPageContent() {
       LocalStorage.saveNotesPlaybackMode(playbackMode);
   }, [playbackMode]);
 
-  const handlePlayPauseNote = useCallback(async (item: NoteFavoriteItem, isContinuation = false) => {
-    if (!isContinuation && speakingItemId === item.id) { // This item is currently speaking or paused
+  const handlePlayPauseNote = useCallback(async (item: NoteFavoriteItem) => {
+    if (speakingItemId === item.id) { // This item is currently speaking or paused
         if (pausedItemId === item.id) { // It's paused, so resume it
             setPausedItemId(null);
             if (utteranceRef.current) {
@@ -200,7 +200,7 @@ function NotesFavoritesPageContent() {
       case 'loop-single':
         const itemToLoop = favoriteNotes.find(item => item.id === speakingItemId);
         if (itemToLoop) {
-            setTimeout(() => handlePlayPauseNote(itemToLoop, true), 100);
+            setTimeout(() => handlePlayPauseNote(itemToLoop), 100);
         } else {
             stopSpeechGlobal(true);
         }
@@ -209,7 +209,7 @@ function NotesFavoritesPageContent() {
         const currentIndex = favoriteNotes.findIndex(item => item.id === speakingItemId);
         if (currentIndex > -1 && currentIndex < favoriteNotes.length - 1) {
             const nextItem = favoriteNotes[currentIndex + 1];
-            setTimeout(() => handlePlayPauseNote(nextItem, true), 100);
+            setTimeout(() => handlePlayPauseNote(nextItem), 100);
         } else {
             stopSpeechGlobal(true);
         }

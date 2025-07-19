@@ -94,8 +94,8 @@ function FavoritesPageContent() {
     LocalStorage.saveFavoritesPlaybackMode(playbackMode);
   }, [playbackMode]);
   
-  const handlePlayPauseFavorite = async (item: FavoriteItem, isContinuation = false) => {
-    if (!isContinuation && speakingItemId === item.id) { 
+  const handlePlayPauseFavorite = async (item: FavoriteItem) => {
+    if (speakingItemId === item.id) { 
       if (pausedItemId === item.id) { 
         if (ttsSettings.engine === 'local' && typeof window !== 'undefined' && window.speechSynthesis && utteranceRef.current) {
           if(window.speechSynthesis.paused) {
@@ -168,7 +168,7 @@ function FavoritesPageContent() {
         case 'loop-single':
             const itemToLoop = favoriteItems.find(item => item.id === endedItemId);
             if (itemToLoop) {
-                setTimeout(() => handlePlayPauseFavorite(itemToLoop, true), 100); // Small delay before restart
+                setTimeout(() => handlePlayPauseFavorite(itemToLoop), 100); // Small delay before restart
             } else {
                 stopSpeechGlobal(true);
             }
@@ -177,7 +177,7 @@ function FavoritesPageContent() {
             const currentIndex = favoriteItems.findIndex(item => item.id === endedItemId);
             if (currentIndex > -1 && currentIndex < favoriteItems.length - 1) {
                 const nextItem = favoriteItems[currentIndex + 1];
-                setTimeout(() => handlePlayPauseFavorite(nextItem, true), 100);
+                setTimeout(() => handlePlayPauseFavorite(nextItem), 100);
             } else {
                 stopSpeechGlobal(true);
             }
