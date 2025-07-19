@@ -340,7 +340,6 @@ const renderedTextWithAnnotations = useMemo(() => {
   useEffect(() => {
     isMountedRef.current = true;
     if (typeof window !== 'undefined') {
-      // Use a reliable CDN like unpkg to load the PDF.js worker.
       GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${version}/build/pdf.worker.mjs`;
     }
     return () => {
