@@ -121,6 +121,7 @@ export interface MediaFavoriteItem {
   dataUrl: string; // Store the media as a base64 data URL
   note: string;
   createdAt: number;
+  sourceDocumentName?: string; // Added for consistency
 }
 
 

@@ -2,7 +2,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react';
-import type { FavoriteItem, NoteFavoriteItem, TTSSettings } from '@/types';
+import type { FavoriteItem, NoteFavoriteItem, TTSSettings, MediaFavoriteItem } from '@/types';
 import { getCloudSpeech } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
 
@@ -11,7 +11,8 @@ const PUNCTUATION_REGEX_FOR_CLEANUP = /[.,?!,。？！，、\n\r"“„”'‘�
 
 type PlayableItem =
   | { type: 'favorite'; item: FavoriteItem }
-  | { type: 'note_favorite'; item: NoteFavoriteItem };
+  | { type: 'note_favorite'; item: NoteFavoriteItem }
+  | { type: 'media_favorite'; item: MediaFavoriteItem };
 
 type PlaybackMode = 'default' | 'loop-single' | 'sequential';
 
@@ -134,10 +135,17 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (isMountedRef.current) setCurrentText(cleanedText);
 
     if (navigator.mediaSession && currentItem) {
+        let title = '';
+        if (currentItem.type === 'media_favorite') {
+            title = currentItem.item.name;
+        } else {
+            title = cleanedText;
+        }
+
         navigator.mediaSession.metadata = new MediaMetadata({
-          title: cleanedText,
+          title: title,
           artist: currentItem.item.sourceDocumentName || 'MangaTalk',
-          album: currentItem.type === 'favorite' ? 'Favorited Texts' : 'Favorited Notes',
+          album: currentItem.type === 'favorite' ? 'Favorited Texts' : (currentItem.type === 'note_favorite' ? 'Favorited Notes' : 'Media Favorites'),
         });
     }
 
@@ -197,7 +205,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [stop, toast, currentItem]);
 
-  const play = useCallback((item: PlayableItem, newPlaylist: PlayableItem[], startIndex: number) => {
+  const play = useCallback(async (item: PlayableItem, newPlaylist: PlayableItem[], startIndex: number) => {
     stop();
     if(isMountedRef.current) {
         setIsPlaying(true);
@@ -209,25 +217,42 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     isSpeakingRef.current = true;
     segmentIndexRef.current = 0;
     speechQueueRef.current = [];
-    
-    if (item.type === 'favorite') {
-      speechQueueRef.current.push({ text: item.item.text, settings: originalTextTtsSettings });
-    } else if (item.type === 'note_favorite') {
-      if (item.item.annotation.targetText) {
-        speechQueueRef.current.push({ text: item.item.annotation.targetText, settings: originalTextTtsSettings, part: 'original' });
-      }
-      if (item.item.annotation.note) {
-        speechQueueRef.current.push({ text: item.item.annotation.note, settings: yourNoteTtsSettings, part: 'note' });
-      }
-    }
 
-    if (speechQueueRef.current.length === 0 || speechQueueRef.current.every(p => !p.text.trim())) {
-      toast({ variant: 'destructive', title: 'No Text', description: 'This item has no text to read.' });
-      stop();
-      return;
+    if (item.type === 'media_favorite') {
+        if (isMountedRef.current) {
+            setCurrentText(item.item.name);
+            setIsLoading(true);
+        }
+        if (audioPlayerRef.current) {
+            audioPlayerRef.current.src = item.item.dataUrl;
+            try {
+                await audioPlayerRef.current.play();
+                if (isMountedRef.current) setIsLoading(false);
+            } catch (error: any) {
+                toast({ variant: "destructive", title: "Playback Error", description: error.message });
+                stop();
+            }
+        }
+    } else {
+        if (item.type === 'favorite') {
+          speechQueueRef.current.push({ text: item.item.text, settings: originalTextTtsSettings });
+        } else if (item.type === 'note_favorite') {
+          if (item.item.annotation.targetText) {
+            speechQueueRef.current.push({ text: item.item.annotation.targetText, settings: originalTextTtsSettings, part: 'original' });
+          }
+          if (item.item.annotation.note) {
+            speechQueueRef.current.push({ text: item.item.annotation.note, settings: yourNoteTtsSettings, part: 'note' });
+          }
+        }
+
+        if (speechQueueRef.current.length === 0 || speechQueueRef.current.every(p => !p.text.trim())) {
+          toast({ variant: 'destructive', title: 'No Text', description: 'This item has no text to read.' });
+          stop();
+          return;
+        }
+        
+        speakNextSegment();
     }
-    
-    speakNextSegment();
   }, [stop, originalTextTtsSettings, yourNoteTtsSettings, toast, speakNextSegment]);
 
   useEffect(() => {
@@ -305,19 +330,23 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (isPaused) {
         resume();
       } else {
-        if (playlist.length > 0) {
-            play(playlist[0], playlist, 0);
+        if (playlist.length > 0 && currentItem) {
+            play(currentItem, playlist, currentIndex);
         }
       }
-  }, [isPaused, resume, play, playlist]);
+  }, [isPaused, resume, play, playlist, currentItem, currentIndex]);
 
   useEffect(() => {
     const player = new Audio();
     audioPlayerRef.current = player;
     const handleAudioEnded = () => {
       if(isSpeakingRef.current && isMountedRef.current){
-        segmentIndexRef.current++;
-        speakNextSegment();
+        if (currentItem?.type === 'media_favorite') {
+             onPlaybackEndRef.current();
+        } else {
+            segmentIndexRef.current++;
+            speakNextSegment();
+        }
       }
     };
     const handleAudioPlaying = () => {
@@ -356,7 +385,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         navigator.mediaSession.setActionHandler('stop', null);
       }
     };
-  }, [speakNextSegment, stop, toast, isPlaying, isPaused, resume, play, pause, next, previous, playlist, handlePlayAction, hasNext, hasPrevious]);
+  }, [speakNextSegment, stop, toast, isPlaying, isPaused, resume, play, pause, next, previous, playlist, handlePlayAction, hasNext, hasPrevious, currentItem]);
 
   const value: PlaybackContextType = {
     isPlaying,

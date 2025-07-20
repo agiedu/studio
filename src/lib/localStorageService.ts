@@ -33,6 +33,8 @@ const NOTE_FAVORITES_ORIGINAL_TTS_SETTINGS_KEY = 'mangaTalk_noteFavsOriginalTts_
 const NOTE_FAVORITES_NOTE_TTS_SETTINGS_KEY = 'mangaTalk_noteFavsNoteTts_v1';
 const FAVORITES_PLAYBACK_MODE_KEY = 'mangaTalk_favoritesPlaybackMode_v1';
 const NOTES_PLAYBACK_MODE_KEY = 'mangaTalk_notesPlaybackMode_v1';
+const MEDIA_PLAYBACK_MODE_KEY = 'mangaTalk_mediaPlaybackMode_v1';
+
 
 const ALL_USER_SPECIFIC_BASE_KEYS = [
     TTS_SETTINGS_KEY,
@@ -49,6 +51,7 @@ const ALL_USER_SPECIFIC_BASE_KEYS = [
     NOTE_FAVORITES_NOTE_TTS_SETTINGS_KEY, // Add to cleanup list
     FAVORITES_PLAYBACK_MODE_KEY,
     NOTES_PLAYBACK_MODE_KEY,
+    MEDIA_PLAYBACK_MODE_KEY,
 ];
 
 
@@ -327,6 +330,16 @@ export const loadNotesPlaybackMode = (): PlaybackMode => {
 };
 export const saveNotesPlaybackMode = (mode: PlaybackMode): boolean => {
     const key = getUserKey(NOTES_PLAYBACK_MODE_KEY);
+    if (!key) return false;
+    return safeLocalStorageSet(key, mode);
+};
+export const loadMediaPlaybackMode = (): PlaybackMode => {
+    const key = getUserKey(MEDIA_PLAYBACK_MODE_KEY);
+    if (!key) return 'default';
+    return safeLocalStorageGet<PlaybackMode>(key, 'default');
+};
+export const saveMediaPlaybackMode = (mode: PlaybackMode): boolean => {
+    const key = getUserKey(MEDIA_PLAYBACK_MODE_KEY);
     if (!key) return false;
     return safeLocalStorageSet(key, mode);
 };

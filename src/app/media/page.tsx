@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { UploadCloud, Info, Trash2, Loader2, Music, Video, MessageSquare } from 'lucide-react';
+import { UploadCloud, Info, Trash2, Loader2, Music, Video, MessageSquare, Play, Pause, Repeat1, ListOrdered, SkipBack, SkipForward } from 'lucide-react';
 import * as LocalStorage from '@/lib/localStorageService';
 import type { MediaFavoriteItem } from '@/types';
 import { format } from 'date-fns';
@@ -32,6 +32,10 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { usePlayback } from '@/components/player/PlaybackProvider';
+import { cn } from '@/lib/utils';
+
 
 function MediaFavoritesPageContent() {
   const { toast } = useToast();
@@ -48,16 +52,69 @@ function MediaFavoritesPageContent() {
   }>({ open: false, file: null, note: '' });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const audioElementsRef = useRef<Map<string, HTMLAudioElement | HTMLVideoElement>>(new Map());
+
+  const {
+    play,
+    stop,
+    pause,
+    resume,
+    next,
+    previous,
+    isPlaying,
+    isPaused,
+    isLoading: isPlaybackLoading,
+    currentItem,
+    playlist,
+    playbackMode,
+    setPlaybackMode,
+    hasNext,
+    hasPrevious,
+  } = usePlayback();
+
+
+  useEffect(() => {
+    fetchItems();
+    setIsLoading(false);
+    setPlaybackMode(LocalStorage.loadMediaPlaybackMode());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  
+  useEffect(() => {
+      LocalStorage.saveMediaPlaybackMode(playbackMode);
+  }, [playbackMode]);
 
   const fetchItems = () => {
     setMediaItems(LocalStorage.loadMediaFavorites());
   };
 
-  useEffect(() => {
-    fetchItems();
-    setIsLoading(false);
-  }, []);
+  const handlePlayPauseMedia = (item: MediaFavoriteItem) => {
+    if (currentItem?.item.id === item.id && currentItem?.type === 'media_favorite') {
+        if (isPaused) {
+            resume();
+        } else if (isPlaying) {
+            pause();
+        }
+    } else {
+        const fullPlaylist = mediaItems.map(media => ({ type: 'media_favorite' as const, item: media }));
+        const startIndex = mediaItems.findIndex(media => media.id === item.id);
+        play({ type: 'media_favorite', item }, fullPlaylist, startIndex);
+    }
+  };
+  
+  const handleGlobalPlayPause = () => {
+    if (isPlaying) {
+      if (isPaused) {
+        resume();
+      } else {
+        pause();
+      }
+    } else if (playlist.length > 0) {
+      play(playlist[0], playlist, 0);
+    } else if (mediaItems.length > 0) {
+      handlePlayPauseMedia(mediaItems[0]);
+    }
+  };
+
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -90,6 +147,7 @@ function MediaFavoritesPageContent() {
           dataUrl: dataUrl,
           note: uploadDialog.note,
           createdAt: Date.now(),
+          sourceDocumentName: 'Local Upload'
         };
 
         LocalStorage.addMediaFavorite(newItem);
@@ -115,6 +173,7 @@ function MediaFavoritesPageContent() {
 
   const performDelete = () => {
     if (!itemToDelete) return;
+    if (currentItem?.item.id === itemToDelete.id) stop();
     LocalStorage.deleteMediaFavorite(itemToDelete.id);
     fetchItems();
     toast({ title: 'Deleted', description: `"${itemToDelete.name}" has been removed.` });
@@ -154,48 +213,110 @@ function MediaFavoritesPageContent() {
           </CardContent>
         </Card>
 
+        <div className="p-4 border rounded-md bg-muted/20">
+            <h3 className="text-lg font-medium mb-3">Playback Controls</h3>
+            <div className="mb-4">
+                <Label className="font-medium text-sm">Playback Mode</Label>
+                <RadioGroup
+                  value={playbackMode}
+                  onValueChange={(v) => {
+                    setPlaybackMode(v as 'default' | 'loop-single' | 'sequential');
+                  }}
+                  className="flex items-center gap-4 mt-2"
+                  disabled={isPlaying}
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="default" id="mode-default" />
+                    <Label htmlFor="mode-default" className="flex items-center gap-1 cursor-pointer"><Play className="h-4 w-4"/>Default</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="loop-single" id="mode-loop" />
+                    <Label htmlFor="mode-loop" className="flex items-center gap-1 cursor-pointer"><Repeat1 className="h-4 w-4"/>Loop Single</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="sequential" id="mode-sequential" />
+                    <Label htmlFor="mode-sequential" className="flex items-center gap-1 cursor-pointer"><ListOrdered className="h-4 w-4"/>Sequential</Label>
+                  </div>
+                </RadioGroup>
+            </div>
+            <div className="flex items-center justify-center gap-4 my-4 p-2 rounded-lg bg-muted/50">
+               <Button variant="ghost" size="icon" onClick={previous} disabled={!hasPrevious() || isPlaybackLoading}><SkipBack className="h-5 w-5"/></Button>
+               <Button variant="ghost" size="icon" onClick={handleGlobalPlayPause} disabled={isPlaybackLoading || mediaItems.length === 0}>
+                  {isPlaybackLoading ? <Loader2 className="h-6 w-6 animate-spin"/> : isPlaying && !isPaused ? <Pause className="h-6 w-6"/> : <Play className="h-6 w-6"/>}
+               </Button>
+               <Button variant="ghost" size="icon" onClick={next} disabled={!hasNext() || isPlaybackLoading}><SkipForward className="h-5 w-5"/></Button>
+            </div>
+        </div>
+
         {isLoading ? (
           <p className="text-muted-foreground flex items-center"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading media...</p>
         ) : mediaItems.length === 0 ? (
           <p className="text-muted-foreground flex items-center gap-2"><Info className="h-5 w-5" /> Your media list is empty. Upload a file to get started.</p>
         ) : (
           <div className="space-y-4">
-            {mediaItems.map((item) => (
+            {mediaItems.map((item) => {
+               const isCurrentlyPlaying = currentItem?.item.id === item.id && currentItem.type === 'media_favorite';
+               let buttonIcon = <Play className="mr-1.5 h-4 w-4" />;
+               let buttonText = "Play";
+               if (isCurrentlyPlaying) {
+                 if (isPlaybackLoading) {
+                      buttonIcon = <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />;
+                      buttonText = "Loading...";
+                 } else if (isPaused) {
+                   buttonIcon = <Play className="mr-1.5 h-4 w-4" />;
+                   buttonText = "Resume";
+                 } else {
+                   buttonIcon = <Pause className="mr-1.5 h-4 w-4" />;
+                   buttonText = "Pause";
+                 }
+               }
+              return (
               <Card key={item.id}>
                 <CardContent className="p-4 flex flex-col gap-3">
                   <div className="flex justify-between items-start">
                     <div className="flex items-center gap-3 min-w-0">
                       {getMediaIcon(item.type)}
                       <div className='min-w-0'>
-                        <p className="font-semibold truncate" title={item.name}>{item.name}</p>
+                        <p className={cn("font-semibold truncate", isCurrentlyPlaying && "text-primary")} title={item.name}>{item.name}</p>
                         <p className="text-xs text-muted-foreground">Added: {format(new Date(item.createdAt), "MMM d, yyyy HH:mm")}</p>
                       </div>
                     </div>
-                    <AlertDialog>
-                       <AlertDialogTrigger asChild>
-                         <Button variant="ghost" size="icon" onClick={() => setItemToDelete(item)}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                         </Button>
-                       </AlertDialogTrigger>
-                       <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This will permanently delete "{itemToDelete?.name}". This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel onClick={() => setItemToDelete(null)}>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={performDelete}>Delete</AlertDialogAction>
-                          </AlertDialogFooter>
-                       </AlertDialogContent>
-                    </AlertDialog>
+                     <div className="flex gap-2 mt-2 sm:mt-0 sm:items-center flex-shrink-0">
+                        <Button 
+                          size="sm" 
+                          variant={isCurrentlyPlaying && !isPaused ? "outline" : "default"}
+                          onClick={() => handlePlayPauseMedia(item)} 
+                          disabled={isPlaybackLoading && !isCurrentlyPlaying}
+                          className="w-[100px]"
+                        >
+                            {buttonIcon} {buttonText}
+                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" onClick={(e) => {e.stopPropagation(); setItemToDelete(item);}}>
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  This will permanently delete "{itemToDelete?.name}". This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel onClick={() => setItemToDelete(null)}>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={performDelete}>Delete</AlertDialogAction>
+                              </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                    </div>
                   </div>
                   
                   {item.type === 'audio' ? (
-                     <audio controls src={item.dataUrl} className="w-full"></audio>
+                     <audio controls src={item.dataUrl} className="w-full" onPlay={() => handlePlayPauseMedia(item)}></audio>
                   ) : (
-                     <video controls src={item.dataUrl} className="w-full rounded-md bg-black"></video>
+                     <video controls src={item.dataUrl} className="w-full rounded-md bg-black" onPlay={() => handlePlayPauseMedia(item)}></video>
                   )}
                   
                   {item.note && (
@@ -206,7 +327,7 @@ function MediaFavoritesPageContent() {
                   )}
                 </CardContent>
               </Card>
-            ))}
+            )})}
           </div>
         )}
       </div>
