@@ -37,6 +37,7 @@ interface PlaybackContextType {
   setOriginalTextTtsSettings: React.Dispatch<React.SetStateAction<TTSSettings>>;
   yourNoteTtsSettings: TTSSettings;
   setYourNoteTtsSettings: React.Dispatch<React.SetStateAction<TTSSettings>>;
+  audioPlayerRef: React.RefObject<HTMLAudioElement | null>;
 }
 
 const PlaybackContext = createContext<PlaybackContextType | undefined>(undefined);
@@ -71,10 +72,14 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const isMountedRef = useRef(false);
 
   const onPlaybackEndRef = useRef<() => void>(() => {});
+  const currentObjectUrl = useRef<string | null>(null);
 
   useEffect(() => {
     isMountedRef.current = true;
-    return () => { isMountedRef.current = false; };
+    return () => { 
+        isMountedRef.current = false; 
+        if(currentObjectUrl.current) URL.revokeObjectURL(currentObjectUrl.current);
+    };
   },[]);
 
   const stop = useCallback((resetPlayerState = true) => {
@@ -89,9 +94,14 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
     if (audioPlayerRef.current) {
       audioPlayerRef.current.pause();
-      if (audioPlayerRef.current.src) {
-        audioPlayerRef.current.src = "";
+      if (audioPlayerRef.current.src && audioPlayerRef.current.src.startsWith('blob:')) {
+        URL.revokeObjectURL(audioPlayerRef.current.src);
       }
+      audioPlayerRef.current.removeAttribute('src');
+    }
+    if (currentObjectUrl.current) {
+        URL.revokeObjectURL(currentObjectUrl.current);
+        currentObjectUrl.current = null;
     }
     utteranceRef.current = null;
 
@@ -207,10 +217,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const play = useCallback(async (item: PlayableItem, newPlaylist: PlayableItem[], startIndex: number) => {
     // Pause previous playback but don't reset the whole UI state yet
-    if (isSpeakingRef.current) {
-      if (utteranceRef.current) window.speechSynthesis.pause();
-      if (audioPlayerRef.current) audioPlayerRef.current.pause();
-    }
+    stop(false);
     
     isSpeakingRef.current = true;
     segmentIndexRef.current = 0;
@@ -232,7 +239,11 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             setIsLoading(true);
         }
         if (audioPlayerRef.current) {
-            audioPlayerRef.current.src = item.item.dataUrl;
+            const blob = new Blob([item.item.fileData], { type: item.item.originalType });
+            const url = URL.createObjectURL(blob);
+            currentObjectUrl.current = url;
+            audioPlayerRef.current.src = url;
+            
             try {
                 await audioPlayerRef.current.play();
                 if (isMountedRef.current) setIsLoading(false);
@@ -386,7 +397,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       player.removeEventListener('playing', handleAudioPlaying);
       player.removeEventListener('error', handleAudioError);
       if (player.src && !player.paused) player.pause();
-      player.src = "";
+      player.removeAttribute('src');
       if(audioPlayerRef.current === player) audioPlayerRef.current = null;
       if (navigator.mediaSession) {
         navigator.mediaSession.setActionHandler('play', null);
@@ -419,6 +430,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setOriginalTextTtsSettings,
     yourNoteTtsSettings,
     setYourNoteTtsSettings,
+    audioPlayerRef,
   };
 
   return <PlaybackContext.Provider value={value}>{children}</PlaybackContext.Provider>;

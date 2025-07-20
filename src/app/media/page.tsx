@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { UploadCloud, Info, Trash2, Loader2, Music, Video, MessageSquare, Play, Pause, Repeat1, ListOrdered, SkipBack, SkipForward } from 'lucide-react';
+import * as IndexedDBService from '@/lib/indexedDBService';
 import * as LocalStorage from '@/lib/localStorageService';
 import type { MediaFavoriteItem } from '@/types';
 import { format } from 'date-fns';
@@ -22,7 +23,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
   Dialog,
@@ -52,6 +52,9 @@ function MediaFavoritesPageContent() {
   }>({ open: false, file: null, note: '' });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mediaElementRefs = useRef<Record<string, HTMLAudioElement | HTMLVideoElement | null>>({});
+  const objectUrlRefs = useRef<Record<string, string>>({});
+
 
   const {
     play,
@@ -74,8 +77,11 @@ function MediaFavoritesPageContent() {
 
   useEffect(() => {
     fetchItems();
-    setIsLoading(false);
     setPlaybackMode(LocalStorage.loadMediaPlaybackMode());
+    return () => {
+      // Clean up object URLs on component unmount
+      Object.values(objectUrlRefs.current).forEach(URL.revokeObjectURL);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   
@@ -83,17 +89,22 @@ function MediaFavoritesPageContent() {
       LocalStorage.saveMediaPlaybackMode(playbackMode);
   }, [playbackMode]);
 
-  const fetchItems = () => {
-    setMediaItems(LocalStorage.loadMediaFavorites());
+  const fetchItems = async () => {
+    setIsLoading(true);
+    try {
+        const items = await IndexedDBService.getAllMediaItems();
+        setMediaItems(items);
+    } catch (error: any) {
+        toast({ variant: 'destructive', title: 'Failed to load media', description: error.message });
+    } finally {
+        setIsLoading(false);
+    }
   };
-
+  
   const handlePlayPauseMedia = (item: MediaFavoriteItem) => {
     if (currentItem?.item.id === item.id && currentItem?.type === 'media_favorite') {
-        if (isPaused) {
-            resume();
-        } else if (isPlaying) {
-            pause();
-        }
+        if (isPaused) resume();
+        else if (isPlaying) pause();
     } else {
         const fullPlaylist = mediaItems.map(media => ({ type: 'media_favorite' as const, item: media }));
         const startIndex = mediaItems.findIndex(media => media.id === item.id);
@@ -103,11 +114,8 @@ function MediaFavoritesPageContent() {
   
   const handleGlobalPlayPause = () => {
     if (isPlaying) {
-      if (isPaused) {
-        resume();
-      } else {
-        pause();
-      }
+      if (isPaused) resume();
+      else pause();
     } else if (playlist.length > 0 && playlist[0].type === 'media_favorite') {
       const currentItemInPlaylist = playlist.find(p => p.item.id === currentItem?.item.id) || playlist[0];
       const currentItemIndex = playlist.findIndex(p => p.item.id === currentItemInPlaylist.item.id);
@@ -135,51 +143,42 @@ function MediaFavoritesPageContent() {
 
   const handleUploadConfirm = async () => {
     if (!uploadDialog.file) return;
-
     setIsUploading(true);
     
     try {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const dataUrl = e.target?.result as string;
-        const newItem: MediaFavoriteItem = {
-          id: `media_${Date.now()}`,
-          name: uploadDialog.file!.name,
-          type: uploadDialog.file!.type.startsWith('audio') ? 'audio' : 'video',
-          dataUrl: dataUrl,
-          note: uploadDialog.note,
-          createdAt: Date.now(),
-          sourceDocumentName: 'Local Upload'
-        };
-
-        LocalStorage.addMediaFavorite(newItem);
-        fetchItems(); // Refresh the list
-        toast({ title: 'Success', description: `"${newItem.name}" has been added.` });
-        
-        // Reset dialog and input
-        setUploadDialog({ open: false, file: null, note: '' });
-        if (fileInputRef.current) {
-          fileInputRef.current.value = "";
-        }
-        setIsUploading(false);
+      const fileBuffer = await uploadDialog.file.arrayBuffer();
+      const newItem: MediaFavoriteItem = {
+        id: `media_${Date.now()}`,
+        name: uploadDialog.file.name,
+        type: uploadDialog.file.type.startsWith('audio') ? 'audio' : 'video',
+        fileData: fileBuffer,
+        originalType: uploadDialog.file.type,
+        note: uploadDialog.note,
+        createdAt: Date.now(),
+        sourceDocumentName: 'Local Upload'
       };
-      reader.onerror = () => {
-        throw new Error("Failed to read the file.");
-      }
-      reader.readAsDataURL(uploadDialog.file);
+
+      await IndexedDBService.saveMediaItem(newItem);
+      toast({ title: 'Success', description: `"${newItem.name}" has been added.` });
+      await fetchItems(); // Refresh the list
+      
     } catch (error: any) {
       toast({ variant: 'destructive', title: 'Upload Failed', description: error.message });
+    } finally {
+      // Reset dialog and input
+      setUploadDialog({ open: false, file: null, note: '' });
+      if (fileInputRef.current) fileInputRef.current.value = "";
       setIsUploading(false);
     }
   };
 
-  const performDelete = () => {
+  const performDelete = async () => {
     if (!itemToDelete) return;
     if (currentItem?.item.id === itemToDelete.id) stop();
-    LocalStorage.deleteMediaFavorite(itemToDelete.id);
-    fetchItems();
+    await IndexedDBService.deleteMediaItemById(itemToDelete.id);
     toast({ title: 'Deleted', description: `"${itemToDelete.name}" has been removed.` });
     setItemToDelete(null);
+    await fetchItems();
   };
   
   const getMediaIcon = (type: 'audio' | 'video') => {
@@ -187,9 +186,17 @@ function MediaFavoritesPageContent() {
       ? <Music className="h-6 w-6 text-primary flex-shrink-0" />
       : <Video className="h-6 w-6 text-primary flex-shrink-0" />;
   };
-  
-  const audioRefs = useRef<Record<string, HTMLAudioElement | HTMLVideoElement>>({});
 
+  // Function to create or get an object URL for a media item
+  const getObjectUrl = (item: MediaFavoriteItem): string => {
+    if (objectUrlRefs.current[item.id]) {
+      return objectUrlRefs.current[item.id];
+    }
+    const blob = new Blob([item.fileData], { type: item.originalType });
+    const url = URL.createObjectURL(blob);
+    objectUrlRefs.current[item.id] = url;
+    return url;
+  };
 
   return (
     <>
@@ -274,45 +281,29 @@ function MediaFavoritesPageContent() {
                       </div>
                     </div>
                      <div className="flex gap-2 mt-2 sm:mt-0 sm:items-center flex-shrink-0">
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon" onClick={(e) => {e.stopPropagation(); setItemToDelete(item);}}>
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  This will permanently delete "{itemToDelete?.name}". This action cannot be undone.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel onClick={() => setItemToDelete(null)}>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={performDelete}>Delete</AlertDialogAction>
-                              </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
+                          <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); setItemToDelete(item); }}>
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
                     </div>
                   </div>
                   
                   {item.type === 'audio' ? (
                      <audio 
-                        src={item.dataUrl} 
+                        src={getObjectUrl(item)} 
                         controls 
                         className="w-full"
                         onPlay={() => handlePlayPauseMedia(item)}
                         onPause={() => pause()}
-                        ref={(el) => { if(el) audioRefs.current[item.id] = el; }}
+                        ref={(el) => { mediaElementRefs.current[item.id] = el }}
                     ></audio>
                   ) : (
                      <video 
-                        src={item.dataUrl} 
+                        src={getObjectUrl(item)}
                         controls 
                         className="w-full rounded-md bg-black"
                         onPlay={() => handlePlayPauseMedia(item)}
                         onPause={() => pause()}
-                        ref={(el) => { if(el) audioRefs.current[item.id] = el; }}
+                        ref={(el) => { mediaElementRefs.current[item.id] = el }}
                     ></video>
                   )}
                   
@@ -355,6 +346,21 @@ function MediaFavoritesPageContent() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      
+      <AlertDialog open={!!itemToDelete} onOpenChange={(isOpen) => !isOpen && setItemToDelete(null)}>
+          <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will permanently delete "{itemToDelete?.name}". This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel onClick={() => setItemToDelete(null)}>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={performDelete}>Delete</AlertDialogAction>
+              </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
     </>
   );
 }

@@ -1,10 +1,11 @@
 // src/lib/indexedDBService.ts
-import type { StoredMangaDocument, StoredPdfDocument, MangaDocumentDisplayInfo } from '@/types';
+import type { StoredMangaDocument, StoredPdfDocument, MangaDocumentDisplayInfo, MediaFavoriteItem } from '@/types';
 import { saveDocumentMetadata } from './localStorageService';
 import { getCurrentUser } from './authService';
 
-const DB_VERSION = 2;
+const DB_VERSION = 3; // Incremented version to add media store
 const DOC_STORE_NAME = 'documents';
+const MEDIA_STORE_NAME = 'media';
 const LAST_ACTIVE_DOC_STORE_NAME = 'appState';
 const LAST_ACTIVE_DOC_KEY_BASE = 'lastActiveDocIdRead2';
 
@@ -55,6 +56,9 @@ function getDB(): Promise<IDBDatabase> {
         if (event.oldVersion < 2 && !db.objectStoreNames.contains(LAST_ACTIVE_DOC_STORE_NAME)) {
           db.createObjectStore(LAST_ACTIVE_DOC_STORE_NAME, { keyPath: 'key' });
         }
+        if (event.oldVersion < 3 && !db.objectStoreNames.contains(MEDIA_STORE_NAME)) {
+            db.createObjectStore(MEDIA_STORE_NAME, { keyPath: 'id' });
+        }
       };
     });
     dbPromises.set(dbName, promise);
@@ -68,6 +72,7 @@ export function logoutAndClearPromises() {
     isFetching = null;
 }
 
+// --- Document Functions ---
 export async function saveDocument(doc: StoredMangaDocument): Promise<void> {
   documentCache = null; // Invalidate cache
   const db = await getDB();
@@ -150,6 +155,43 @@ export async function deleteDocumentById(id: string): Promise<void> {
     transaction.onerror = () => reject(new Error(`Failed to delete document: ${transaction.error?.message}`));
   });
 }
+
+// --- Media Functions ---
+export async function saveMediaItem(item: MediaFavoriteItem): Promise<void> {
+    const db = await getDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(MEDIA_STORE_NAME, 'readwrite');
+        const store = transaction.objectStore(MEDIA_STORE_NAME);
+        const request = store.put(item);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = (e) => reject(new Error(`Failed to save media item: ${transaction.error?.message}`));
+    });
+}
+
+export async function getAllMediaItems(): Promise<MediaFavoriteItem[]> {
+    const db = await getDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(MEDIA_STORE_NAME, 'readonly');
+        const store = transaction.objectStore(MEDIA_STORE_NAME);
+        const request = store.getAll();
+        request.onsuccess = () => resolve((request.result as MediaFavoriteItem[]).sort((a, b) => b.createdAt - a.createdAt));
+        request.onerror = () => reject(new Error(`Failed to get all media items: ${request.error?.message}`));
+    });
+}
+
+export async function deleteMediaItemById(id: string): Promise<void> {
+    const db = await getDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(MEDIA_STORE_NAME, 'readwrite');
+        const store = transaction.objectStore(MEDIA_STORE_NAME);
+        const request = store.delete(id);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(new Error(`Failed to delete media item: ${transaction.error?.message}`));
+    });
+}
+
+
+// --- Generic User/DB Functions ---
 
 function getDBNameForUser(email: string): string {
     const userId = email.replace(/[^a-zA-Z0-9]/g, '_');

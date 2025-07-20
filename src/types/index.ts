@@ -118,10 +118,11 @@ export interface MediaFavoriteItem {
   id: string;
   name: string;
   type: 'audio' | 'video';
-  dataUrl: string; // Store the media as a base64 data URL
+  fileData: ArrayBuffer; // Store raw file data in IndexedDB
+  originalType: string; // e.g., 'audio/mpeg'
   note: string;
   createdAt: number;
-  sourceDocumentName?: string; // Added for consistency
+  sourceDocumentName?: string; // e.g., 'Local Upload'
 }
 
 
