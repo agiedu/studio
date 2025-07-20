@@ -17,7 +17,6 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { edgeTTSLanguageVoices } from '@/lib/edge-tts-voices';
 import { cn } from '@/lib/utils';
 import { AuthGuard } from '@/components/auth/AuthGuard';
-import { AppHeader } from '@/components/app/AppHeader';
 
 
 interface FavoritesTTSSettings {
@@ -362,7 +361,6 @@ function FavoritesPageContent() {
 
   return (
     <>
-      <AppHeader />
       <div className="container mx-auto p-4 md:p-6 space-y-6">
         <Card>
           <CardHeader>

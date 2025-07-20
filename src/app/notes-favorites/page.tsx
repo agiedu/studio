@@ -10,7 +10,6 @@ import * as LocalStorage from '@/lib/localStorageService';
 import type { NoteFavoriteItem, TTSVoice, TTSSettings } from '@/types';
 import { format } from 'date-fns';
 import { AuthGuard } from '@/components/auth/AuthGuard';
-import { AppHeader } from '@/components/app/AppHeader';
 import { cn } from '@/lib/utils';
 import NextImage from 'next/image';
 import {
@@ -115,7 +114,7 @@ function NotesFavoritesPageContent() {
         if (merged.engine === 'cloud' && (!merged.language || !merged.cloudVoiceId)) {
             const defaultLocale = 'en-US';
             merged.language = defaultLocale;
-            if (edgeTTSLanguageVoices[defaultLocale]?.voices.length > 0) {
+            if (edgeTTSLanguageVoices[defaultLocale].voices.length > 0) {
               merged.cloudVoiceId = edgeTTSLanguageVoices[defaultLocale].voices[0].id;
             }
         }
@@ -194,7 +193,7 @@ function NotesFavoritesPageContent() {
         
         speakNextSegment();
     }
-  }, [originalTextTtsSettings, yourNoteTtsSettings, speakingItemId, pausedItemId]);
+  }, [originalTextTtsSettings, yourNoteTtsSettings, speakingItemId, pausedItemId, toast, stopSpeechGlobal]);
 
   const handlePlaybackEnd = useCallback(() => {
     switch (playbackMode) {
@@ -220,7 +219,7 @@ function NotesFavoritesPageContent() {
         stopSpeechGlobal(true);
         break;
     }
-  }, [playbackMode, favoriteNotes, speakingItemId, handlePlayPauseNote]);
+  }, [playbackMode, favoriteNotes, speakingItemId, handlePlayPauseNote, stopSpeechGlobal]);
   
   const stopSpeechGlobal = useCallback((resetUIState = true) => {
     isSpeakingRef.current = false;
@@ -542,7 +541,6 @@ function NotesFavoritesPageContent() {
 
   return (
     <>
-      <AppHeader />
       <div className="container mx-auto p-4 md:p-6 space-y-6">
         <Card>
           <CardHeader>

@@ -17,7 +17,6 @@ import {
 } from '@/lib/authService';
 import type { User } from '@/types';
 import { Trash2, Users, KeyRound, AlertTriangle } from 'lucide-react';
-import { AppHeader } from '@/components/app/AppHeader';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -81,7 +80,6 @@ function AdminManagementPage() {
 
   return (
     <>
-      <AppHeader />
       <div className="container mx-auto p-4 md:p-6 space-y-6">
         <h1 className="text-2xl font-bold">Admin Management Panel</h1>
 

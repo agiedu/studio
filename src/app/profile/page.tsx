@@ -8,7 +8,6 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { AuthGuard } from '@/components/auth/AuthGuard';
 import { getCurrentUser, changeUserPassword } from '@/lib/authService';
-import { AppHeader } from '@/components/app/AppHeader';
 import { KeyRound, User as UserIcon } from 'lucide-react';
 
 function ProfilePageContent() {
@@ -46,7 +45,6 @@ function ProfilePageContent() {
 
   return (
     <>
-      <AppHeader />
       <div className="container mx-auto p-4 md:p-6 max-w-2xl">
         <h1 className="text-2xl font-bold mb-6">User Profile</h1>
         <Card>

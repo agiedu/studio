@@ -54,7 +54,6 @@ import type { TTSSettings, TTSVoice, StoredMangaDocument, ActiveMangaDocument, S
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { AuthGuard } from '@/components/auth/AuthGuard';
-import { AppHeader } from '@/components/app/AppHeader';
 import { edgeTTSLanguageVoices } from '@/lib/edge-tts-voices';
 
 const PDF_DEFAULT_SCALE = 1.0;
@@ -104,7 +103,7 @@ function ReaderPageContent() {
   const [viewScale, setViewScale] = useState(1);
 
 
-  const epubViewerRef = useRef<HTMLDivElement>(null);
+  const epubViewerRef = useRef<HTMLDivElement | null>(null);
   const epubBookRef = useRef<Book | null>(null);
   const epubRenditionRef = useRef<Rendition | null>(null);
   const [isEpubLoading, setIsEpubLoading] = useState(false);
@@ -1525,7 +1524,6 @@ const renderedTextWithAnnotations = useMemo(() => {
 
   return (
     <>
-      <AppHeader />
       <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)]">
         <div className="flex-grow flex flex-col bg-muted/20 p-2 md:p-4 min-w-0">
           

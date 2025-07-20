@@ -24,7 +24,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { AuthGuard } from '@/components/auth/AuthGuard';
-import { AppHeader } from '@/components/app/AppHeader';
 
 function arrayBufferToBlob(buffer: ArrayBuffer, type: string): Blob {
   return new Blob([buffer], { type });
@@ -197,7 +196,6 @@ function LibraryPageContent() {
   
   return (
     <>
-      <AppHeader />
       <div className="container mx-auto p-4 md:p-6 space-y-6">
         <Card>
           <CardHeader>
