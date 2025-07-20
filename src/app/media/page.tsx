@@ -108,7 +108,7 @@ function MediaFavoritesPageContent() {
       } else {
         pause();
       }
-    } else if (playlist.length > 0) {
+    } else if (playlist.length > 0 && playlist[0].type === 'media_favorite') {
       const currentItemInPlaylist = playlist.find(p => p.item.id === currentItem?.item.id) || playlist[0];
       const currentItemIndex = playlist.findIndex(p => p.item.id === currentItemInPlaylist.item.id);
       play(currentItemInPlaylist, playlist, currentItemIndex);
@@ -187,6 +187,9 @@ function MediaFavoritesPageContent() {
       ? <Music className="h-6 w-6 text-primary flex-shrink-0" />
       : <Video className="h-6 w-6 text-primary flex-shrink-0" />;
   };
+  
+  const audioRefs = useRef<Record<string, HTMLAudioElement | HTMLVideoElement>>({});
+
 
   return (
     <>
@@ -257,42 +260,20 @@ function MediaFavoritesPageContent() {
         ) : (
           <div className="space-y-4">
             {mediaItems.map((item) => {
-               const isCurrentlyPlaying = currentItem?.item.id === item.id && currentItem.type === 'media_favorite';
-               let buttonIcon = <Play className="mr-1.5 h-4 w-4" />;
-               let buttonText = "Play";
-               if (isCurrentlyPlaying) {
-                 if (isPlaybackLoading) {
-                      buttonIcon = <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />;
-                      buttonText = "Loading...";
-                 } else if (isPaused) {
-                   buttonIcon = <Play className="mr-1.5 h-4 w-4" />;
-                   buttonText = "Resume";
-                 } else {
-                   buttonIcon = <Pause className="mr-1.5 h-4 w-4" />;
-                   buttonText = "Pause";
-                 }
-               }
+              const isCurrentlyPlaying = currentItem?.item.id === item.id && currentItem.type === 'media_favorite';
+              
               return (
-              <Card key={item.id}>
+              <Card key={item.id} className={cn(isCurrentlyPlaying && "border-primary ring-2 ring-primary")}>
                 <CardContent className="p-4 flex flex-col gap-3">
                   <div className="flex justify-between items-start">
                     <div className="flex items-center gap-3 min-w-0">
                       {getMediaIcon(item.type)}
                       <div className='min-w-0'>
-                        <p className={cn("font-semibold truncate", isCurrentlyPlaying && "text-primary")} title={item.name}>{item.name}</p>
+                        <p className={cn("font-semibold truncate")} title={item.name}>{item.name}</p>
                         <p className="text-xs text-muted-foreground">Added: {format(new Date(item.createdAt), "MMM d, yyyy HH:mm")}</p>
                       </div>
                     </div>
                      <div className="flex gap-2 mt-2 sm:mt-0 sm:items-center flex-shrink-0">
-                        <Button 
-                          size="sm" 
-                          variant={isCurrentlyPlaying && !isPaused ? "outline" : "default"}
-                          onClick={() => handlePlayPauseMedia(item)} 
-                          disabled={isPlaybackLoading && !isCurrentlyPlaying}
-                          className="w-[100px]"
-                        >
-                            {buttonIcon} {buttonText}
-                        </Button>
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button variant="ghost" size="icon" onClick={(e) => {e.stopPropagation(); setItemToDelete(item);}}>
@@ -316,9 +297,23 @@ function MediaFavoritesPageContent() {
                   </div>
                   
                   {item.type === 'audio' ? (
-                     <audio src={item.dataUrl} controls className="w-full"></audio>
+                     <audio 
+                        src={item.dataUrl} 
+                        controls 
+                        className="w-full"
+                        onPlay={() => handlePlayPauseMedia(item)}
+                        onPause={() => pause()}
+                        ref={(el) => { if(el) audioRefs.current[item.id] = el; }}
+                    ></audio>
                   ) : (
-                     <video src={item.dataUrl} controls className="w-full rounded-md bg-black"></video>
+                     <video 
+                        src={item.dataUrl} 
+                        controls 
+                        className="w-full rounded-md bg-black"
+                        onPlay={() => handlePlayPauseMedia(item)}
+                        onPause={() => pause()}
+                        ref={(el) => { if(el) audioRefs.current[item.id] = el; }}
+                    ></video>
                   )}
                   
                   {item.note && (
