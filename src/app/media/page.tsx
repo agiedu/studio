@@ -52,7 +52,6 @@ function MediaFavoritesPageContent() {
   }>({ open: false, file: null, note: '' });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const mediaElementRefs = useRef<Record<string, HTMLAudioElement | HTMLVideoElement | null>>({});
   const objectUrlRefs = useRef<Record<string, string>>({});
 
 
@@ -265,13 +264,13 @@ function MediaFavoritesPageContent() {
         ) : mediaItems.length === 0 ? (
           <p className="text-muted-foreground flex items-center gap-2"><Info className="h-5 w-5" /> Your media list is empty. Upload a file to get started.</p>
         ) : (
-          <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {mediaItems.map((item) => {
               const isCurrentlyPlaying = currentItem?.item.id === item.id && currentItem.type === 'media_favorite';
               
               return (
-              <Card key={item.id} className={cn(isCurrentlyPlaying && "border-primary ring-2 ring-primary")}>
-                <CardContent className="p-4 flex flex-col gap-3">
+              <Card key={item.id} className={cn("flex flex-col", isCurrentlyPlaying && "border-primary ring-2 ring-primary")}>
+                <CardContent className="p-4 flex flex-col gap-3 flex-grow">
                   <div className="flex justify-between items-start">
                     <div className="flex items-center gap-3 min-w-0">
                       {getMediaIcon(item.type)}
@@ -294,7 +293,6 @@ function MediaFavoritesPageContent() {
                         className="w-full"
                         onPlay={() => handlePlayPauseMedia(item)}
                         onPause={() => pause()}
-                        ref={(el) => { mediaElementRefs.current[item.id] = el }}
                     ></audio>
                   ) : (
                      <video 
@@ -303,12 +301,11 @@ function MediaFavoritesPageContent() {
                         className="w-full rounded-md bg-black"
                         onPlay={() => handlePlayPauseMedia(item)}
                         onPause={() => pause()}
-                        ref={(el) => { mediaElementRefs.current[item.id] = el }}
                     ></video>
                   )}
                   
                   {item.note && (
-                    <div className="text-sm text-muted-foreground p-3 bg-muted/50 rounded-md flex items-start gap-2">
+                    <div className="text-sm text-muted-foreground p-3 bg-muted/50 rounded-md flex items-start gap-2 mt-auto">
                         <MessageSquare className="h-4 w-4 mt-0.5 flex-shrink-0" />
                         <p className="whitespace-pre-wrap">{item.note}</p>
                     </div>
