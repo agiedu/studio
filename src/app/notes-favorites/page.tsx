@@ -136,6 +136,32 @@ function NotesFavoritesPageContent() {
       LocalStorage.saveNotesPlaybackMode(playbackMode);
   }, [playbackMode]);
 
+  const stopSpeechGlobal = useCallback((resetUIState = true) => {
+    isSpeakingRef.current = false;
+    speechQueueRef.current = [];
+    if (utteranceRef.current) {
+      utteranceRef.current.onend = null;
+      utteranceRef.current.onerror = null;
+      utteranceRef.current = null;
+    }
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.pause();
+      if (audioPlayerRef.current.src && audioPlayerRef.current.readyState >= HTMLMediaElement.HAVE_METADATA) {
+        try { audioPlayerRef.current.currentTime = 0; } catch (e) { /* ignore */ }
+      }
+    }
+    if (resetUIState && isMountedRef.current) {
+      setIsLoadingTTS(false);
+      setSpeakingItemId(null);
+      setPausedItemId(null);
+      setHighlightedSegmentIndex(-1);
+      setCurrentlySpeakingPart(null);
+    }
+  }, []);
+
   const handlePlayPauseNote = useCallback(async (item: NoteFavoriteItem) => {
     if (speakingItemId === item.id) { // This item is currently speaking or paused
         if (pausedItemId === item.id) { // It's paused, so resume it
@@ -221,31 +247,6 @@ function NotesFavoritesPageContent() {
     }
   }, [playbackMode, favoriteNotes, speakingItemId, handlePlayPauseNote, stopSpeechGlobal]);
   
-  const stopSpeechGlobal = useCallback((resetUIState = true) => {
-    isSpeakingRef.current = false;
-    speechQueueRef.current = [];
-    if (utteranceRef.current) {
-      utteranceRef.current.onend = null;
-      utteranceRef.current.onerror = null;
-      utteranceRef.current = null;
-    }
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-    }
-    if (audioPlayerRef.current) {
-      audioPlayerRef.current.pause();
-      if (audioPlayerRef.current.src && audioPlayerRef.current.readyState >= HTMLMediaElement.HAVE_METADATA) {
-        try { audioPlayerRef.current.currentTime = 0; } catch (e) { /* ignore */ }
-      }
-    }
-    if (resetUIState && isMountedRef.current) {
-      setIsLoadingTTS(false);
-      setSpeakingItemId(null);
-      setPausedItemId(null);
-      setHighlightedSegmentIndex(-1);
-      setCurrentlySpeakingPart(null);
-    }
-  }, []);
 
   const populateVoiceList = useCallback(() => {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
