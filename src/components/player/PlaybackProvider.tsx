@@ -66,33 +66,12 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const speechQueueRef = useRef<{ text: string; settings: TTSSettings; part?: 'original' | 'note' }[]>([]);
   const segmentIndexRef = useRef(0);
   const isSpeakingRef = useRef(false);
-  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const isMountedRef = useRef(false);
 
   useEffect(() => {
     isMountedRef.current = true;
     return () => { isMountedRef.current = false; };
   },[]);
-
-
-  const acquireWakeLock = async () => {
-    if ('wakeLock' in navigator) {
-      try {
-        wakeLockRef.current = await navigator.wakeLock.request('screen');
-      } catch (err: any) {
-        console.error(`${err.name}, ${err.message}`);
-      }
-    }
-  };
-
-  const releaseWakeLock = () => {
-    if (wakeLockRef.current) {
-      wakeLockRef.current.release().then(() => {
-        wakeLockRef.current = null;
-      });
-    }
-  };
-
 
   const stop = useCallback(() => {
     isSpeakingRef.current = false;
@@ -120,7 +99,6 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setCurrentText('');
         setCurrentIndex(-1);
     }
-    releaseWakeLock();
     if (navigator.mediaSession) {
         navigator.mediaSession.playbackState = 'none';
         navigator.mediaSession.metadata = null;
@@ -151,7 +129,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         stop();
         break;
     }
-  }, [currentIndex, playlist, playbackMode, stop]);
+  }, [currentIndex, playlist, playbackMode, stop, currentItem]);
 
 
   const speakNextSegment = useCallback(async () => {
@@ -237,7 +215,6 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const play = useCallback((item: PlayableItem, newPlaylist: PlayableItem[], startIndex: number) => {
     stop();
-    acquireWakeLock();
     if(isMountedRef.current) {
         setIsPlaying(true);
         setIsPaused(false);
@@ -278,13 +255,11 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         audioPlayerRef.current.pause();
     }
     if (navigator.mediaSession) navigator.mediaSession.playbackState = 'paused';
-    releaseWakeLock();
   }, []);
 
   const resume = useCallback(() => {
     if (!isSpeakingRef.current || !isMountedRef.current) return;
     setIsPaused(false);
-    acquireWakeLock();
     if (utteranceRef.current) {
         if(window.speechSynthesis.paused) window.speechSynthesis.resume();
     } else if (audioPlayerRef.current) {
@@ -364,7 +339,6 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         navigator.mediaSession.setActionHandler('previoustrack', null);
         navigator.mediaSession.setActionHandler('stop', null);
       }
-      releaseWakeLock();
     };
   }, [speakNextSegment, stop, toast, isPlaying, isPaused, resume, play, pause, next, previous, playlist, handlePlayAction, hasNext, hasPrevious]);
 
