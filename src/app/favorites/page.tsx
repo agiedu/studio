@@ -47,7 +47,6 @@ function FavoritesPageContent() {
     isPaused,
     isLoading,
     currentItem,
-    playlist,
     playbackMode,
     setPlaybackMode,
     originalTextTtsSettings: ttsSettings,
@@ -65,7 +64,7 @@ function FavoritesPageContent() {
     const loadedSettings = LocalStorage.loadTTSSettings();
     setTtsSettings(prevGlobalDefaults => {
         const merged = {
-            ...prevGlobalDefaults,
+            ...prevGlobaldefaults,
             ...loadedSettings,
             type: loadedSettings.type || 'local',
             engine: loadedSettings.engine || loadedSettings.type || 'local',
@@ -94,12 +93,13 @@ function FavoritesPageContent() {
     if (currentItem?.item.id === item.id && currentItem?.type === 'favorite') {
         if (isPaused) {
             resume();
-        } else {
+        } else if (isPlaying) {
             pause();
         }
     } else {
         const fullPlaylist = favoriteItems.map(fav => ({ type: 'favorite' as const, item: fav }));
-        play({ type: 'favorite', item }, fullPlaylist);
+        const startIndex = favoriteItems.findIndex(fav => fav.id === item.id);
+        play({ type: 'favorite', item }, fullPlaylist, startIndex);
     }
   };
 
@@ -217,6 +217,19 @@ function FavoritesPageContent() {
     });
   };
 
+  const handleGlobalPlayPause = () => {
+    if (isPlaying) {
+      if (isPaused) {
+        resume();
+      } else {
+        pause();
+      }
+    } else if (favoriteItems.length > 0) {
+      // Start playing from the first item if nothing is playing
+      handlePlayPauseFavorite(favoriteItems[0]);
+    }
+  };
+
   const groupedLocalVoices = groupVoicesByLanguage(availableVoices);
 
   return (
@@ -256,7 +269,7 @@ function FavoritesPageContent() {
                   </div>
                   <div className="flex items-center justify-center gap-4 my-4 p-2 rounded-lg bg-muted/50">
                      <Button variant="ghost" size="icon" onClick={previous} disabled={!hasPrevious()}><SkipBack className="h-5 w-5"/></Button>
-                     <Button variant="ghost" size="icon" onClick={() => handlePlayPauseFavorite(currentItem?.item as FavoriteItem)} disabled={!currentItem}>
+                     <Button variant="ghost" size="icon" onClick={handleGlobalPlayPause} disabled={isLoading || favoriteItems.length === 0}>
                         {isLoading ? <Loader2 className="h-6 w-6 animate-spin"/> : isPlaying && !isPaused ? <Pause className="h-6 w-6"/> : <Play className="h-6 w-6"/>}
                      </Button>
                      <Button variant="ghost" size="icon" onClick={next} disabled={!hasNext()}><SkipForward className="h-5 w-5"/></Button>

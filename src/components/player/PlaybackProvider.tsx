@@ -21,7 +21,7 @@ interface PlaybackContextType {
   currentItem: PlayableItem | null;
   playlist: PlayableItem[];
   currentText: string;
-  play: (item?: PlayableItem, playlist?: PlayableItem[]) => void;
+  play: (item: PlayableItem, playlist: PlayableItem[], startIndex: number) => void;
   pause: () => void;
   resume: () => void;
   stop: () => void;
@@ -32,9 +32,9 @@ interface PlaybackContextType {
   playbackMode: PlaybackMode;
   setPlaybackMode: (mode: PlaybackMode) => void;
   originalTextTtsSettings: TTSSettings;
-  setOriginalTextTtsSettings: (settings: TTSSettings) => void;
+  setOriginalTextTtsSettings: React.Dispatch<React.SetStateAction<TTSSettings>>;
   yourNoteTtsSettings: TTSSettings;
-  setYourNoteTtsSettings: (settings: TTSSettings) => void;
+  setYourNoteTtsSettings: React.Dispatch<React.SetStateAction<TTSSettings>>;
 }
 
 const PlaybackContext = createContext<PlaybackContextType | undefined>(undefined);
@@ -54,6 +54,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [isLoading, setIsLoading] = useState(false);
   const [currentItem, setCurrentItem] = useState<PlayableItem | null>(null);
   const [playlist, setPlaylist] = useState<PlayableItem[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(-1);
   const [currentText, setCurrentText] = useState('');
   const [playbackMode, setPlaybackMode] = useState<PlaybackMode>('default');
 
@@ -78,10 +79,6 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if ('wakeLock' in navigator) {
       try {
         wakeLockRef.current = await navigator.wakeLock.request('screen');
-        wakeLockRef.current.addEventListener('release', () => {
-          console.log('Screen Wake Lock was released');
-        });
-        console.log('Screen Wake Lock is active');
       } catch (err: any) {
         console.error(`${err.name}, ${err.message}`);
       }
@@ -90,8 +87,9 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const releaseWakeLock = () => {
     if (wakeLockRef.current) {
-      wakeLockRef.current.release();
-      wakeLockRef.current = null;
+      wakeLockRef.current.release().then(() => {
+        wakeLockRef.current = null;
+      });
     }
   };
 
@@ -102,7 +100,6 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (utteranceRef.current) {
       utteranceRef.current.onend = null;
       utteranceRef.current.onerror = null;
-      utteranceRef.current = null;
     }
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel();
@@ -113,41 +110,38 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         audioPlayerRef.current.src = "";
       }
     }
+    utteranceRef.current = null;
+
     if (isMountedRef.current) {
         setIsPlaying(false);
         setIsPaused(false);
         setIsLoading(false);
         setCurrentItem(null);
         setCurrentText('');
+        setCurrentIndex(-1);
     }
     releaseWakeLock();
     if (navigator.mediaSession) {
         navigator.mediaSession.playbackState = 'none';
+        navigator.mediaSession.metadata = null;
     }
   }, []);
 
   const onPlaybackEnd = useCallback(() => {
-    const findNextItem = (currentItemId: string): PlayableItem | null => {
-      const currentIndex = playlist.findIndex(p => p.item.id === currentItemId);
-      if (currentIndex > -1 && currentIndex < playlist.length - 1) {
-        return playlist[currentIndex + 1];
-      }
-      return null;
-    };
-  
-    if (!currentItem) {
-      stop();
-      return;
-    }
+    if (!isSpeakingRef.current) return;
   
     switch (playbackMode) {
       case 'loop-single':
-        setTimeout(() => play(currentItem, playlist), 100);
+        if(currentItem && playlist.length > 0) {
+           setTimeout(() => play(currentItem, playlist, currentIndex), 100);
+        } else {
+           stop();
+        }
         break;
       case 'sequential':
-        const nextItem = findNextItem(currentItem.item.id);
-        if (nextItem) {
-          setTimeout(() => play(nextItem, playlist), 100);
+        const nextIndex = currentIndex + 1;
+        if (nextIndex < playlist.length) {
+          setTimeout(() => play(playlist[nextIndex], playlist, nextIndex), 100);
         } else {
           stop();
         }
@@ -157,7 +151,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         stop();
         break;
     }
-  }, [currentItem, playlist, playbackMode, stop]);
+  }, [currentIndex, playlist, playbackMode, stop]);
 
 
   const speakNextSegment = useCallback(async () => {
@@ -169,7 +163,8 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     const currentPart = speechQueueRef.current[0];
-    if (segmentIndexRef.current >= (currentPart.text.match(PUNCTUATION_REGEX_FOR_SPLIT) || [currentPart.text]).filter(Boolean).length) {
+    const segments = (currentPart.text.match(PUNCTUATION_REGEX_FOR_SPLIT) || [currentPart.text]).filter(Boolean);
+    if (segmentIndexRef.current >= segments.length) {
       speechQueueRef.current.shift();
       segmentIndexRef.current = 0;
       speakNextSegment();
@@ -178,7 +173,6 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     if (isMountedRef.current) setIsLoading(true);
     
-    const segments = (currentPart.text.match(PUNCTUATION_REGEX_FOR_SPLIT) || [currentPart.text]).filter(Boolean);
     const segmentText = segments[segmentIndexRef.current];
     const cleanedText = segmentText.replace(PUNCTUATION_REGEX_FOR_CLEANUP, ' ').trim();
 
@@ -188,9 +182,9 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         navigator.mediaSession.metadata = new MediaMetadata({
           title: cleanedText,
           artist: currentItem.item.sourceDocumentName || 'MangaTalk',
+          album: currentItem.type === 'favorite' ? 'Favorited Texts' : 'Favorited Notes',
         });
     }
-
 
     if (!cleanedText) {
       segmentIndexRef.current++;
@@ -212,9 +206,9 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (voice) utterance.voice = voice;
       }
       
-      utterance.onend = () => { if(utteranceRef.current === utterance) { segmentIndexRef.current++; speakNextSegment(); } };
+      utterance.onend = () => { if(utteranceRef.current === utterance && isSpeakingRef.current) { segmentIndexRef.current++; speakNextSegment(); } };
       utterance.onerror = (event) => {
-          if(utteranceRef.current === utterance) {
+          if(utteranceRef.current === utterance && event.error !== 'canceled') {
               toast({ variant: "destructive", title: "TTS Error", description: event.error || "Speech failed." });
               stop();
           }
@@ -241,42 +235,39 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [stop, toast, onPlaybackEnd, currentItem]);
 
-  const play = useCallback((item?: PlayableItem, newPlaylist?: PlayableItem[]) => {
-    const itemToPlay = item || (newPlaylist && newPlaylist.length > 0 ? newPlaylist[0] : null);
-    if (!itemToPlay) return;
-
+  const play = useCallback((item: PlayableItem, newPlaylist: PlayableItem[], startIndex: number) => {
     stop();
     acquireWakeLock();
     if(isMountedRef.current) {
         setIsPlaying(true);
         setIsPaused(false);
-        setCurrentItem(itemToPlay);
-        if(newPlaylist) setPlaylist(newPlaylist);
-        else if(item) setPlaylist([item]);
+        setCurrentItem(item);
+        setPlaylist(newPlaylist);
+        setCurrentIndex(startIndex);
     }
     isSpeakingRef.current = true;
     segmentIndexRef.current = 0;
     speechQueueRef.current = [];
     
-    if (itemToPlay.type === 'favorite') {
-      speechQueueRef.current.push({ text: itemToPlay.item.text, settings: originalTextTtsSettings });
-    } else if (itemToPlay.type === 'note_favorite') {
-      if (itemToPlay.item.annotation.targetText) {
-        speechQueueRef.current.push({ text: itemToPlay.item.annotation.targetText, settings: originalTextTtsSettings, part: 'original' });
+    if (item.type === 'favorite') {
+      speechQueueRef.current.push({ text: item.item.text, settings: originalTextTtsSettings });
+    } else if (item.type === 'note_favorite') {
+      if (item.item.annotation.targetText) {
+        speechQueueRef.current.push({ text: item.item.annotation.targetText, settings: originalTextTtsSettings, part: 'original' });
       }
-      if (itemToPlay.item.annotation.note) {
-        speechQueueRef.current.push({ text: itemToPlay.item.annotation.note, settings: yourNoteTtsSettings, part: 'note' });
+      if (item.item.annotation.note) {
+        speechQueueRef.current.push({ text: item.item.annotation.note, settings: yourNoteTtsSettings, part: 'note' });
       }
     }
 
-    if (speechQueueRef.current.length === 0) {
+    if (speechQueueRef.current.length === 0 || speechQueueRef.current.every(p => !p.text.trim())) {
       toast({ variant: 'destructive', title: 'No Text', description: 'This item has no text to read.' });
-      stop();
+      onPlaybackEnd(); // Try next item if in sequential mode
       return;
     }
     
     speakNextSegment();
-  }, [stop, speakNextSegment, originalTextTtsSettings, yourNoteTtsSettings, toast]);
+  }, [stop, speakNextSegment, originalTextTtsSettings, yourNoteTtsSettings, toast, onPlaybackEnd]);
 
   const pause = useCallback(() => {
     if (!isSpeakingRef.current || !isMountedRef.current) return;
@@ -302,36 +293,33 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (navigator.mediaSession) navigator.mediaSession.playbackState = 'playing';
   }, [stop]);
 
-  const findPlaylistItemIndex = (currentItemId: string) => {
-    return playlist.findIndex(p => p.item.id === currentItemId);
-  };
-
-  const hasNext = () => {
-    if (!currentItem) return false;
-    const currentIndex = findPlaylistItemIndex(currentItem.item.id);
-    return currentIndex > -1 && currentIndex < playlist.length - 1;
-  };
+  const hasNext = () => currentIndex > -1 && currentIndex < playlist.length - 1;
   
-  const hasPrevious = () => {
-    if (!currentItem) return false;
-    const currentIndex = findPlaylistItemIndex(currentItem.item.id);
-    return currentIndex > 0;
-  };
+  const hasPrevious = () => currentIndex > 0;
 
   const next = () => {
-    if (hasNext() && currentItem) {
-      const currentIndex = findPlaylistItemIndex(currentItem.item.id);
-      play(playlist[currentIndex + 1], playlist);
+    if (hasNext()) {
+      play(playlist[currentIndex + 1], playlist, currentIndex + 1);
     }
   };
 
   const previous = () => {
-    if (hasPrevious() && currentItem) {
-      const currentIndex = findPlaylistItemIndex(currentItem.item.id);
-      play(playlist[currentIndex - 1], playlist);
+    if (hasPrevious()) {
+      play(playlist[currentIndex - 1], playlist, currentIndex - 1);
     }
   };
   
+  const handlePlayAction = useCallback(() => {
+      if (isPaused) {
+        resume();
+      } else {
+        // Fallback to starting playback from the beginning of the list if nothing else makes sense
+        if (playlist.length > 0) {
+            play(playlist[0], playlist, 0);
+        }
+      }
+  }, [isPaused, resume, play, playlist]);
+
   useEffect(() => {
     const player = new Audio();
     audioPlayerRef.current = player;
@@ -355,10 +343,11 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     player.addEventListener('error', handleAudioError);
 
     if (navigator.mediaSession) {
-      navigator.mediaSession.setActionHandler('play', () => (isPaused ? resume() : play()));
+      navigator.mediaSession.setActionHandler('play', () => isPlaying ? resume() : handlePlayAction());
       navigator.mediaSession.setActionHandler('pause', () => pause());
-      navigator.mediaSession.setActionHandler('nexttrack', () => next());
-      navigator.mediaSession.setActionHandler('previoustrack', () => previous());
+      navigator.mediaSession.setActionHandler('nexttrack', hasNext() ? () => next() : null);
+      navigator.mediaSession.setActionHandler('previoustrack', hasPrevious() ? () => previous() : null);
+      navigator.mediaSession.setActionHandler('stop', () => stop());
     }
 
     return () => {
@@ -373,10 +362,11 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         navigator.mediaSession.setActionHandler('pause', null);
         navigator.mediaSession.setActionHandler('nexttrack', null);
         navigator.mediaSession.setActionHandler('previoustrack', null);
+        navigator.mediaSession.setActionHandler('stop', null);
       }
       releaseWakeLock();
     };
-  }, [speakNextSegment, stop, toast, isPaused, resume, play, pause, next, previous]);
+  }, [speakNextSegment, stop, toast, isPlaying, isPaused, resume, play, pause, next, previous, playlist, handlePlayAction, hasNext, hasPrevious]);
 
   const value: PlaybackContextType = {
     isPlaying,

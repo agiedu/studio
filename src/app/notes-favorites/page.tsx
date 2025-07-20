@@ -140,12 +140,13 @@ function NotesFavoritesPageContent() {
     if (currentItem?.item.id === item.id && currentItem?.type === 'note_favorite') {
         if (isPaused) {
             resume();
-        } else {
+        } else if (isPlaying) {
             pause();
         }
     } else {
         const fullPlaylist = favoriteNotes.map(note => ({ type: 'note_favorite' as const, item: note }));
-        play({ type: 'note_favorite', item }, fullPlaylist);
+        const startIndex = favoriteNotes.findIndex(note => note.id === item.id);
+        play({ type: 'note_favorite', item }, fullPlaylist, startIndex);
     }
   };
   
@@ -237,6 +238,18 @@ function NotesFavoritesPageContent() {
           
           return newSettings;
       });
+  };
+
+  const handleGlobalPlayPause = () => {
+    if (isPlaying) {
+      if (isPaused) {
+        resume();
+      } else {
+        pause();
+      }
+    } else if (favoriteNotes.length > 0) {
+      handlePlayPauseNote(favoriteNotes[0]);
+    }
   };
 
   const groupedLocalVoices = groupVoicesByLanguage(availableVoices);
@@ -368,7 +381,7 @@ function NotesFavoritesPageContent() {
                 </div>
                 <div className="flex items-center justify-center gap-4 my-4 p-2 rounded-lg bg-muted/50">
                     <Button variant="ghost" size="icon" onClick={previous} disabled={!hasPrevious()}><SkipBack className="h-5 w-5"/></Button>
-                    <Button variant="ghost" size="icon" onClick={() => handlePlayPauseNote(currentItem?.item as NoteFavoriteItem)} disabled={!currentItem}>
+                    <Button variant="ghost" size="icon" onClick={handleGlobalPlayPause} disabled={isLoading || favoriteNotes.length === 0}>
                     {isLoading ? <Loader2 className="h-6 w-6 animate-spin"/> : isPlaying && !isPaused ? <Pause className="h-6 w-6"/> : <Play className="h-6 w-6"/>}
                     </Button>
                     <Button variant="ghost" size="icon" onClick={next} disabled={!hasNext()}><SkipForward className="h-5 w-5"/></Button>
