@@ -314,9 +314,9 @@ function MediaFavoritesPageContent() {
                   </div>
                   
                   {item.type === 'audio' ? (
-                     <audio controls src={item.dataUrl} className="w-full" onPlay={() => handlePlayPauseMedia(item)}></audio>
+                     <audio controls src={item.dataUrl} className="w-full"></audio>
                   ) : (
-                     <video controls src={item.dataUrl} className="w-full rounded-md bg-black" onPlay={() => handlePlayPauseMedia(item)}></video>
+                     <video controls src={item.dataUrl} className="w-full rounded-md bg-black"></video>
                   )}
                   
                   {item.note && (
