@@ -88,6 +88,7 @@ function NotesFavoritesPageContent() {
     isLoading,
     currentItem,
     currentText,
+    playlist,
     playbackMode,
     setPlaybackMode,
     originalTextTtsSettings,
@@ -248,6 +249,8 @@ function NotesFavoritesPageContent() {
       } else {
         pause();
       }
+    } else if (playlist.length > 0) {
+        play(playlist[0], playlist, 0);
     } else if (favoriteNotes.length > 0) {
       handlePlayPauseNote(favoriteNotes[0]);
     }

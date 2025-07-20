@@ -1,3 +1,4 @@
+
 "use client";
 
 import { usePlayback } from '@/components/player/PlaybackProvider';
@@ -14,6 +15,7 @@ export default function FloatingPlayer() {
     isLoading,
     currentItem,
     currentText,
+    playlist,
     play,
     pause,
     resume,
@@ -31,8 +33,9 @@ export default function FloatingPlayer() {
       } else {
         pause();
       }
-    } else {
-        play();
+    } else if (playlist.length > 0) {
+      // If stopped, play from the beginning of the current playlist
+      play(playlist[0], playlist, 0);
     }
   };
 

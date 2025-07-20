@@ -48,6 +48,7 @@ function FavoritesPageContent() {
     isPaused,
     isLoading,
     currentItem,
+    playlist,
     playbackMode,
     setPlaybackMode,
     originalTextTtsSettings: ttsSettings,
@@ -225,8 +226,9 @@ function FavoritesPageContent() {
       } else {
         pause();
       }
+    } else if (playlist.length > 0) {
+      play(playlist[0], playlist, 0);
     } else if (favoriteItems.length > 0) {
-      // Start playing from the first item if nothing is playing
       handlePlayPauseFavorite(favoriteItems[0]);
     }
   };
