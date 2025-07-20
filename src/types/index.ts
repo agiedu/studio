@@ -114,6 +114,15 @@ export interface NoteFavoriteItem {
     favoritedAt: number;
 }
 
+export interface MediaFavoriteItem {
+  id: string;
+  name: string;
+  type: 'audio' | 'video';
+  dataUrl: string; // Store the media as a base64 data URL
+  note: string;
+  createdAt: number;
+}
+
 
 // This type might be used by the ReaderPage to hold the currently active document
 // It could be identical to StoredMangaDocument or have additional transient reader state

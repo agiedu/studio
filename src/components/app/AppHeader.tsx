@@ -4,13 +4,13 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { BookOpenText, Library, Star, User, LogOut, ShieldCheck, NotebookText, Home } from 'lucide-react';
+import { BookOpenText, Library, Star, User, LogOut, ShieldCheck, NotebookText, Home, Film } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { MangaTalkLogo } from '@/components/icons/MangaTalkLogo';
 import { cn } from '@/lib/utils';
 import { getCurrentUser, logout, isAdminSessionActive } from '@/lib/authService';
 
-const PROTECTED_ROUTES = ['/library', '/reader', '/favorites', '/notes-favorites', '/profile', '/admin'];
+const PROTECTED_ROUTES = ['/library', '/reader', '/favorites', '/notes-favorites', '/profile', '/admin', '/media'];
 
 export function AppHeader() {
   const pathname = usePathname();
@@ -73,6 +73,11 @@ export function AppHeader() {
                 <Button variant="ghost" asChild size="sm" className={getLinkClass('/reader')}>
                   <Link href="/reader">
                     <BookOpenText className="mr-1 h-4 w-4" /> Reader
+                  </Link>
+                </Button>
+                 <Button variant="ghost" asChild size="sm" className={getLinkClass('/media')}>
+                  <Link href="/media">
+                    <Film className="mr-1 h-4 w-4" /> Media
                   </Link>
                 </Button>
                 <Button variant="ghost" asChild size="sm" className={getLinkClass('/favorites')}>

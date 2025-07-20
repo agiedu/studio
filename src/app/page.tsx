@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { MangaTalkLogo } from '@/components/icons/MangaTalkLogo';
-import { BookOpenText, Library, Star, NotebookText, ArrowRight } from 'lucide-react';
+import { BookOpenText, Library, Star, NotebookText, ArrowRight, Film } from 'lucide-react';
 import { getCurrentUser } from '@/lib/authService';
 
 interface ModuleCardProps {
@@ -65,6 +65,12 @@ export default function HomePage() {
             href: "/reader"
         },
         {
+            title: "Media",
+            description: "Upload and play audio/video files.",
+            icon: <Film className="h-6 w-6 text-primary" />,
+            href: "/media"
+        },
+        {
             title: "Text Favorites",
             description: "Review your saved text snippets.",
             icon: <Star className="h-6 w-6 text-primary" />,
@@ -118,7 +124,7 @@ export default function HomePage() {
                 </section>
 
                 <section className="container mx-auto px-4 md:px-6 pb-16">
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                        {modules.map(mod => (
                            <ModuleCard key={mod.title} {...mod} isLoggedIn={isLoggedIn} />
                        ))}

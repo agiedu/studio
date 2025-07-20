@@ -1,5 +1,6 @@
 
-import type { TTSSettings, FavoriteItem, MangaDocumentDisplayInfo, NoteFavoriteItem, Annotation } from '@/types';
+
+import type { TTSSettings, FavoriteItem, MangaDocumentDisplayInfo, NoteFavoriteItem, Annotation, MediaFavoriteItem } from '@/types';
 import { getCurrentUser } from './authService';
 
 // --- KEY GENERATION ---
@@ -19,6 +20,7 @@ const getUserKey = (baseKey: string): string | null => {
 const TTS_SETTINGS_KEY = 'mangaTalk_ttsSettings_v2';
 const FAVORITE_ITEMS_KEY = 'mangaTalk_favoriteItems_v1';
 const NOTE_FAVORITES_KEY = 'mangaTalk_noteFavorites_v1';
+const MEDIA_FAVORITES_KEY = 'mangaTalk_mediaFavorites_v1';
 const SCRATCHPAD_TEXT_KEY = 'mangaTalk_scratchpadText_v1';
 const SCRATCHPAD_ANNOTATIONS_KEY = 'mangaTalk_scratchpadAnnotations_v1';
 const DOC_METADATA_CACHE_KEY = 'mangaTalk_docMetadataCache_v1';
@@ -36,6 +38,7 @@ const ALL_USER_SPECIFIC_BASE_KEYS = [
     TTS_SETTINGS_KEY,
     FAVORITE_ITEMS_KEY,
     NOTE_FAVORITES_KEY,
+    MEDIA_FAVORITES_KEY,
     SCRATCHPAD_TEXT_KEY,
     SCRATCHPAD_ANNOTATIONS_KEY,
     DOC_METADATA_CACHE_KEY,
@@ -212,6 +215,28 @@ export const deleteNoteFavorite = (annotationId: string): boolean => {
     let items = loadNoteFavorites();
     items = items.filter(item => item.id !== annotationId);
     return saveNoteFavorites(items);
+};
+
+// Media Favorites (Audio/Video) specific storage
+export const loadMediaFavorites = (): MediaFavoriteItem[] => {
+    const key = getUserKey(MEDIA_FAVORITES_KEY);
+    if (!key) return [];
+    return safeLocalStorageGet<MediaFavoriteItem[]>(key, []);
+};
+export const saveMediaFavorites = (items: MediaFavoriteItem[]): boolean => {
+    const key = getUserKey(MEDIA_FAVORITES_KEY);
+    if (!key) return false;
+    return safeLocalStorageSet(key, items);
+};
+export const addMediaFavorite = (item: MediaFavoriteItem): boolean => {
+    const items = loadMediaFavorites();
+    items.unshift(item); // Add new to the beginning
+    return saveMediaFavorites(items);
+};
+export const deleteMediaFavorite = (itemId: string): boolean => {
+    let items = loadMediaFavorites();
+    items = items.filter(item => item.id !== itemId);
+    return saveMediaFavorites(items);
 };
 
 
