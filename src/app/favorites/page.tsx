@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -64,7 +65,7 @@ function FavoritesPageContent() {
     const loadedSettings = LocalStorage.loadTTSSettings();
     setTtsSettings(prevGlobalDefaults => {
         const merged = {
-            ...prevGlobaldefaults,
+            ...prevGlobalDefaults,
             ...loadedSettings,
             type: loadedSettings.type || 'local',
             engine: loadedSettings.engine || loadedSettings.type || 'local',
