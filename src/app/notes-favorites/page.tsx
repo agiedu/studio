@@ -1,11 +1,10 @@
-
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Trash2, Info, NotebookText, FileText, Play, Pause, Loader2, Smartphone, Cloud as CloudIcon, Star, Repeat1, ListOrdered } from 'lucide-react';
+import { Trash2, Info, NotebookText, FileText, Play, Pause, Loader2, Smartphone, Cloud as CloudIcon, Star, Repeat1, ListOrdered, SkipBack, SkipForward } from 'lucide-react';
 import * as LocalStorage from '@/lib/localStorageService';
 import type { NoteFavoriteItem, TTSVoice, TTSSettings } from '@/types';
 import { format } from 'date-fns';
@@ -29,11 +28,8 @@ import { getCloudSpeech } from '@/app/actions';
 import { edgeTTSLanguageVoices } from '@/lib/edge-tts-voices';
 import { Separator } from '@/components/ui/separator';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { usePlayback } from '@/components/player/PlaybackProvider';
 
-const PUNCTUATION_REGEX_FOR_SPLIT = /([.,?!,。？！，、\n\r]+)/g;
-const PUNCTUATION_REGEX_FOR_CLEANUP = /[.,?!,。？！，、\n\r"“„”'‘’`*_{}\[\]()#&@:;~<>/\\|\-—–^%$]/g;
-
-type PlaybackMode = 'default' | 'loop-single' | 'sequential';
 
 const groupVoicesByLanguage = (voices: TTSVoice[]) => {
   return voices.reduce((acc, voice) => {
@@ -46,58 +42,61 @@ const groupVoicesByLanguage = (voices: TTSVoice[]) => {
   }, {} as Record<string, TTSVoice[]>);
 };
 
-// A new component to render text with highlighting
 const HighlightableText: React.FC<{
   text: string;
   isSpeaking: boolean;
-  highlightedSegmentIndex: number;
-  segments: string[];
-}> = ({ text, isSpeaking, highlightedSegmentIndex, segments }) => {
-  if (!isSpeaking || highlightedSegmentIndex < 0) {
-    return <>{text ? `"${text}"` : "No original text."}</>;
-  }
+  highlightedText: string;
+}> = ({ text, isSpeaking, highlightedText }) => {
+    if (!isSpeaking || !text) {
+        return <>{text ? `"${text}"` : "No original text."}</>;
+    }
 
-  const preText = segments.slice(0, highlightedSegmentIndex).join('');
-  const highlightedText = segments[highlightedSegmentIndex];
-  const postText = segments.slice(highlightedSegmentIndex + 1).join('');
+    const index = text.indexOf(highlightedText);
+    if (index === -1) {
+        return <>{text ? `"${text}"` : "No original text."}</>;
+    }
 
-  return (
-    <>
-      &quot;{preText}
-      <span className="text-green-600 dark:text-green-500">{highlightedText}</span>
-      {postText}&quot;
-    </>
-  );
+    const preText = text.substring(0, index);
+    const postText = text.substring(index + highlightedText.length);
+
+    return (
+        <>
+        &quot;{preText}
+        <span className="text-primary">{highlightedText}</span>
+        {postText}&quot;
+        </>
+    );
 };
+
 
 function NotesFavoritesPageContent() {
   const { toast } = useToast();
   const [favoriteNotes, setFavoriteNotes] = useState<NoteFavoriteItem[]>([]);
   const [noteToDelete, setNoteToDelete] = useState<NoteFavoriteItem | null>(null);
-
-  const [isLoadingTTS, setIsLoadingTTS] = useState(false);
-  const [speakingItemId, setSpeakingItemId] = useState<string | null>(null);
-  const [pausedItemId, setPausedItemId] = useState<string | null>(null);
-  
-  const [originalTextTtsSettings, setOriginalTextTtsSettings] = useState<TTSSettings>(LocalStorage.defaultTTSSettings);
-  const [yourNoteTtsSettings, setYourNoteTtsSettings] = useState<TTSSettings>(LocalStorage.defaultTTSSettings);
-  const [playbackMode, setPlaybackMode] = useState<PlaybackMode>('default');
   const [availableVoices, setAvailableVoices] = useState<TTSVoice[]>([]);
 
-  const [highlightedSegmentIndex, setHighlightedSegmentIndex] = useState(-1);
-  const [currentlySpeakingPart, setCurrentlySpeakingPart] = useState<'original' | 'note' | null>(null);
-  const segmentIndexRef = useRef(0);
-  const isSpeakingRef = useRef(false);
+  const {
+    play,
+    stop,
+    pause,
+    resume,
+    next,
+    previous,
+    isPlaying,
+    isPaused,
+    isLoading,
+    currentItem,
+    currentText,
+    playbackMode,
+    setPlaybackMode,
+    originalTextTtsSettings,
+    setOriginalTextTtsSettings,
+    yourNoteTtsSettings,
+    setYourNoteTtsSettings,
+    hasNext,
+    hasPrevious,
+  } = usePlayback();
 
-  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
-  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
-  const speechQueueRef = useRef<{ text: string; settings: TTSSettings; part: 'original' | 'note', segments: string[] }[]>([]);
-  const isMountedRef = useRef(false);
-
-  useEffect(() => {
-    isMountedRef.current = true;
-    return () => { isMountedRef.current = false; };
-  }, []);
 
   // Load initial settings and favorite items
   useEffect(() => {
@@ -123,7 +122,7 @@ function NotesFavoritesPageContent() {
 
     loadAndSetSettings(LocalStorage.loadOriginalTextTTSSettings, setOriginalTextTtsSettings);
     loadAndSetSettings(LocalStorage.loadYourNoteTTSSettings, setYourNoteTtsSettings);
-  }, []);
+  }, [setPlaybackMode, setOriginalTextTtsSettings, setYourNoteTtsSettings]);
 
   // Save TTS settings to LocalStorage whenever they change
   useEffect(() => {
@@ -136,199 +135,20 @@ function NotesFavoritesPageContent() {
       LocalStorage.saveNotesPlaybackMode(playbackMode);
   }, [playbackMode]);
 
-  const stopSpeechGlobal = useCallback((resetUIState = true) => {
-    isSpeakingRef.current = false;
-    speechQueueRef.current = [];
-    if (utteranceRef.current) {
-      utteranceRef.current.onend = null;
-      utteranceRef.current.onerror = null;
-      utteranceRef.current = null;
-    }
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-    }
-    if (audioPlayerRef.current) {
-      audioPlayerRef.current.pause();
-      if (audioPlayerRef.current.src && audioPlayerRef.current.readyState >= HTMLMediaElement.HAVE_METADATA) {
-        try { audioPlayerRef.current.currentTime = 0; } catch (e) { /* ignore */ }
-      }
-    }
-    if (resetUIState && isMountedRef.current) {
-      setIsLoadingTTS(false);
-      setSpeakingItemId(null);
-      setPausedItemId(null);
-      setHighlightedSegmentIndex(-1);
-      setCurrentlySpeakingPart(null);
-    }
-  }, []);
 
-  const speakNextSegment = useCallback(async () => {
-    if (!isSpeakingRef.current || speechQueueRef.current.length === 0) {
-      // This is now the ONLY place that calls handlePlaybackEnd
-      if (isMountedRef.current) {
-        // Find the ID of the item that just finished
-        const finishedItemId = speakingItemId;
-        if(finishedItemId) {
-          handlePlaybackEnd(finishedItemId);
+  const handlePlayPauseNote = (item: NoteFavoriteItem) => {
+    if (currentItem?.item.id === item.id && currentItem?.type === 'note_favorite') {
+        if (isPaused) {
+            resume();
         } else {
-          stopSpeechGlobal(true);
+            pause();
         }
-      }
-      return;
+    } else {
+        const fullPlaylist = favoriteNotes.map(note => ({ type: 'note_favorite' as const, item: note }));
+        play({ type: 'note_favorite', item }, fullPlaylist);
     }
-
-    const currentPart = speechQueueRef.current[0];
-    if (segmentIndexRef.current >= currentPart.segments.length) {
-      // Finished with current part (original/note), move to next in queue
-      speechQueueRef.current.shift();
-      segmentIndexRef.current = 0;
-      speakNextSegment();
-      return;
-    }
-    
-    if (isMountedRef.current) {
-      setIsLoadingTTS(true);
-      setCurrentlySpeakingPart(currentPart.part);
-      setHighlightedSegmentIndex(segmentIndexRef.current);
-    }
-
-    const segmentText = currentPart.segments[segmentIndexRef.current];
-    const cleanedText = segmentText.replace(PUNCTUATION_REGEX_FOR_CLEANUP, ' ').trim();
-
-    if (!cleanedText) { // Skip empty segments
-      segmentIndexRef.current++;
-      speakNextSegment();
-      return;
-    }
-    
-    if (currentPart.settings.engine === 'local') {
-      if (typeof window === 'undefined' || !window.speechSynthesis) {
-        toast({ variant: "destructive", title: "TTS Error", description: "Browser Speech Synthesis not supported." });
-        stopSpeechGlobal(true);
-        return;
-      }
-      const utterance = new SpeechSynthesisUtterance(cleanedText);
-      utterance.lang = currentPart.settings.language;
-      utterance.pitch = currentPart.settings.pitch;
-      utterance.rate = currentPart.settings.rate;
-      const voice = availableVoices.find(v => v.voiceURI === currentPart.settings.voiceURI);
-      if (voice) utterance.voice = window.speechSynthesis.getVoices().find(v => v.voiceURI === voice.voiceURI);
-      
-      utterance.onend = () => { if(utteranceRef.current === utterance) { segmentIndexRef.current++; speakNextSegment(); } };
-      utterance.onerror = (event) => {
-          if(utteranceRef.current === utterance) {
-              toast({ variant: "destructive", title: "TTS Error", description: event.error || "Speech failed." });
-              stopSpeechGlobal(true);
-          }
-      };
-      utteranceRef.current = utterance;
-      if (isMountedRef.current) setIsLoadingTTS(false);
-      window.speechSynthesis.speak(utterance);
-    } else { // Cloud engine
-      try {
-        const result = await getCloudSpeech(cleanedText, currentPart.settings.language, currentPart.settings.cloudVoiceId);
-        if (!isMountedRef.current || !isSpeakingRef.current) return;
-        if ('audioUrl' in result && audioPlayerRef.current) {
-          audioPlayerRef.current.src = result.audioUrl;
-          await audioPlayerRef.current.play(); // The 'ended' event will trigger next segment
-        } else if ('error' in result) {
-          toast({ variant: "destructive", title: "Cloud TTS Error", description: result.error });
-          stopSpeechGlobal(true);
-        }
-      } catch (error: any) {
-        if (!isMountedRef.current) return;
-        toast({ variant: "destructive", title: "Cloud TTS Failed", description: error.message });
-        stopSpeechGlobal(true);
-      }
-    }
-  }, [availableVoices, stopSpeechGlobal, toast, speakingItemId]); // Added speakingItemId
-
-  const handlePlayPauseNote = useCallback(async (item: NoteFavoriteItem) => {
-    if (speakingItemId === item.id) { // This item is currently speaking or paused
-        if (pausedItemId === item.id) { // It's paused, so resume it
-            setPausedItemId(null);
-            if (utteranceRef.current) {
-                if (typeof window !== 'undefined' && window.speechSynthesis) {
-                    window.speechSynthesis.resume();
-                }
-            } else if (audioPlayerRef.current) {
-                audioPlayerRef.current.play().catch(() => stopSpeechGlobal(true));
-            }
-        } else { // It's playing, so pause it
-            setPausedItemId(item.id);
-            if (utteranceRef.current && typeof window !== 'undefined' && window.speechSynthesis) {
-                window.speechSynthesis.pause();
-            } else if (audioPlayerRef.current) {
-                audioPlayerRef.current.pause();
-            }
-        }
-    } else { // A new item is being played
-        stopSpeechGlobal(false);
-        setSpeakingItemId(item.id);
-        setPausedItemId(null);
-        isSpeakingRef.current = true;
-        // CRITICAL FIX: Reset progress for new item playback
-        segmentIndexRef.current = 0;
-        speechQueueRef.current = [];
-        
-        if (item.annotation.targetText) {
-            const parts = item.annotation.targetText.split(PUNCTUATION_REGEX_FOR_SPLIT);
-            const segments = [];
-            for (let i = 0; i < parts.length; i += 2) {
-                const text = parts[i];
-                const delimiter = parts[i + 1] || '';
-                if (text || delimiter) segments.push(text + delimiter);
-            }
-            speechQueueRef.current.push({ text: item.annotation.targetText, settings: originalTextTtsSettings, part: 'original', segments });
-        }
-        if (item.annotation.note) {
-            const parts = item.annotation.note.split(PUNCTUATION_REGEX_FOR_SPLIT);
-            const segments = [];
-            for (let i = 0; i < parts.length; i += 2) {
-                const text = parts[i];
-                const delimiter = parts[i + 1] || '';
-                if (text || delimiter) segments.push(text + delimiter);
-            }
-            speechQueueRef.current.push({ text: item.annotation.note, settings: yourNoteTtsSettings, part: 'note', segments });
-        }
-
-        if (speechQueueRef.current.length === 0) {
-            toast({ variant: 'destructive', title: 'No Text', description: 'This note has no text to read.' });
-            stopSpeechGlobal(true);
-            return;
-        }
-        
-        speakNextSegment();
-    }
-  }, [originalTextTtsSettings, yourNoteTtsSettings, speakingItemId, pausedItemId, toast, stopSpeechGlobal, speakNextSegment]);
-
-  const handlePlaybackEnd = useCallback((endedItemId: string) => {
-    switch (playbackMode) {
-      case 'loop-single':
-        const itemToLoop = favoriteNotes.find(item => item.id === endedItemId);
-        if (itemToLoop) {
-            setTimeout(() => handlePlayPauseNote(itemToLoop), 100);
-        } else {
-            stopSpeechGlobal(true);
-        }
-        break;
-      case 'sequential':
-        const currentIndex = favoriteNotes.findIndex(item => item.id === endedItemId);
-        if (currentIndex > -1 && currentIndex < favoriteNotes.length - 1) {
-            const nextItem = favoriteNotes[currentIndex + 1];
-            setTimeout(() => handlePlayPauseNote(nextItem), 100);
-        } else {
-            stopSpeechGlobal(true);
-        }
-        break;
-      case 'default':
-      default:
-        stopSpeechGlobal(true);
-        break;
-    }
-  }, [playbackMode, favoriteNotes, handlePlayPauseNote, stopSpeechGlobal]);
+  };
   
-
   const populateVoiceList = useCallback(() => {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       const voices = window.speechSynthesis.getVoices().map(v => ({
@@ -338,9 +158,7 @@ function NotesFavoritesPageContent() {
         localService: v.localService,
         default: v.default,
       }));
-      if (isMountedRef.current) {
-        setAvailableVoices(voices);
-      }
+      setAvailableVoices(voices);
     }
   }, []);
 
@@ -353,49 +171,16 @@ function NotesFavoritesPageContent() {
       if (typeof window !== 'undefined' && window.speechSynthesis) {
         window.speechSynthesis.onvoiceschanged = null;
       }
-      stopSpeechGlobal(true); 
     };
-  }, [populateVoiceList, stopSpeechGlobal]);
-
-  useEffect(() => {
-    const player = new Audio();
-    audioPlayerRef.current = player;
-    const handleAudioEnded = () => {
-      if(isSpeakingRef.current){
-        segmentIndexRef.current++;
-        speakNextSegment();
-      }
-    };
-    const handleAudioPlaying = () => {
-      if (isMountedRef.current && speakingItemId) setIsLoadingTTS(false);
-    };
-    const handleAudioError = () => {
-      if (isMountedRef.current) {
-          toast({variant: "destructive", title: "Audio Error", description: "Failed to play audio."});
-          stopSpeechGlobal(true);
-      }
-    };
-    player.addEventListener('ended', handleAudioEnded);
-    player.addEventListener('playing', handleAudioPlaying);
-    player.addEventListener('error', handleAudioError);
-    return () => {
-      player.removeEventListener('ended', handleAudioEnded);
-      player.removeEventListener('playing', handleAudioPlaying);
-      player.removeEventListener('error', handleAudioError);
-      if (player.src && !player.paused) player.pause();
-      player.src = "";
-      if(audioPlayerRef.current === player) audioPlayerRef.current = null;
-    };
-  }, [speakingItemId, toast, stopSpeechGlobal, speakNextSegment]);
-
+  }, [populateVoiceList]);
 
   const performDelete = () => {
     if (!noteToDelete) return;
-    if (speakingItemId === noteToDelete.id) stopSpeechGlobal(true);
+    if (currentItem?.item.id === noteToDelete.id) stop();
     LocalStorage.deleteNoteFavorite(noteToDelete.id);
     setFavoriteNotes(prev => prev.filter(item => item.id !== noteToDelete.id));
     toast({ title: "Note Favorite Removed" });
-    setNoteToDelete(null); // Close the dialog
+    setNoteToDelete(null);
   };
   
   const handleSettingChange = (
@@ -403,8 +188,7 @@ function NotesFavoritesPageContent() {
       key: keyof TTSSettings,
       value: any
   ) => {
-      stopSpeechGlobal(true);
-  
+      stop();
       const setter = panel === 'original' ? setOriginalTextTtsSettings : setYourNoteTtsSettings;
   
       setter(prevSettings => {
@@ -472,7 +256,7 @@ function NotesFavoritesPageContent() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
             <div>
                 <Label htmlFor={`${panelType}-tts-engine`}>TTS Engine</Label>
-                <Select value={settings.engine} onValueChange={(v) => handlePanelChange('engine', v as 'local' | 'cloud')} disabled={!!speakingItemId && !pausedItemId}>
+                <Select value={settings.engine} onValueChange={(v) => handlePanelChange('engine', v as 'local' | 'cloud')} disabled={isPlaying}>
                     <SelectTrigger id={`${panelType}-tts-engine`}><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="local"><div className="flex items-center gap-1"><Smartphone className="h-4 w-4" /> Local</div></SelectItem>
@@ -488,7 +272,7 @@ function NotesFavoritesPageContent() {
                 <Select
                     value={settings.voiceURI || ""}
                     onValueChange={(v) => handlePanelChange('voiceURI', v)}
-                    disabled={!!speakingItemId && !pausedItemId || availableVoices.length === 0}
+                    disabled={isPlaying || availableVoices.length === 0}
                 >
                     <SelectTrigger id={`${panelType}-tts-voice`}><SelectValue placeholder={availableVoices.length > 0 ? "Select voice" : "No local voices found"} /></SelectTrigger>
                     <SelectContent className="max-h-60">
@@ -513,7 +297,7 @@ function NotesFavoritesPageContent() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
                 <div>
                     <Label htmlFor={`${panelType}-cloud-tts-language`}>Language (Cloud)</Label>
-                    <Select value={settings.language} onValueChange={(v) => handlePanelChange('language', v as string)} disabled={!!speakingItemId && !pausedItemId}>
+                    <Select value={settings.language} onValueChange={(v) => handlePanelChange('language', v as string)} disabled={isPlaying}>
                         <SelectTrigger id={`${panelType}-cloud-tts-language`}><SelectValue placeholder="Select a language" /></SelectTrigger>
                         <SelectContent className="max-h-60">
                             {Object.entries(edgeTTSLanguageVoices).map(([locale, { language }]) => (
@@ -524,7 +308,7 @@ function NotesFavoritesPageContent() {
                 </div>
                 <div>
                     <Label htmlFor={`${panelType}-cloud-tts-voice`}>Voice (Cloud)</Label>
-                    <Select value={settings.cloudVoiceId || ""} onValueChange={(v) => handlePanelChange('cloudVoiceId', v)} disabled={!!speakingItemId && !pausedItemId || !settings.language}>
+                    <Select value={settings.cloudVoiceId || ""} onValueChange={(v) => handlePanelChange('cloudVoiceId', v)} disabled={isPlaying || !settings.language}>
                         <SelectTrigger id={`${panelType}-cloud-tts-voice`}><SelectValue placeholder="Select a voice" /></SelectTrigger>
                         <SelectContent className="max-h-60">
                             {(edgeTTSLanguageVoices[settings.language]?.voices || []).map(voice => (
@@ -538,11 +322,11 @@ function NotesFavoritesPageContent() {
 
         <div className="space-y-2 mb-3">
             <Label htmlFor={`${panelType}-tts-rate`}>Rate: {settings.rate.toFixed(1)}</Label>
-            <Slider id={`${panelType}-tts-rate`} min={0.5} max={2} step={0.1} value={[settings.rate]} onValueChange={([v]) => handlePanelChange('rate', v)} disabled={!!speakingItemId && !pausedItemId}/>
+            <Slider id={`${panelType}-tts-rate`} min={0.5} max={2} step={0.1} value={[settings.rate]} onValueChange={([v]) => handlePanelChange('rate', v)} disabled={isPlaying}/>
         </div>
         <div className="space-y-2">
             <Label htmlFor={`${panelType}-tts-pitch`}>Pitch: {settings.pitch.toFixed(1)}</Label>
-            <Slider id={`${panelType}-tts-pitch`} min={0} max={2} step={0.1} value={[settings.pitch]} onValueChange={([v]) => handlePanelChange('pitch', v)} disabled={!!speakingItemId && !pausedItemId}/>
+            <Slider id={`${panelType}-tts-pitch`} min={0} max={2} step={0.1} value={[settings.pitch]} onValueChange={([v]) => handlePanelChange('pitch', v)} disabled={isPlaying}/>
         </div>
       </div>
     );
@@ -563,11 +347,10 @@ function NotesFavoritesPageContent() {
                     <RadioGroup
                       value={playbackMode}
                       onValueChange={(v) => {
-                        stopSpeechGlobal(true);
-                        setPlaybackMode(v as PlaybackMode);
+                        setPlaybackMode(v as 'default' | 'loop-single' | 'sequential');
                       }}
                       className="flex items-center gap-4 mt-2"
-                      disabled={!!speakingItemId}
+                      disabled={isPlaying}
                     >
                       <div className="flex items-center space-x-2">
                         <RadioGroupItem value="default" id="mode-default" />
@@ -583,6 +366,13 @@ function NotesFavoritesPageContent() {
                       </div>
                     </RadioGroup>
                 </div>
+                <div className="flex items-center justify-center gap-4 my-4 p-2 rounded-lg bg-muted/50">
+                    <Button variant="ghost" size="icon" onClick={previous} disabled={!hasPrevious()}><SkipBack className="h-5 w-5"/></Button>
+                    <Button variant="ghost" size="icon" onClick={() => handlePlayPauseNote(currentItem?.item as NoteFavoriteItem)} disabled={!currentItem}>
+                    {isLoading ? <Loader2 className="h-6 w-6 animate-spin"/> : isPlaying && !isPaused ? <Pause className="h-6 w-6"/> : <Play className="h-6 w-6"/>}
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={next} disabled={!hasNext()}><SkipForward className="h-5 w-5"/></Button>
+                </div>
               <Separator className="my-6" />
               {renderTtsPanel('original', 'Original Text TTS Settings', originalTextTtsSettings)}
               <Separator className="my-6" />
@@ -594,48 +384,22 @@ function NotesFavoritesPageContent() {
           ) : (
             <ul className="space-y-4">
               {favoriteNotes.map(item => {
-                const isCurrentlySpeakingThisItem = speakingItemId === item.id;
-                const isCurrentlyPaused = pausedItemId === item.id;
+                const isCurrentlyPlayingThisItem = currentItem?.item.id === item.id;
                 let buttonIcon = <Play className="mr-1.5 h-4 w-4" />;
                 let buttonText = "Play";
-                if (isCurrentlySpeakingThisItem) {
-                  if (isCurrentlyPaused) {
-                    buttonIcon = <Play className="mr-1.5 h-4 w-4" />;
-                    buttonText = "Resume";
-                  } else {
-                    buttonIcon = <Pause className="mr-1.5 h-4 w-4" />;
-                    buttonText = "Pause";
-                  }
-                }
-                if (isLoadingTTS && isCurrentlySpeakingThisItem && !isCurrentlyPaused) {
-                  buttonIcon = <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />;
-                  buttonText = "Loading...";
+                if (isCurrentlyPlayingThisItem) {
+                    if (isLoading) {
+                        buttonIcon = <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />;
+                        buttonText = "Loading...";
+                    } else if (isPaused) {
+                        buttonIcon = <Play className="mr-1.5 h-4 w-4" />;
+                        buttonText = "Resume";
+                    } else {
+                        buttonIcon = <Pause className="mr-1.5 h-4 w-4" />;
+                        buttonText = "Pause";
+                    }
                 }
                 const hasContentToPlay = item.annotation.targetText || item.annotation.note;
-
-                const originalTextSegments = (() => {
-                  if (!item.annotation.targetText) return [];
-                  const parts = item.annotation.targetText.split(PUNCTUATION_REGEX_FOR_SPLIT);
-                  const segments = [];
-                  for (let i = 0; i < parts.length; i += 2) {
-                      const text = parts[i];
-                      const delimiter = parts[i + 1] || '';
-                      if (text || delimiter) segments.push(text + delimiter);
-                  }
-                  return segments;
-                })();
-
-                const noteTextSegments = (() => {
-                    if (!item.annotation.note) return [];
-                    const parts = item.annotation.note.split(PUNCTUATION_REGEX_FOR_SPLIT);
-                    const segments = [];
-                    for (let i = 0; i < parts.length; i += 2) {
-                        const text = parts[i];
-                        const delimiter = parts[i + 1] || '';
-                        if (text || delimiter) segments.push(text + delimiter);
-                    }
-                    return segments;
-                })();
 
                 return (
                   <li key={item.id} className="p-4 border rounded-md flex flex-col justify-between gap-4 bg-card hover:shadow-md transition-shadow">
@@ -643,11 +407,10 @@ function NotesFavoritesPageContent() {
                         <div className="p-3 bg-muted/50 rounded-md">
                             <p className="text-xs text-muted-foreground mb-1">Original Text:</p>
                             <p className={cn("text-sm italic", !item.annotation.targetText && "text-muted-foreground")}>
-                              <HighlightableText 
+                              <HighlightableText
                                 text={item.annotation.targetText || ''}
-                                isSpeaking={isCurrentlySpeakingThisItem && currentlySpeakingPart === 'original'}
-                                highlightedSegmentIndex={highlightedSegmentIndex}
-                                segments={originalTextSegments}
+                                isSpeaking={isCurrentlyPlayingThisItem && currentItem?.type === 'note_favorite'}
+                                highlightedText={currentText}
                               />
                             </p>
                         </div>
@@ -655,11 +418,10 @@ function NotesFavoritesPageContent() {
                         <div className="p-3 bg-background rounded-md border">
                              <p className="text-xs text-muted-foreground mb-1">Your Note:</p>
                             <p className={cn("text-sm whitespace-pre-wrap", !item.annotation.note && "italic text-muted-foreground")}>
-                              <HighlightableText 
+                              <HighlightableText
                                   text={item.annotation.note || ''}
-                                  isSpeaking={isCurrentlySpeakingThisItem && currentlySpeakingPart === 'note'}
-                                  highlightedSegmentIndex={highlightedSegmentIndex}
-                                  segments={noteTextSegments}
+                                  isSpeaking={isCurrentlyPlayingThisItem && currentItem?.type === 'note_favorite'}
+                                  highlightedText={currentText}
                                 />
                             </p>
                         </div>
@@ -681,15 +443,15 @@ function NotesFavoritesPageContent() {
                         <div className="flex gap-2 self-end sm:self-center">
                           <Button 
                             size="sm" 
-                            variant={isCurrentlySpeakingThisItem && !isCurrentlyPaused ? "outline" : "default"}
+                            variant={isCurrentlyPlayingThisItem && !isPaused ? "outline" : "default"}
                             onClick={() => handlePlayPauseNote(item)} 
-                            disabled={(isLoadingTTS && !isCurrentlySpeakingThisItem) || !hasContentToPlay}
+                            disabled={(isLoading && !isCurrentlyPlayingThisItem) || !hasContentToPlay}
                             className="w-[100px]"
                             title={hasContentToPlay ? "Play/Pause Note" : "No text in note to play"}
                             >
                             {buttonIcon} {buttonText}
                           </Button>
-                          <Button size="sm" variant="ghost" onClick={() => setNoteToDelete(item)} aria-label="Delete Note Favorite" disabled={isLoadingTTS && isCurrentlySpeakingThisItem}>
+                          <Button size="sm" variant="ghost" onClick={() => setNoteToDelete(item)} aria-label="Delete Note Favorite" disabled={isLoading && isCurrentlyPlayingThisItem}>
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         </div>
