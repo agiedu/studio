@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -380,11 +381,11 @@ function NotesFavoritesPageContent() {
                     </RadioGroup>
                 </div>
                 <div className="flex items-center justify-center gap-4 my-4 p-2 rounded-lg bg-muted/50">
-                    <Button variant="ghost" size="icon" onClick={previous} disabled={!hasPrevious()}><SkipBack className="h-5 w-5"/></Button>
+                    <Button variant="ghost" size="icon" onClick={previous} disabled={!hasPrevious() || isLoading}><SkipBack className="h-5 w-5"/></Button>
                     <Button variant="ghost" size="icon" onClick={handleGlobalPlayPause} disabled={isLoading || favoriteNotes.length === 0}>
                     {isLoading ? <Loader2 className="h-6 w-6 animate-spin"/> : isPlaying && !isPaused ? <Pause className="h-6 w-6"/> : <Play className="h-6 w-6"/>}
                     </Button>
-                    <Button variant="ghost" size="icon" onClick={next} disabled={!hasNext()}><SkipForward className="h-5 w-5"/></Button>
+                    <Button variant="ghost" size="icon" onClick={next} disabled={!hasNext() || isLoading}><SkipForward className="h-5 w-5"/></Button>
                 </div>
               <Separator className="my-6" />
               {renderTtsPanel('original', 'Original Text TTS Settings', originalTextTtsSettings)}

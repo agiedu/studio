@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react';
@@ -68,6 +69,9 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const isSpeakingRef = useRef(false);
   const isMountedRef = useRef(false);
 
+  // Store the onPlaybackEnd function in a ref to break the circular dependency
+  const onPlaybackEndRef = useRef<() => void>(() => {});
+
   useEffect(() => {
     isMountedRef.current = true;
     return () => { isMountedRef.current = false; };
@@ -98,6 +102,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setCurrentItem(null);
         setCurrentText('');
         setCurrentIndex(-1);
+        setPlaylist([]);
     }
     if (navigator.mediaSession) {
         navigator.mediaSession.playbackState = 'none';
@@ -105,37 +110,44 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, []);
 
-  const onPlaybackEnd = useCallback(() => {
-    if (!isSpeakingRef.current) return;
-  
-    switch (playbackMode) {
-      case 'loop-single':
-        if(currentItem && playlist.length > 0) {
-           setTimeout(() => play(currentItem, playlist, currentIndex), 100);
-        } else {
-           stop();
-        }
-        break;
-      case 'sequential':
-        const nextIndex = currentIndex + 1;
-        if (nextIndex < playlist.length) {
-          setTimeout(() => play(playlist[nextIndex], playlist, nextIndex), 100);
-        } else {
-          stop();
-        }
-        break;
-      case 'default':
-      default:
-        stop();
-        break;
+  const play = useCallback((item: PlayableItem, newPlaylist: PlayableItem[], startIndex: number) => {
+    stop();
+    if(isMountedRef.current) {
+        setIsPlaying(true);
+        setIsPaused(false);
+        setCurrentItem(item);
+        setPlaylist(newPlaylist);
+        setCurrentIndex(startIndex);
     }
-  }, [currentIndex, playlist, playbackMode, stop, currentItem]);
+    isSpeakingRef.current = true;
+    segmentIndexRef.current = 0;
+    speechQueueRef.current = [];
+    
+    if (item.type === 'favorite') {
+      speechQueueRef.current.push({ text: item.item.text, settings: originalTextTtsSettings });
+    } else if (item.type === 'note_favorite') {
+      if (item.item.annotation.targetText) {
+        speechQueueRef.current.push({ text: item.item.annotation.targetText, settings: originalTextTtsSettings, part: 'original' });
+      }
+      if (item.item.annotation.note) {
+        speechQueueRef.current.push({ text: item.item.annotation.note, settings: yourNoteTtsSettings, part: 'note' });
+      }
+    }
+
+    if (speechQueueRef.current.length === 0 || speechQueueRef.current.every(p => !p.text.trim())) {
+      toast({ variant: 'destructive', title: 'No Text', description: 'This item has no text to read.' });
+      onPlaybackEndRef.current();
+      return;
+    }
+    
+    speakNextSegment();
+  }, [stop, originalTextTtsSettings, yourNoteTtsSettings, toast]);
 
 
   const speakNextSegment = useCallback(async () => {
     if (!isSpeakingRef.current || speechQueueRef.current.length === 0) {
       if (isMountedRef.current) {
-        onPlaybackEnd();
+        onPlaybackEndRef.current();
       }
       return;
     }
@@ -211,40 +223,37 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         stop();
       }
     }
-  }, [stop, toast, onPlaybackEnd, currentItem]);
+  }, [stop, toast, currentItem]);
 
-  const play = useCallback((item: PlayableItem, newPlaylist: PlayableItem[], startIndex: number) => {
-    stop();
-    if(isMountedRef.current) {
-        setIsPlaying(true);
-        setIsPaused(false);
-        setCurrentItem(item);
-        setPlaylist(newPlaylist);
-        setCurrentIndex(startIndex);
-    }
-    isSpeakingRef.current = true;
-    segmentIndexRef.current = 0;
-    speechQueueRef.current = [];
+  // This effect updates the ref whenever the dependencies of onPlaybackEnd change.
+  useEffect(() => {
+    onPlaybackEndRef.current = () => {
+      if (!isSpeakingRef.current) return;
     
-    if (item.type === 'favorite') {
-      speechQueueRef.current.push({ text: item.item.text, settings: originalTextTtsSettings });
-    } else if (item.type === 'note_favorite') {
-      if (item.item.annotation.targetText) {
-        speechQueueRef.current.push({ text: item.item.annotation.targetText, settings: originalTextTtsSettings, part: 'original' });
+      switch (playbackMode) {
+        case 'loop-single':
+          if(currentItem && playlist.length > 0) {
+             setTimeout(() => play(currentItem, playlist, currentIndex), 100);
+          } else {
+             stop();
+          }
+          break;
+        case 'sequential':
+          const nextIndex = currentIndex + 1;
+          if (nextIndex < playlist.length) {
+            setTimeout(() => play(playlist[nextIndex], playlist, nextIndex), 100);
+          } else {
+            stop();
+          }
+          break;
+        case 'default':
+        default:
+          stop();
+          break;
       }
-      if (item.item.annotation.note) {
-        speechQueueRef.current.push({ text: item.item.annotation.note, settings: yourNoteTtsSettings, part: 'note' });
-      }
-    }
+    };
+  }, [currentIndex, playlist, playbackMode, stop, currentItem, play]);
 
-    if (speechQueueRef.current.length === 0 || speechQueueRef.current.every(p => !p.text.trim())) {
-      toast({ variant: 'destructive', title: 'No Text', description: 'This item has no text to read.' });
-      onPlaybackEnd(); // Try next item if in sequential mode
-      return;
-    }
-    
-    speakNextSegment();
-  }, [stop, speakNextSegment, originalTextTtsSettings, yourNoteTtsSettings, toast, onPlaybackEnd]);
 
   const pause = useCallback(() => {
     if (!isSpeakingRef.current || !isMountedRef.current) return;
