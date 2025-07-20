@@ -109,7 +109,9 @@ function MediaFavoritesPageContent() {
         pause();
       }
     } else if (playlist.length > 0) {
-      play(playlist[0], playlist, 0);
+      const currentItemInPlaylist = playlist.find(p => p.item.id === currentItem?.item.id) || playlist[0];
+      const currentItemIndex = playlist.findIndex(p => p.item.id === currentItemInPlaylist.item.id);
+      play(currentItemInPlaylist, playlist, currentItemIndex);
     } else if (mediaItems.length > 0) {
       handlePlayPauseMedia(mediaItems[0]);
     }
@@ -314,9 +316,9 @@ function MediaFavoritesPageContent() {
                   </div>
                   
                   {item.type === 'audio' ? (
-                     <audio controls src={item.dataUrl} className="w-full"></audio>
+                     <audio src={item.dataUrl} controls className="w-full"></audio>
                   ) : (
-                     <video controls src={item.dataUrl} className="w-full rounded-md bg-black"></video>
+                     <video src={item.dataUrl} controls className="w-full rounded-md bg-black"></video>
                   )}
                   
                   {item.note && (

@@ -206,18 +206,30 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [stop, toast, currentItem]);
 
   const play = useCallback(async (item: PlayableItem, newPlaylist: PlayableItem[], startIndex: number) => {
-    stop();
-    if(isMountedRef.current) {
-        setIsPlaying(true);
-        setIsPaused(false);
-        setCurrentItem(item);
-        setPlaylist(newPlaylist);
-        setCurrentIndex(startIndex);
+    // 1. First, stop any currently active speech synthesis
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+    }
+
+    // 2. Pause the audio player and clear its source to prevent conflicts
+    if (audioPlayerRef.current) {
+        audioPlayerRef.current.pause();
+        audioPlayerRef.current.src = "";
+    }
+    
+    // 3. Set the new state immediately
+    if (isMountedRef.current) {
+      setCurrentItem(item);
+      setPlaylist(newPlaylist);
+      setCurrentIndex(startIndex);
+      setIsPlaying(true);
+      setIsPaused(false);
     }
     isSpeakingRef.current = true;
     segmentIndexRef.current = 0;
     speechQueueRef.current = [];
 
+    // 4. Now, prepare and start the new playback
     if (item.type === 'media_favorite') {
         if (isMountedRef.current) {
             setCurrentText(item.item.name);
@@ -226,11 +238,15 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (audioPlayerRef.current) {
             audioPlayerRef.current.src = item.item.dataUrl;
             try {
+                // The play call is now less likely to be interrupted
                 await audioPlayerRef.current.play();
                 if (isMountedRef.current) setIsLoading(false);
             } catch (error: any) {
-                toast({ variant: "destructive", title: "Playback Error", description: error.message });
-                stop();
+                // Still catch errors, e.g., if the user spams clicks very fast
+                if (error.name !== 'AbortError') {
+                    toast({ variant: "destructive", title: "Playback Error", description: error.message });
+                    stop();
+                }
             }
         }
     } else {
