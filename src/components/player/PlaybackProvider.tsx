@@ -216,14 +216,17 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [stop, toast, currentItem]);
 
   const play = useCallback(async (item: PlayableItem, newPlaylist: PlayableItem[], startIndex: number) => {
-    // Pause previous playback but don't reset the whole UI state yet
+    if (item.type === 'media_favorite' && currentItem?.item.id === item.item.id && isPlaying && !isPaused) {
+      // If the same media item is already playing, do nothing.
+      return;
+    }
+    
     stop(false);
     
     isSpeakingRef.current = true;
     segmentIndexRef.current = 0;
     speechQueueRef.current = [];
 
-    // Set the new state immediately
     if (isMountedRef.current) {
       setCurrentItem(item);
       setPlaylist(newPlaylist);
@@ -232,7 +235,6 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setIsPaused(false);
     }
     
-    // Now, prepare and start the new playback
     if (item.type === 'media_favorite') {
         if (isMountedRef.current) {
             setCurrentText(item.item.name);
@@ -240,6 +242,9 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
         if (audioPlayerRef.current) {
             const blob = new Blob([item.item.fileData], { type: item.item.originalType });
+            if (currentObjectUrl.current) {
+              URL.revokeObjectURL(currentObjectUrl.current);
+            }
             const url = URL.createObjectURL(blob);
             currentObjectUrl.current = url;
             audioPlayerRef.current.src = url;
@@ -275,7 +280,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         
         speakNextSegment();
     }
-  }, [stop, originalTextTtsSettings, yourNoteTtsSettings, toast, speakNextSegment]);
+  }, [stop, originalTextTtsSettings, yourNoteTtsSettings, toast, speakNextSegment, currentItem, isPlaying, isPaused]);
 
   useEffect(() => {
     onPlaybackEndRef.current = () => {
@@ -307,7 +312,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
 
   const pause = useCallback(() => {
-    if (!isSpeakingRef.current || !isMountedRef.current) return;
+    if (!isSpeakingRef.current || !isMountedRef.current || isPaused) return;
     setIsPaused(true);
     if (utteranceRef.current) {
         if(window.speechSynthesis.speaking) window.speechSynthesis.pause();
@@ -315,22 +320,22 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         audioPlayerRef.current.pause();
     }
     if (navigator.mediaSession) navigator.mediaSession.playbackState = 'paused';
-  }, []);
+  }, [isPaused]);
 
   const resume = useCallback(() => {
-    if (!isSpeakingRef.current || !isMountedRef.current) return;
+    if (!isSpeakingRef.current || !isMountedRef.current || !isPaused) return;
     setIsPaused(false);
-    if (utteranceRef.current) {
-      if (window.speechSynthesis.paused) window.speechSynthesis.resume();
-    } else if (audioPlayerRef.current?.paused) {
+    if (currentItem?.type === 'media_favorite' && audioPlayerRef.current?.paused) {
       audioPlayerRef.current.play().catch((err) => {
         console.error("Resume play error:", err);
       });
+    } else if (utteranceRef.current) {
+      if (window.speechSynthesis.paused) window.speechSynthesis.resume();
     } else if (speechQueueRef.current.length > 0) {
       speakNextSegment();
     }
     if (navigator.mediaSession) navigator.mediaSession.playbackState = 'playing';
-  }, [speakNextSegment]);
+  }, [isPaused, speakNextSegment, currentItem]);
 
   const hasNext = () => currentIndex > -1 && currentIndex < playlist.length - 1;
   
