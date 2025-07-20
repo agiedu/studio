@@ -162,123 +162,18 @@ function NotesFavoritesPageContent() {
     }
   }, []);
 
-  const handlePlayPauseNote = useCallback(async (item: NoteFavoriteItem) => {
-    if (speakingItemId === item.id) { // This item is currently speaking or paused
-        if (pausedItemId === item.id) { // It's paused, so resume it
-            setPausedItemId(null);
-            if (utteranceRef.current) {
-                if (typeof window !== 'undefined' && window.speechSynthesis) {
-                    window.speechSynthesis.resume();
-                }
-            } else if (audioPlayerRef.current) {
-                audioPlayerRef.current.play().catch(() => stopSpeechGlobal(true));
-            }
-        } else { // It's playing, so pause it
-            setPausedItemId(item.id);
-            if (utteranceRef.current && typeof window !== 'undefined' && window.speechSynthesis) {
-                window.speechSynthesis.pause();
-            } else if (audioPlayerRef.current) {
-                audioPlayerRef.current.pause();
-            }
-        }
-    } else { // A new item is being played
-        stopSpeechGlobal(false);
-        setSpeakingItemId(item.id);
-        setPausedItemId(null);
-        isSpeakingRef.current = true;
-        // CRITICAL FIX: Reset progress for new item playback
-        segmentIndexRef.current = 0;
-        speechQueueRef.current = [];
-        
-        if (item.annotation.targetText) {
-            const parts = item.annotation.targetText.split(PUNCTUATION_REGEX_FOR_SPLIT);
-            const segments = [];
-            for (let i = 0; i < parts.length; i += 2) {
-                const text = parts[i];
-                const delimiter = parts[i + 1] || '';
-                if (text || delimiter) segments.push(text + delimiter);
-            }
-            speechQueueRef.current.push({ text: item.annotation.targetText, settings: originalTextTtsSettings, part: 'original', segments });
-        }
-        if (item.annotation.note) {
-            const parts = item.annotation.note.split(PUNCTUATION_REGEX_FOR_SPLIT);
-            const segments = [];
-            for (let i = 0; i < parts.length; i += 2) {
-                const text = parts[i];
-                const delimiter = parts[i + 1] || '';
-                if (text || delimiter) segments.push(text + delimiter);
-            }
-            speechQueueRef.current.push({ text: item.annotation.note, settings: yourNoteTtsSettings, part: 'note', segments });
-        }
-
-        if (speechQueueRef.current.length === 0) {
-            toast({ variant: 'destructive', title: 'No Text', description: 'This note has no text to read.' });
-            stopSpeechGlobal(true);
-            return;
-        }
-        
-        speakNextSegment();
-    }
-  }, [originalTextTtsSettings, yourNoteTtsSettings, speakingItemId, pausedItemId, toast, stopSpeechGlobal]);
-
-  const handlePlaybackEnd = useCallback(() => {
-    switch (playbackMode) {
-      case 'loop-single':
-        const itemToLoop = favoriteNotes.find(item => item.id === speakingItemId);
-        if (itemToLoop) {
-            setTimeout(() => handlePlayPauseNote(itemToLoop), 100);
-        } else {
-            stopSpeechGlobal(true);
-        }
-        break;
-      case 'sequential':
-        const currentIndex = favoriteNotes.findIndex(item => item.id === speakingItemId);
-        if (currentIndex > -1 && currentIndex < favoriteNotes.length - 1) {
-            const nextItem = favoriteNotes[currentIndex + 1];
-            setTimeout(() => handlePlayPauseNote(nextItem), 100);
-        } else {
-            stopSpeechGlobal(true);
-        }
-        break;
-      case 'default':
-      default:
-        stopSpeechGlobal(true);
-        break;
-    }
-  }, [playbackMode, favoriteNotes, speakingItemId, handlePlayPauseNote, stopSpeechGlobal]);
-  
-
-  const populateVoiceList = useCallback(() => {
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      const voices = window.speechSynthesis.getVoices().map(v => ({
-        name: v.name,
-        lang: v.lang,
-        voiceURI: v.voiceURI,
-        localService: v.localService,
-        default: v.default,
-      }));
-      if (isMountedRef.current) {
-        setAvailableVoices(voices);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    populateVoiceList();
-    if (typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.onvoiceschanged !== undefined) {
-      window.speechSynthesis.onvoiceschanged = populateVoiceList;
-    }
-    return () => {
-      if (typeof window !== 'undefined' && window.speechSynthesis) {
-        window.speechSynthesis.onvoiceschanged = null;
-      }
-      stopSpeechGlobal(true); 
-    };
-  }, [populateVoiceList, stopSpeechGlobal]);
-
   const speakNextSegment = useCallback(async () => {
     if (!isSpeakingRef.current || speechQueueRef.current.length === 0) {
-      handlePlaybackEnd();
+      // This is now the ONLY place that calls handlePlaybackEnd
+      if (isMountedRef.current) {
+        // Find the ID of the item that just finished
+        const finishedItemId = speakingItemId;
+        if(finishedItemId) {
+          handlePlaybackEnd(finishedItemId);
+        } else {
+          stopSpeechGlobal(true);
+        }
+      }
       return;
     }
 
@@ -346,7 +241,121 @@ function NotesFavoritesPageContent() {
         stopSpeechGlobal(true);
       }
     }
-  }, [availableVoices, stopSpeechGlobal, toast, handlePlaybackEnd]);
+  }, [availableVoices, stopSpeechGlobal, toast, speakingItemId]); // Added speakingItemId
+
+  const handlePlayPauseNote = useCallback(async (item: NoteFavoriteItem) => {
+    if (speakingItemId === item.id) { // This item is currently speaking or paused
+        if (pausedItemId === item.id) { // It's paused, so resume it
+            setPausedItemId(null);
+            if (utteranceRef.current) {
+                if (typeof window !== 'undefined' && window.speechSynthesis) {
+                    window.speechSynthesis.resume();
+                }
+            } else if (audioPlayerRef.current) {
+                audioPlayerRef.current.play().catch(() => stopSpeechGlobal(true));
+            }
+        } else { // It's playing, so pause it
+            setPausedItemId(item.id);
+            if (utteranceRef.current && typeof window !== 'undefined' && window.speechSynthesis) {
+                window.speechSynthesis.pause();
+            } else if (audioPlayerRef.current) {
+                audioPlayerRef.current.pause();
+            }
+        }
+    } else { // A new item is being played
+        stopSpeechGlobal(false);
+        setSpeakingItemId(item.id);
+        setPausedItemId(null);
+        isSpeakingRef.current = true;
+        // CRITICAL FIX: Reset progress for new item playback
+        segmentIndexRef.current = 0;
+        speechQueueRef.current = [];
+        
+        if (item.annotation.targetText) {
+            const parts = item.annotation.targetText.split(PUNCTUATION_REGEX_FOR_SPLIT);
+            const segments = [];
+            for (let i = 0; i < parts.length; i += 2) {
+                const text = parts[i];
+                const delimiter = parts[i + 1] || '';
+                if (text || delimiter) segments.push(text + delimiter);
+            }
+            speechQueueRef.current.push({ text: item.annotation.targetText, settings: originalTextTtsSettings, part: 'original', segments });
+        }
+        if (item.annotation.note) {
+            const parts = item.annotation.note.split(PUNCTUATION_REGEX_FOR_SPLIT);
+            const segments = [];
+            for (let i = 0; i < parts.length; i += 2) {
+                const text = parts[i];
+                const delimiter = parts[i + 1] || '';
+                if (text || delimiter) segments.push(text + delimiter);
+            }
+            speechQueueRef.current.push({ text: item.annotation.note, settings: yourNoteTtsSettings, part: 'note', segments });
+        }
+
+        if (speechQueueRef.current.length === 0) {
+            toast({ variant: 'destructive', title: 'No Text', description: 'This note has no text to read.' });
+            stopSpeechGlobal(true);
+            return;
+        }
+        
+        speakNextSegment();
+    }
+  }, [originalTextTtsSettings, yourNoteTtsSettings, speakingItemId, pausedItemId, toast, stopSpeechGlobal, speakNextSegment]);
+
+  const handlePlaybackEnd = useCallback((endedItemId: string) => {
+    switch (playbackMode) {
+      case 'loop-single':
+        const itemToLoop = favoriteNotes.find(item => item.id === endedItemId);
+        if (itemToLoop) {
+            setTimeout(() => handlePlayPauseNote(itemToLoop), 100);
+        } else {
+            stopSpeechGlobal(true);
+        }
+        break;
+      case 'sequential':
+        const currentIndex = favoriteNotes.findIndex(item => item.id === endedItemId);
+        if (currentIndex > -1 && currentIndex < favoriteNotes.length - 1) {
+            const nextItem = favoriteNotes[currentIndex + 1];
+            setTimeout(() => handlePlayPauseNote(nextItem), 100);
+        } else {
+            stopSpeechGlobal(true);
+        }
+        break;
+      case 'default':
+      default:
+        stopSpeechGlobal(true);
+        break;
+    }
+  }, [playbackMode, favoriteNotes, handlePlayPauseNote, stopSpeechGlobal]);
+  
+
+  const populateVoiceList = useCallback(() => {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      const voices = window.speechSynthesis.getVoices().map(v => ({
+        name: v.name,
+        lang: v.lang,
+        voiceURI: v.voiceURI,
+        localService: v.localService,
+        default: v.default,
+      }));
+      if (isMountedRef.current) {
+        setAvailableVoices(voices);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    populateVoiceList();
+    if (typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.onvoiceschanged !== undefined) {
+      window.speechSynthesis.onvoiceschanged = populateVoiceList;
+    }
+    return () => {
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.onvoiceschanged = null;
+      }
+      stopSpeechGlobal(true); 
+    };
+  }, [populateVoiceList, stopSpeechGlobal]);
 
   useEffect(() => {
     const player = new Audio();
@@ -541,73 +550,84 @@ function NotesFavoritesPageContent() {
 
 
   return (
-    <>
-      <div className="container mx-auto p-4 md:p-6 space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><NotebookText className="text-primary" /> My Note Favorites</CardTitle>
-            <CardDescription>Your saved annotations. Click to review, play or delete.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="mb-6 p-4 border rounded-md bg-muted/20">
-                <div className="mb-4">
-                      <Label className="font-medium text-sm">Playback Mode</Label>
-                      <RadioGroup
-                        value={playbackMode}
-                        onValueChange={(v) => {
-                          stopSpeechGlobal(true);
-                          setPlaybackMode(v as PlaybackMode);
-                        }}
-                        className="flex items-center gap-4 mt-2"
-                        disabled={!!speakingItemId}
-                      >
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="default" id="mode-default" />
-                          <Label htmlFor="mode-default" className="flex items-center gap-1 cursor-pointer"><Play className="h-4 w-4"/>Default</Label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="loop-single" id="mode-loop" />
-                          <Label htmlFor="mode-loop" className="flex items-center gap-1 cursor-pointer"><Repeat1 className="h-4 w-4"/>Loop Single</Label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="sequential" id="mode-sequential" />
-                          <Label htmlFor="mode-sequential" className="flex items-center gap-1 cursor-pointer"><ListOrdered className="h-4 w-4"/>Sequential</Label>
-                        </div>
-                      </RadioGroup>
-                  </div>
-                <Separator className="my-6" />
-                {renderTtsPanel('original', 'Original Text TTS Settings', originalTextTtsSettings)}
-                <Separator className="my-6" />
-                {renderTtsPanel('note', 'Your Note TTS Settings', yourNoteTtsSettings)}
-            </div>
+    <div className="container mx-auto p-4 md:p-6 space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><NotebookText className="text-primary" /> My Note Favorites</CardTitle>
+          <CardDescription>Your saved annotations. Click to review, play or delete.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="mb-6 p-4 border rounded-md bg-muted/20">
+              <div className="mb-4">
+                    <Label className="font-medium text-sm">Playback Mode</Label>
+                    <RadioGroup
+                      value={playbackMode}
+                      onValueChange={(v) => {
+                        stopSpeechGlobal(true);
+                        setPlaybackMode(v as PlaybackMode);
+                      }}
+                      className="flex items-center gap-4 mt-2"
+                      disabled={!!speakingItemId}
+                    >
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="default" id="mode-default" />
+                        <Label htmlFor="mode-default" className="flex items-center gap-1 cursor-pointer"><Play className="h-4 w-4"/>Default</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="loop-single" id="mode-loop" />
+                        <Label htmlFor="mode-loop" className="flex items-center gap-1 cursor-pointer"><Repeat1 className="h-4 w-4"/>Loop Single</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="sequential" id="mode-sequential" />
+                        <Label htmlFor="mode-sequential" className="flex items-center gap-1 cursor-pointer"><ListOrdered className="h-4 w-4"/>Sequential</Label>
+                      </div>
+                    </RadioGroup>
+                </div>
+              <Separator className="my-6" />
+              {renderTtsPanel('original', 'Original Text TTS Settings', originalTextTtsSettings)}
+              <Separator className="my-6" />
+              {renderTtsPanel('note', 'Your Note TTS Settings', yourNoteTtsSettings)}
+          </div>
 
-            {favoriteNotes.length === 0 ? (
-              <p className="text-muted-foreground flex items-center gap-2"><Info className="h-5 w-5" /> Your note favorites list is empty. In the reader, select text, add a note, and then save it to favorites.</p>
-            ) : (
-              <ul className="space-y-4">
-                {favoriteNotes.map(item => {
-                  const isCurrentlySpeakingThisItem = speakingItemId === item.id;
-                  const isCurrentlyPaused = pausedItemId === item.id;
-                  let buttonIcon = <Play className="mr-1.5 h-4 w-4" />;
-                  let buttonText = "Play";
-                  if (isCurrentlySpeakingThisItem) {
-                    if (isCurrentlyPaused) {
-                      buttonIcon = <Play className="mr-1.5 h-4 w-4" />;
-                      buttonText = "Resume";
-                    } else {
-                      buttonIcon = <Pause className="mr-1.5 h-4 w-4" />;
-                      buttonText = "Pause";
-                    }
+          {favoriteNotes.length === 0 ? (
+            <p className="text-muted-foreground flex items-center gap-2"><Info className="h-5 w-5" /> Your note favorites list is empty. In the reader, select text, add a note, and then save it to favorites.</p>
+          ) : (
+            <ul className="space-y-4">
+              {favoriteNotes.map(item => {
+                const isCurrentlySpeakingThisItem = speakingItemId === item.id;
+                const isCurrentlyPaused = pausedItemId === item.id;
+                let buttonIcon = <Play className="mr-1.5 h-4 w-4" />;
+                let buttonText = "Play";
+                if (isCurrentlySpeakingThisItem) {
+                  if (isCurrentlyPaused) {
+                    buttonIcon = <Play className="mr-1.5 h-4 w-4" />;
+                    buttonText = "Resume";
+                  } else {
+                    buttonIcon = <Pause className="mr-1.5 h-4 w-4" />;
+                    buttonText = "Pause";
                   }
-                  if (isLoadingTTS && isCurrentlySpeakingThisItem && !isCurrentlyPaused) {
-                    buttonIcon = <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />;
-                    buttonText = "Loading...";
-                  }
-                  const hasContentToPlay = item.annotation.targetText || item.annotation.note;
+                }
+                if (isLoadingTTS && isCurrentlySpeakingThisItem && !isCurrentlyPaused) {
+                  buttonIcon = <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />;
+                  buttonText = "Loading...";
+                }
+                const hasContentToPlay = item.annotation.targetText || item.annotation.note;
 
-                  const originalTextSegments = (() => {
-                    if (!item.annotation.targetText) return [];
-                    const parts = item.annotation.targetText.split(PUNCTUATION_REGEX_FOR_SPLIT);
+                const originalTextSegments = (() => {
+                  if (!item.annotation.targetText) return [];
+                  const parts = item.annotation.targetText.split(PUNCTUATION_REGEX_FOR_SPLIT);
+                  const segments = [];
+                  for (let i = 0; i < parts.length; i += 2) {
+                      const text = parts[i];
+                      const delimiter = parts[i + 1] || '';
+                      if (text || delimiter) segments.push(text + delimiter);
+                  }
+                  return segments;
+                })();
+
+                const noteTextSegments = (() => {
+                    if (!item.annotation.note) return [];
+                    const parts = item.annotation.note.split(PUNCTUATION_REGEX_FOR_SPLIT);
                     const segments = [];
                     for (let i = 0; i < parts.length; i += 2) {
                         const text = parts[i];
@@ -615,90 +635,77 @@ function NotesFavoritesPageContent() {
                         if (text || delimiter) segments.push(text + delimiter);
                     }
                     return segments;
-                  })();
+                })();
 
-                  const noteTextSegments = (() => {
-                      if (!item.annotation.note) return [];
-                      const parts = item.annotation.note.split(PUNCTUATION_REGEX_FOR_SPLIT);
-                      const segments = [];
-                      for (let i = 0; i < parts.length; i += 2) {
-                          const text = parts[i];
-                          const delimiter = parts[i + 1] || '';
-                          if (text || delimiter) segments.push(text + delimiter);
-                      }
-                      return segments;
-                  })();
-
-                  return (
-                    <li key={item.id} className="p-4 border rounded-md flex flex-col justify-between gap-4 bg-card hover:shadow-md transition-shadow">
-                      <div className="flex-grow space-y-3 w-full">
-                          <div className="p-3 bg-muted/50 rounded-md">
-                              <p className="text-xs text-muted-foreground mb-1">Original Text:</p>
-                              <p className={cn("text-sm italic", !item.annotation.targetText && "text-muted-foreground")}>
-                                <HighlightableText 
-                                  text={item.annotation.targetText || ''}
-                                  isSpeaking={isCurrentlySpeakingThisItem && currentlySpeakingPart === 'original'}
-                                  highlightedSegmentIndex={highlightedSegmentIndex}
-                                  segments={originalTextSegments}
-                                />
-                              </p>
-                          </div>
-
-                          <div className="p-3 bg-background rounded-md border">
-                               <p className="text-xs text-muted-foreground mb-1">Your Note:</p>
-                              <p className={cn("text-sm whitespace-pre-wrap", !item.annotation.note && "italic text-muted-foreground")}>
-                                <HighlightableText 
-                                    text={item.annotation.note || ''}
-                                    isSpeaking={isCurrentlySpeakingThisItem && currentlySpeakingPart === 'note'}
-                                    highlightedSegmentIndex={highlightedSegmentIndex}
-                                    segments={noteTextSegments}
-                                  />
-                              </p>
-                          </div>
-                        
-                          {item.annotation.imageDataUrl && (
-                              <div className="p-2 border rounded-md">
-                                  <p className="text-xs text-muted-foreground mb-2">Attached Image:</p>
-                                  <div className="relative w-full max-w-xs">
-                                       <NextImage src={item.annotation.imageDataUrl} alt="Annotation attachment" width={300} height={200} className="rounded-md object-contain" />
-                                  </div>
-                              </div>
-                          )}
-                      </div>
-                      <div className="flex flex-col sm:flex-row gap-2 sm:items-center justify-between pt-3 border-t">
-                           <p className="text-xs text-muted-foreground">
-                            {item.sourceDocumentName && <span className="flex items-center gap-1"><FileText className="h-3 w-3"/> From: {item.sourceDocumentName} | </span>}
-                            Favorited: {format(new Date(item.favoritedAt), "MMM d, yyyy HH:mm")}
-                          </p>
-                          <div className="flex gap-2 self-end sm:self-center">
-                            <Button 
-                              size="sm" 
-                              variant={isCurrentlySpeakingThisItem && !isCurrentlyPaused ? "outline" : "default"}
-                              onClick={() => handlePlayPauseNote(item)} 
-                              disabled={(isLoadingTTS && !isCurrentlySpeakingThisItem) || !hasContentToPlay}
-                              className="w-[100px]"
-                              title={hasContentToPlay ? "Play/Pause Note" : "No text in note to play"}
-                              >
-                              {buttonIcon} {buttonText}
-                            </Button>
-                            <Button size="sm" variant="ghost" onClick={() => setNoteToDelete(item)} aria-label="Delete Note Favorite" disabled={isLoadingTTS && isCurrentlySpeakingThisItem}>
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </div>
+                return (
+                  <li key={item.id} className="p-4 border rounded-md flex flex-col justify-between gap-4 bg-card hover:shadow-md transition-shadow">
+                    <div className="flex-grow space-y-3 w-full">
+                        <div className="p-3 bg-muted/50 rounded-md">
+                            <p className="text-xs text-muted-foreground mb-1">Original Text:</p>
+                            <p className={cn("text-sm italic", !item.annotation.targetText && "text-muted-foreground")}>
+                              <HighlightableText 
+                                text={item.annotation.targetText || ''}
+                                isSpeaking={isCurrentlySpeakingThisItem && currentlySpeakingPart === 'original'}
+                                highlightedSegmentIndex={highlightedSegmentIndex}
+                                segments={originalTextSegments}
+                              />
+                            </p>
                         </div>
-                    </li>
-                  )
-                })}
-              </ul>
-            )}
-          </CardContent>
-          {favoriteNotes.length > 0 && (
-            <CardFooter>
-              <p className="text-xs text-muted-foreground">Your note favorites are stored in your browser's local storage.</p>
-            </CardFooter>
+
+                        <div className="p-3 bg-background rounded-md border">
+                             <p className="text-xs text-muted-foreground mb-1">Your Note:</p>
+                            <p className={cn("text-sm whitespace-pre-wrap", !item.annotation.note && "italic text-muted-foreground")}>
+                              <HighlightableText 
+                                  text={item.annotation.note || ''}
+                                  isSpeaking={isCurrentlySpeakingThisItem && currentlySpeakingPart === 'note'}
+                                  highlightedSegmentIndex={highlightedSegmentIndex}
+                                  segments={noteTextSegments}
+                                />
+                            </p>
+                        </div>
+                      
+                        {item.annotation.imageDataUrl && (
+                            <div className="p-2 border rounded-md">
+                                <p className="text-xs text-muted-foreground mb-2">Attached Image:</p>
+                                <div className="relative w-full max-w-xs">
+                                     <NextImage src={item.annotation.imageDataUrl} alt="Annotation attachment" width={300} height={200} className="rounded-md object-contain" />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-2 sm:items-center justify-between pt-3 border-t">
+                         <p className="text-xs text-muted-foreground">
+                          {item.sourceDocumentName && <span className="flex items-center gap-1"><FileText className="h-3 w-3"/> From: {item.sourceDocumentName} | </span>}
+                          Favorited: {format(new Date(item.favoritedAt), "MMM d, yyyy HH:mm")}
+                        </p>
+                        <div className="flex gap-2 self-end sm:self-center">
+                          <Button 
+                            size="sm" 
+                            variant={isCurrentlySpeakingThisItem && !isCurrentlyPaused ? "outline" : "default"}
+                            onClick={() => handlePlayPauseNote(item)} 
+                            disabled={(isLoadingTTS && !isCurrentlySpeakingThisItem) || !hasContentToPlay}
+                            className="w-[100px]"
+                            title={hasContentToPlay ? "Play/Pause Note" : "No text in note to play"}
+                            >
+                            {buttonIcon} {buttonText}
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => setNoteToDelete(item)} aria-label="Delete Note Favorite" disabled={isLoadingTTS && isCurrentlySpeakingThisItem}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </div>
+                  </li>
+                )
+              })}
+            </ul>
           )}
-        </Card>
-      </div>
+        </CardContent>
+        {favoriteNotes.length > 0 && (
+          <CardFooter>
+            <p className="text-xs text-muted-foreground">Your note favorites are stored in your browser's local storage.</p>
+          </CardFooter>
+        )}
+      </Card>
       
       <AlertDialog open={!!noteToDelete} onOpenChange={(isOpen) => !isOpen && setNoteToDelete(null)}>
         <AlertDialogContent>
@@ -714,7 +721,7 @@ function NotesFavoritesPageContent() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </div>
   );
 }
 
