@@ -71,15 +71,9 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const isSpeakingRef = useRef(false);
   const isMountedRef = useRef(false);
 
-  const onPlaybackEndRef = useRef<() => void>(() => {});
-  const currentObjectUrl = useRef<string | null>(null);
-
   useEffect(() => {
     isMountedRef.current = true;
-    return () => { 
-        isMountedRef.current = false; 
-        if(currentObjectUrl.current) URL.revokeObjectURL(currentObjectUrl.current);
-    };
+    return () => { isMountedRef.current = false; };
   },[]);
 
   const stop = useCallback((resetPlayerState = true) => {
@@ -94,14 +88,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
     if (audioPlayerRef.current) {
       audioPlayerRef.current.pause();
-      if (audioPlayerRef.current.src && audioPlayerRef.current.src.startsWith('blob:')) {
-        URL.revokeObjectURL(audioPlayerRef.current.src);
-      }
       audioPlayerRef.current.removeAttribute('src');
-    }
-    if (currentObjectUrl.current) {
-        URL.revokeObjectURL(currentObjectUrl.current);
-        currentObjectUrl.current = null;
     }
     utteranceRef.current = null;
 
@@ -120,10 +107,27 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, []);
 
+  const onPlaybackEnd = useCallback(() => {
+    if (!isSpeakingRef.current) return;
+  
+    if (playbackMode === 'sequential') {
+      const nextIndex = currentIndex + 1;
+      if (nextIndex < playlist.length) {
+        setTimeout(() => play(playlist[nextIndex], playlist, nextIndex), 100);
+      } else {
+        stop();
+      }
+    } else {
+      // For 'default' mode, we just stop. Loop is handled by the media element.
+      stop();
+    }
+  }, [currentIndex, playlist, playbackMode, stop]);
+
+
   const speakNextSegment = useCallback(async () => {
     if (!isSpeakingRef.current || speechQueueRef.current.length === 0) {
       if (isMountedRef.current) {
-        onPlaybackEndRef.current();
+        onPlaybackEnd();
       }
       return;
     }
@@ -213,54 +217,28 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         stop();
       }
     }
-  }, [stop, toast, currentItem]);
+  }, [stop, toast, currentItem, onPlaybackEnd]);
 
-  const play = useCallback(async (item: PlayableItem, newPlaylist: PlayableItem[], startIndex: number) => {
-    if (item.type === 'media_favorite' && currentItem?.item.id === item.item.id && isPlaying && !isPaused) {
-      // If the same media item is already playing, do nothing.
-      return;
-    }
-    
-    stop(false);
-    
-    isSpeakingRef.current = true;
-    segmentIndexRef.current = 0;
-    speechQueueRef.current = [];
+  const play = useCallback((item: PlayableItem, newPlaylist: PlayableItem[], startIndex: number) => {
+    // This function now primarily sets state. The actual playback is controlled by native events.
+    if (!isMountedRef.current) return;
 
-    if (isMountedRef.current) {
-      setCurrentItem(item);
-      setPlaylist(newPlaylist);
-      setCurrentIndex(startIndex);
-      setIsPlaying(true);
-      setIsPaused(false);
+    if (currentItem?.item.id !== item.item.id) {
+        stop(false);
+        isSpeakingRef.current = true;
     }
-    
-    if (item.type === 'media_favorite') {
-        if (isMountedRef.current) {
-            setCurrentText(item.item.name);
-            setIsLoading(true);
-        }
-        if (audioPlayerRef.current) {
-            const blob = new Blob([item.item.fileData], { type: item.item.originalType });
-            if (currentObjectUrl.current) {
-              URL.revokeObjectURL(currentObjectUrl.current);
-            }
-            const url = URL.createObjectURL(blob);
-            currentObjectUrl.current = url;
-            audioPlayerRef.current.src = url;
-            
-            try {
-                await audioPlayerRef.current.play();
-                if (isMountedRef.current) setIsLoading(false);
-            } catch (error: any) {
-                if (error.name !== 'AbortError') {
-                    console.error("Playback Error in play():", error);
-                    toast({ variant: "destructive", title: "Playback Error", description: error.message });
-                    stop(true);
-                }
-            }
-        }
-    } else {
+
+    setCurrentItem(item);
+    setPlaylist(newPlaylist);
+    setCurrentIndex(startIndex);
+    setIsPlaying(true);
+    setIsPaused(false);
+    setCurrentText(item.type === 'media_favorite' ? item.item.name : (item.type === 'favorite' ? item.item.text : (item.item.annotation.targetText || item.item.annotation.note)));
+
+    if (item.type !== 'media_favorite') {
+        speechQueueRef.current = [];
+        segmentIndexRef.current = 0;
+        
         if (item.type === 'favorite') {
           speechQueueRef.current.push({ text: item.item.text, settings: originalTextTtsSettings });
         } else if (item.type === 'note_favorite') {
@@ -271,68 +249,42 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             speechQueueRef.current.push({ text: item.item.annotation.note, settings: yourNoteTtsSettings, part: 'note' });
           }
         }
-
-        if (speechQueueRef.current.length === 0 || speechQueueRef.current.every(p => !p.text.trim())) {
-          toast({ variant: 'destructive', title: 'No Text', description: 'This item has no text to read.' });
-          stop(true);
-          return;
-        }
         
         speakNextSegment();
     }
-  }, [stop, originalTextTtsSettings, yourNoteTtsSettings, toast, speakNextSegment, currentItem, isPlaying, isPaused]);
-
-  useEffect(() => {
-    onPlaybackEndRef.current = () => {
-      if (!isSpeakingRef.current) return;
-    
-      switch (playbackMode) {
-        case 'loop-single':
-          if(currentItem && playlist.length > 0) {
-             setTimeout(() => play(currentItem, playlist, currentIndex), 100);
-          } else {
-             stop();
-          }
-          break;
-        case 'sequential':
-          const nextIndex = currentIndex + 1;
-          if (nextIndex < playlist.length) {
-            setTimeout(() => play(playlist[nextIndex], playlist, nextIndex), 100);
-          } else {
-            stop();
-          }
-          break;
-        case 'default':
-        default:
-          stop();
-          break;
-      }
-    };
-  }, [currentIndex, playlist, playbackMode, stop, currentItem, play]);
+  }, [stop, originalTextTtsSettings, yourNoteTtsSettings, speakNextSegment, currentItem?.item.id]);
 
 
   const pause = useCallback(() => {
     if (!isSpeakingRef.current || !isMountedRef.current || isPaused) return;
     setIsPaused(true);
-    if (utteranceRef.current) {
-        if(window.speechSynthesis.speaking) window.speechSynthesis.pause();
-    } else if (audioPlayerRef.current) {
-        audioPlayerRef.current.pause();
+    // For media, the native control will handle pausing the element.
+    // For TTS, we pause the synthesis.
+    if (currentItem?.type !== 'media_favorite') {
+        if (utteranceRef.current) {
+            if(window.speechSynthesis.speaking) window.speechSynthesis.pause();
+        } else if (audioPlayerRef.current) {
+            audioPlayerRef.current.pause();
+        }
     }
     if (navigator.mediaSession) navigator.mediaSession.playbackState = 'paused';
-  }, [isPaused]);
+  }, [isPaused, currentItem]);
 
   const resume = useCallback(() => {
     if (!isSpeakingRef.current || !isMountedRef.current || !isPaused) return;
     setIsPaused(false);
-    if (currentItem?.type === 'media_favorite' && audioPlayerRef.current?.paused) {
-      audioPlayerRef.current.play().catch((err) => {
-        console.error("Resume play error:", err);
-      });
-    } else if (utteranceRef.current) {
-      if (window.speechSynthesis.paused) window.speechSynthesis.resume();
-    } else if (speechQueueRef.current.length > 0) {
-      speakNextSegment();
+     // For media, the native control will handle resuming the element.
+    // For TTS, we resume synthesis.
+    if (currentItem?.type !== 'media_favorite') {
+      if (utteranceRef.current) {
+        if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+      } else if (audioPlayerRef.current?.paused) {
+        audioPlayerRef.current.play().catch((err) => {
+          console.error("Resume play error:", err);
+        });
+      } else if (speechQueueRef.current.length > 0) {
+        speakNextSegment();
+      }
     }
     if (navigator.mediaSession) navigator.mediaSession.playbackState = 'playing';
   }, [isPaused, speakNextSegment, currentItem]);
@@ -343,13 +295,17 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const next = () => {
     if (hasNext()) {
-      play(playlist[currentIndex + 1], playlist, currentIndex + 1);
+        const nextIndex = currentIndex + 1;
+        const nextItem = playlist[nextIndex];
+        play(nextItem, playlist, nextIndex);
     }
   };
 
   const previous = () => {
     if (hasPrevious()) {
-      play(playlist[currentIndex - 1], playlist, currentIndex - 1);
+        const prevIndex = currentIndex - 1;
+        const prevItem = playlist[prevIndex];
+        play(prevItem, playlist, prevIndex);
     }
   };
   
@@ -367,13 +323,9 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const player = new Audio();
     audioPlayerRef.current = player;
     const handleAudioEnded = () => {
-      if(isSpeakingRef.current && isMountedRef.current){
-        if (currentItem?.type === 'media_favorite') {
-             onPlaybackEndRef.current();
-        } else {
-            segmentIndexRef.current++;
-            speakNextSegment();
-        }
+      if(isSpeakingRef.current && isMountedRef.current && currentItem?.type !== 'media_favorite'){
+        segmentIndexRef.current++;
+        speakNextSegment();
       }
     };
     const handleAudioPlaying = () => {

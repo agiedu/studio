@@ -52,14 +52,15 @@ function MediaFavoritesPageContent() {
   }>({ open: false, file: null, note: '' });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mediaElementRefs = useRef<Record<string, HTMLAudioElement | HTMLVideoElement>>({});
   const objectUrlRefs = useRef<Record<string, string>>({});
 
 
   const {
     play,
-    stop,
     pause,
     resume,
+    stop,
     next,
     previous,
     isPlaying,
@@ -77,6 +78,7 @@ function MediaFavoritesPageContent() {
   useEffect(() => {
     fetchItems();
     setPlaybackMode(LocalStorage.loadMediaPlaybackMode());
+    
     return () => {
       // Clean up object URLs on component unmount
       Object.values(objectUrlRefs.current).forEach(URL.revokeObjectURL);
@@ -101,26 +103,23 @@ function MediaFavoritesPageContent() {
   };
   
   const handlePlayPauseMedia = (item: MediaFavoriteItem) => {
-    if (currentItem?.item.id === item.id && currentItem?.type === 'media_favorite') {
-        if (isPaused) resume();
-        else if (isPlaying) pause();
-    } else {
-        const fullPlaylist = mediaItems.map(media => ({ type: 'media_favorite' as const, item: media }));
-        const startIndex = mediaItems.findIndex(media => media.id === item.id);
-        play({ type: 'media_favorite', item }, fullPlaylist, startIndex);
-    }
+      const fullPlaylist = mediaItems.map(media => ({ type: 'media_favorite' as const, item: media }));
+      const startIndex = mediaItems.findIndex(media => media.id === item.id);
+      play({ type: 'media_favorite', item }, fullPlaylist, startIndex);
   };
   
   const handleGlobalPlayPause = () => {
-    if (isPlaying) {
-      if (isPaused) resume();
-      else pause();
-    } else if (playlist.length > 0 && playlist[0].type === 'media_favorite') {
-      const currentItemInPlaylist = playlist.find(p => p.item.id === currentItem?.item.id) || playlist[0];
-      const currentItemIndex = playlist.findIndex(p => p.item.id === currentItemInPlaylist.item.id);
-      play(currentItemInPlaylist, playlist, currentItemIndex);
+    if (isPlaying && !isPaused) {
+      pause();
+    } else if (isPlaying && isPaused) {
+      resume();
     } else if (mediaItems.length > 0) {
-      handlePlayPauseMedia(mediaItems[0]);
+      // If stopped, find the first item and trigger its play button
+      const firstItemId = mediaItems[0].id;
+      const firstItemElement = mediaElementRefs.current[firstItemId];
+      if (firstItemElement) {
+        firstItemElement.play().catch(e => console.error("Error playing first item:", e));
+      }
     }
   };
 
@@ -197,6 +196,27 @@ function MediaFavoritesPageContent() {
     return url;
   };
 
+  const onMediaEnded = () => {
+    if (playbackMode === 'loop-single' && currentItem) {
+        const currentElement = mediaElementRefs.current[currentItem.item.id];
+        if (currentElement) {
+            currentElement.currentTime = 0;
+            currentElement.play();
+        }
+    } else if (playbackMode === 'sequential') {
+        next();
+    }
+  };
+
+  useEffect(() => {
+    if (playbackMode === 'sequential' && isPlaying && !isPaused && currentItem?.type === 'media_favorite') {
+        const nextElement = mediaElementRefs.current[currentItem.item.id];
+        if (nextElement && nextElement.paused) {
+            nextElement.play().catch(e => console.error("Sequential play error:", e));
+        }
+    }
+  }, [currentItem, isPlaying, isPaused, playbackMode]);
+
   return (
     <>
       <div className="container mx-auto p-4 md:p-6 space-y-6">
@@ -266,7 +286,7 @@ function MediaFavoritesPageContent() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {mediaItems.map((item) => {
-              const isCurrentlyPlaying = currentItem?.item.id === item.id && currentItem.type === 'media_favorite';
+              const isCurrentlyPlaying = currentItem?.item.id === item.id;
               
               return (
               <Card key={item.id} className={cn("flex flex-col", isCurrentlyPlaying && "border-primary ring-2 ring-primary")}>
@@ -291,16 +311,20 @@ function MediaFavoritesPageContent() {
                         src={getObjectUrl(item)} 
                         controls 
                         className="w-full"
+                        ref={el => { if (el) mediaElementRefs.current[item.id] = el; }}
                         onPlay={() => handlePlayPauseMedia(item)}
-                        onPause={() => pause()}
+                        onPause={pause}
+                        onEnded={onMediaEnded}
                     ></audio>
                   ) : (
                      <video 
                         src={getObjectUrl(item)}
                         controls 
                         className="w-full rounded-md bg-black"
+                        ref={el => { if (el) mediaElementRefs.current[item.id] = el; }}
                         onPlay={() => handlePlayPauseMedia(item)}
-                        onPause={() => pause()}
+                        onPause={pause}
+                        onEnded={onMediaEnded}
                     ></video>
                   )}
                   
