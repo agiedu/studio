@@ -69,7 +69,6 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const isSpeakingRef = useRef(false);
   const isMountedRef = useRef(false);
 
-  // Store the onPlaybackEnd function in a ref to break the circular dependency
   const onPlaybackEndRef = useRef<() => void>(() => {});
 
   useEffect(() => {
@@ -109,40 +108,6 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         navigator.mediaSession.metadata = null;
     }
   }, []);
-
-  const play = useCallback((item: PlayableItem, newPlaylist: PlayableItem[], startIndex: number) => {
-    stop();
-    if(isMountedRef.current) {
-        setIsPlaying(true);
-        setIsPaused(false);
-        setCurrentItem(item);
-        setPlaylist(newPlaylist);
-        setCurrentIndex(startIndex);
-    }
-    isSpeakingRef.current = true;
-    segmentIndexRef.current = 0;
-    speechQueueRef.current = [];
-    
-    if (item.type === 'favorite') {
-      speechQueueRef.current.push({ text: item.item.text, settings: originalTextTtsSettings });
-    } else if (item.type === 'note_favorite') {
-      if (item.item.annotation.targetText) {
-        speechQueueRef.current.push({ text: item.item.annotation.targetText, settings: originalTextTtsSettings, part: 'original' });
-      }
-      if (item.item.annotation.note) {
-        speechQueueRef.current.push({ text: item.item.annotation.note, settings: yourNoteTtsSettings, part: 'note' });
-      }
-    }
-
-    if (speechQueueRef.current.length === 0 || speechQueueRef.current.every(p => !p.text.trim())) {
-      toast({ variant: 'destructive', title: 'No Text', description: 'This item has no text to read.' });
-      onPlaybackEndRef.current();
-      return;
-    }
-    
-    speakNextSegment();
-  }, [stop, originalTextTtsSettings, yourNoteTtsSettings, toast]);
-
 
   const speakNextSegment = useCallback(async () => {
     if (!isSpeakingRef.current || speechQueueRef.current.length === 0) {
@@ -196,9 +161,16 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (voice) utterance.voice = voice;
       }
       
-      utterance.onend = () => { if(utteranceRef.current === utterance && isSpeakingRef.current) { segmentIndexRef.current++; speakNextSegment(); } };
+      utterance.onend = () => { 
+        if(utteranceRef.current === utterance && isSpeakingRef.current) { 
+          utteranceRef.current = null; // Clear ref on end
+          segmentIndexRef.current++;
+          speakNextSegment();
+        }
+      };
       utterance.onerror = (event) => {
           if(utteranceRef.current === utterance && event.error !== 'canceled') {
+              console.error('SpeechSynthesis Error:', event);
               toast({ variant: "destructive", title: "TTS Error", description: event.error || "Speech failed." });
               stop();
           }
@@ -225,7 +197,39 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [stop, toast, currentItem]);
 
-  // This effect updates the ref whenever the dependencies of onPlaybackEnd change.
+  const play = useCallback((item: PlayableItem, newPlaylist: PlayableItem[], startIndex: number) => {
+    stop();
+    if(isMountedRef.current) {
+        setIsPlaying(true);
+        setIsPaused(false);
+        setCurrentItem(item);
+        setPlaylist(newPlaylist);
+        setCurrentIndex(startIndex);
+    }
+    isSpeakingRef.current = true;
+    segmentIndexRef.current = 0;
+    speechQueueRef.current = [];
+    
+    if (item.type === 'favorite') {
+      speechQueueRef.current.push({ text: item.item.text, settings: originalTextTtsSettings });
+    } else if (item.type === 'note_favorite') {
+      if (item.item.annotation.targetText) {
+        speechQueueRef.current.push({ text: item.item.annotation.targetText, settings: originalTextTtsSettings, part: 'original' });
+      }
+      if (item.item.annotation.note) {
+        speechQueueRef.current.push({ text: item.item.annotation.note, settings: yourNoteTtsSettings, part: 'note' });
+      }
+    }
+
+    if (speechQueueRef.current.length === 0 || speechQueueRef.current.every(p => !p.text.trim())) {
+      toast({ variant: 'destructive', title: 'No Text', description: 'This item has no text to read.' });
+      stop();
+      return;
+    }
+    
+    speakNextSegment();
+  }, [stop, originalTextTtsSettings, yourNoteTtsSettings, toast, speakNextSegment]);
+
   useEffect(() => {
     onPlaybackEndRef.current = () => {
       if (!isSpeakingRef.current) return;
@@ -271,11 +275,15 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setIsPaused(false);
     if (utteranceRef.current) {
         if(window.speechSynthesis.paused) window.speechSynthesis.resume();
-    } else if (audioPlayerRef.current) {
+    } else if (audioPlayerRef.current?.paused) {
         audioPlayerRef.current.play().catch(stop);
+    } else {
+        // This case handles when the local TTS utterance finished, but we are paused logically.
+        // We need to kick off the next segment.
+        speakNextSegment();
     }
     if (navigator.mediaSession) navigator.mediaSession.playbackState = 'playing';
-  }, [stop]);
+  }, [stop, speakNextSegment]);
 
   const hasNext = () => currentIndex > -1 && currentIndex < playlist.length - 1;
   
@@ -297,7 +305,6 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (isPaused) {
         resume();
       } else {
-        // Fallback to starting playback from the beginning of the list if nothing else makes sense
         if (playlist.length > 0) {
             play(playlist[0], playlist, 0);
         }
