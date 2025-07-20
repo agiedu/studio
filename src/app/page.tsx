@@ -1,27 +1,135 @@
 
 'use client';
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { MangaTalkLogo } from '@/components/icons/MangaTalkLogo';
+import { BookOpenText, Library, Star, NotebookText, ArrowRight } from 'lucide-react';
 import { getCurrentUser } from '@/lib/authService';
-import { Loader2 } from 'lucide-react';
 
-export default function Home() {
-  const router = useRouter();
+interface ModuleCardProps {
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+  href: string;
+  isLoggedIn: boolean;
+}
 
-  useEffect(() => {
-    // This check runs only on the client-side
-    if (getCurrentUser()) {
-      router.replace('/library');
-    } else {
-      router.replace('/login');
-    }
-  }, [router]);
+function ModuleCard({ title, description, icon, href, isLoggedIn }: ModuleCardProps) {
+  const finalHref = isLoggedIn ? href : '/login';
 
-  // Render a loading state while the redirect is happening
   return (
-    <div className="flex h-screen w-full items-center justify-center">
-      <Loader2 className="h-8 w-8 animate-spin" />
-    </div>
+    <Link href={finalHref} className="block hover:shadow-lg transition-shadow rounded-lg">
+      <Card className="h-full flex flex-col">
+        <CardHeader className="flex flex-row items-center gap-4">
+          <div className="bg-primary/10 p-3 rounded-full">
+            {icon}
+          </div>
+          <div>
+            <CardTitle>{title}</CardTitle>
+            <CardDescription>{description}</CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent className="flex-grow flex justify-end items-end">
+            <ArrowRight className="text-muted-foreground group-hover:text-primary" />
+        </CardContent>
+      </Card>
+    </Link>
   );
+}
+
+
+export default function HomePage() {
+    const [isLoggedIn, setIsLoggedIn] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        // This check runs only on the client-side
+        setIsLoggedIn(!!getCurrentUser());
+        setIsLoading(false);
+    }, []);
+
+    const modules: Omit<ModuleCardProps, 'isLoggedIn'>[] = [
+        {
+            title: "Library",
+            description: "Upload and manage your documents.",
+            icon: <Library className="h-6 w-6 text-primary" />,
+            href: "/library"
+        },
+        {
+            title: "Reader",
+            description: "View documents and use TTS.",
+            icon: <BookOpenText className="h-6 w-6 text-primary" />,
+            href: "/reader"
+        },
+        {
+            title: "Text Favorites",
+            description: "Review your saved text snippets.",
+            icon: <Star className="h-6 w-6 text-primary" />,
+            href: "/favorites"
+        },
+        {
+            title: "Note Favorites",
+            description: "Access your annotated notes.",
+            icon: <NotebookText className="h-6 w-6 text-primary" />,
+            href: "/notes-favorites"
+        }
+    ];
+
+    if (isLoading) {
+        return null; // Or a loading spinner, to prevent flash of incorrect state
+    }
+
+    return (
+        <div className="flex flex-col min-h-screen bg-muted/20">
+             <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+                <div className="container mx-auto flex h-16 items-center justify-between px-4 md:px-6">
+                    <Link href="/" className="flex items-center gap-2">
+                        <MangaTalkLogo className="h-8 w-8" />
+                        <h1 className="text-xl md:text-2xl font-bold font-headline text-primary">MangaTalk</h1>
+                    </Link>
+                    <div className="flex items-center gap-2">
+                        {isLoggedIn ? (
+                             <Button asChild>
+                                <Link href="/library">Go to App</Link>
+                            </Button>
+                        ) : (
+                            <>
+                                <Button variant="ghost" asChild>
+                                    <Link href="/login">Login</Link>
+                                </Button>
+                                <Button asChild>
+                                    <Link href="/register">Register</Link>
+                                </Button>
+                            </>
+                        )}
+                    </div>
+                </div>
+            </header>
+
+            <main className="flex-grow">
+                <section className="container mx-auto px-4 md:px-6 py-12 md:py-24 text-center">
+                    <h2 className="text-4xl md:text-5xl font-bold tracking-tight">Read Aloud, Understand Deeper</h2>
+                    <p className="mt-4 max-w-2xl mx-auto text-lg text-muted-foreground">
+                        MangaTalk brings your documents to life. Use advanced OCR and Text-to-Speech to listen to your mangas, PDFs, and text files.
+                    </p>
+                </section>
+
+                <section className="container mx-auto px-4 md:px-6 pb-16">
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                       {modules.map(mod => (
+                           <ModuleCard key={mod.title} {...mod} isLoggedIn={isLoggedIn} />
+                       ))}
+                    </div>
+                </section>
+            </main>
+             <footer className="py-6 border-t bg-background">
+                <div className="container mx-auto text-center text-sm text-muted-foreground">
+                    © {new Date().getFullYear()} MangaTalk. All Rights Reserved.
+                </div>
+            </footer>
+        </div>
+    );
 }

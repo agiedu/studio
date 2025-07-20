@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import { ContentProtection } from '@/components/security/ContentProtection';
+import { AppHeader } from '@/components/app/AppHeader';
 
 export const metadata: Metadata = {
   title: 'MangaTalk',
@@ -22,6 +23,7 @@ export default function RootLayout({
       </head>
       <body className="font-body antialiased flex flex-col min-h-screen bg-background">
         <ContentProtection />
+        <AppHeader />
         <main className="flex-grow flex flex-col">
           {children}
         </main>

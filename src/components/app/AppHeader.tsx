@@ -4,11 +4,13 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { BookOpenText, Library, Star, User, LogOut, ShieldCheck, NotebookText } from 'lucide-react';
+import { BookOpenText, Library, Star, User, LogOut, ShieldCheck, NotebookText, Home } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { MangaTalkLogo } from '@/components/icons/MangaTalkLogo';
 import { cn } from '@/lib/utils';
 import { getCurrentUser, logout, isAdminSessionActive } from '@/lib/authService';
+
+const PROTECTED_ROUTES = ['/library', '/reader', '/favorites', '/notes-favorites', '/profile', '/admin'];
 
 export function AppHeader() {
   const pathname = usePathname();
@@ -17,15 +19,21 @@ export function AppHeader() {
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    setUser(getCurrentUser());
+    const currentUser = getCurrentUser();
+    setUser(currentUser);
     setIsAdmin(isAdminSessionActive());
-  }, [pathname]); // Re-check on path change
+
+    // If on a protected route without a user, redirect to home.
+    if (!currentUser && PROTECTED_ROUTES.some(route => pathname.startsWith(route))) {
+      router.replace('/');
+    }
+  }, [pathname, router]);
 
   const handleLogout = () => {
     logout();
     setUser(null);
     setIsAdmin(false);
-    router.push('/login');
+    router.push('/');
   };
 
   const getLinkClass = (path: string) => {
@@ -36,7 +44,8 @@ export function AppHeader() {
     );
   };
   
-  if (pathname.startsWith('/login') || pathname.startsWith('/register')) {
+  // Hide header on the new root page, login, and register pages.
+  if (pathname === '/' || pathname.startsWith('/login') || pathname.startsWith('/register')) {
       return null;
   }
 
@@ -44,13 +53,18 @@ export function AppHeader() {
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto flex h-16 items-center justify-between px-4 md:px-6">
         <div className="flex items-center gap-2 md:gap-4">
-          <Link href="/library" className="flex items-center gap-2">
+          <Link href="/" className="flex items-center gap-2">
             <MangaTalkLogo className="h-8 w-8" />
             <h1 className="text-xl md:text-2xl font-bold font-headline text-primary">MangaTalk</h1>
           </Link>
           <nav className="flex items-center gap-1 md:gap-2">
             {user && (
               <>
+                <Button variant="ghost" asChild size="sm" className={getLinkClass('/')}>
+                  <Link href="/">
+                    <Home className="mr-1 h-4 w-4" /> Home
+                  </Link>
+                </Button>
                 <Button variant="ghost" asChild size="sm" className={getLinkClass('/library')}>
                   <Link href="/library">
                     <Library className="mr-1 h-4 w-4" /> Library
@@ -102,5 +116,3 @@ export function AppHeader() {
     </header>
   );
 }
-
-    
