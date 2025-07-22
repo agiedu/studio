@@ -537,25 +537,16 @@ const renderedTextWithAnnotations = useMemo(() => {
                   const rendition = book.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
                   epubRenditionRef.current = rendition;
 
-                  // This function now robustly handles pagination and unlocks jumping.
                   const generateEpubPagination = async (b: Book) => {
                       if (!isMountedRef.current || isStale) return;
                       try {
                           await b.ready;
                           if (isStale || !isMountedRef.current) return;
-                          await b.locations.generate(1650);
+                          // Using a more standard character count for generation.
+                          await b.locations.generate(1024);
                           if (isStale || !isMountedRef.current) return;
                           
                           setEpubTotalPages(b.locations.length());
-                          
-                          const initialLocation = rendition.currentLocation();
-                          if (initialLocation?.start && b.locations.length() > 0 && typeof b.locations.pageFromCfi === 'function') {
-                              const pageNum = b.locations.pageFromCfi(initialLocation.start.cfi);
-                              setEpubCurrentPageNum(pageNum > 0 ? pageNum : 1);
-                          } else {
-                            setEpubCurrentPageNum(1);
-                          }
-                          // Only unlock jumping after pagination is fully complete.
                           setIsEpubReadyForJumping(true); 
                       } catch (e: any) {
                           if (isStale) return;
@@ -568,27 +559,26 @@ const renderedTextWithAnnotations = useMemo(() => {
                   };
 
                   rendition.on('relocated', (location: any) => {
-                      if (!isMountedRef.current || !epubBookRef.current?.locations) return;
+                      if (!isMountedRef.current || !epubBookRef.current?.locations || !epubBookRef.current.navigation) return;
                       
                       const currentDocId = (activeDoc as ActiveMangaDocument | null)?.id;
                       if (currentDocId) {
                           LocalStorageService.saveCurrentEpubCfiForDoc(currentDocId, location.start.cfi);
                       }
-                      
-                      // Update page number only if pagination is ready
-                      if (isEpubReadyForJumping && typeof epubBookRef.current.locations.pageFromCfi === 'function') {
+
+                      if (isEpubReadyForJumping && epubBookRef.current.locations.length() > 0) {
                           const bookInstance = epubBookRef.current;
-                          const currentPage = bookInstance.locations.pageFromCfi(location.start.cfi);
-                          setEpubCurrentPageNum(currentPage > 0 ? currentPage : 1);
+                          // Use percentage-based calculation for current page number
+                          const percentage = bookInstance.locations.percentageFromCfi(location.start.cfi);
+                          const pageNum = Math.ceil(percentage * bookInstance.locations.length());
+                          setEpubCurrentPageNum(pageNum > 0 ? pageNum : 1);
                       }
                       
                       processEpubView(epubRenditionRef.current?.getContents()?.[0]);
                   });
-
-                  // Start pagination as soon as the book is ready
+                  
                   generateEpubPagination(book);
 
-                  // Display the last known location
                   const lastLocation = LocalStorageService.loadCurrentEpubCfiForDoc(doc.id); 
                   await rendition.display(lastLocation || undefined);
 
@@ -1039,22 +1029,22 @@ const renderedTextWithAnnotations = useMemo(() => {
         if(isMountedRef.current) setIsLoadingTTS(false);
         window.speechSynthesis.speak(utterance);
     } else { 
-        try {
-            const result = await getCloudSpeech(segmentText, ttsSettings.language, ttsSettings.cloudVoiceId);
-            if(!isMountedRef.current) return;
-            if ('audioUrl' in result && audioPlayerRef.current) {
-                audioPlayerRef.current.src = result.audioUrl;
-                await audioPlayerRef.current.play(); 
-            } else if ('error' in result) {
-                toast({ variant: "destructive", title: "Cloud TTS Error", description: result.error });
-                if(isMountedRef.current) stopSpeech(true);
-            }
-        } catch (e: any) {
-            if(isMountedRef.current) {
-                toast({ variant: "destructive", title: "Cloud TTS Failed", description: e.message });
-                stopSpeech(true);
-            }
+      try {
+        const result = await getCloudSpeech(segmentText, ttsSettings.language, ttsSettings.cloudVoiceId);
+        if(!isMountedRef.current) return;
+        if ('audioUrl' in result && audioPlayerRef.current) {
+            audioPlayerRef.current.src = result.audioUrl;
+            await audioPlayerRef.current.play(); 
+        } else if ('error' in result) {
+            toast({ variant: "destructive", title: "Cloud TTS Error", description: result.error });
+            if(isMountedRef.current) stopSpeech(true);
         }
+      } catch (e: any) {
+        if(isMountedRef.current) {
+            toast({ variant: "destructive", title: "Cloud TTS Failed", description: e.message });
+            stopSpeech(true);
+        }
+      }
     }
   }, [ttsSettings, stopSpeech, toast, textSegments, currentTextForTTS]);
 
@@ -1306,32 +1296,33 @@ const renderedTextWithAnnotations = useMemo(() => {
   const handleConfirmJump = () => {
     const pageNum = parseInt(jumpToPageInput, 10);
     const { type, totalPages } = jumpDialogInfo;
-
+  
     if (!type || isNaN(pageNum) || pageNum < 1 || pageNum > totalPages) {
-        toast({
-            variant: "destructive",
-            title: "Invalid Page Number",
-            description: `Please enter a number between 1 and ${totalPages}.`,
-        });
-        return;
+      toast({
+        variant: 'destructive',
+        title: 'Invalid Page Number',
+        description: `Please enter a number between 1 and ${totalPages}.`,
+      });
+      return;
     }
-
+  
     if (type === 'pdf') {
-        if (pageNum !== currentPdfPageNum) {
-            stopSpeech(true);
-            setCurrentPdfPageNum(pageNum);
-        }
+      if (pageNum !== currentPdfPageNum) {
+        stopSpeech(true);
+        setCurrentPdfPageNum(pageNum);
+      }
     } else if (type === 'epub') {
-        const bookInstance = epubBookRef.current;
-        if (bookInstance && epubRenditionRef.current && isEpubReadyForJumping && pageNum !== epubCurrentPageNum) {
-            const cfi = bookInstance.locations[pageNum - 1];
-            if (cfi) {
-                stopSpeech(true);
-                epubRenditionRef.current.display(cfi);
-            } else {
-                 toast({ variant: "destructive", title: "Jump Failed", description: "Could not find the location for the specified page." });
-            }
+      const bookInstance = epubBookRef.current;
+      if (bookInstance && epubRenditionRef.current && isEpubReadyForJumping && pageNum !== epubCurrentPageNum) {
+        // This is the more robust, percentage-based navigation method
+        const percentage = (pageNum - 1) / totalPages;
+        if (typeof percentage === 'number') {
+            stopSpeech(true);
+            epubRenditionRef.current.display(percentage);
+        } else {
+             toast({ variant: "destructive", title: "Jump Failed", description: "Could not find the location for the specified page." });
         }
+      }
     }
     handleCancelJump();
   };
