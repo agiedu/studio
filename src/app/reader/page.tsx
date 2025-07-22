@@ -211,7 +211,7 @@ const getCharPosition = (container: HTMLElement, charIndex: number): { top: numb
       const nodeLength = currentNode.textContent?.length || 0;
       if (currentOffset + nodeLength >= charIndex) {
           range.setStart(currentNode, charIndex - currentOffset);
-          range.setEnd(currentNode, charIndex - currentOffset + 1);
+          range.setEnd(currentNode, charIndex - currentOffset);
           const rect = range.getBoundingClientRect();
           const containerRect = container.getBoundingClientRect();
           return {
@@ -267,9 +267,12 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
 const renderedTextWithAnnotations = useMemo(() => {
   const text = currentTextForTTS;
   if (!text) return null;
+  
+  // This key forces a re-render when the page number changes, fixing the EPUB annotation bug.
+  const pageKey = activeDoc ? `${activeDoc.id}-${activeDoc.type === 'pdf' ? currentPdfPageNum : epubCurrentPageNum}` : 'scratchpad';
 
   const renderContent = (ref: React.RefObject<HTMLDivElement>, isInteractive: boolean) => (
-    <div ref={ref} className="relative w-full h-full">
+    <div key={pageKey} ref={ref} className="relative w-full h-full">
       <div className={cn("w-full h-full whitespace-pre-wrap", isInteractive && "select-text")}>
         {text}
       </div>
@@ -279,7 +282,7 @@ const renderedTextWithAnnotations = useMemo(() => {
   
   return renderContent(mainHighlightedContentRef, true);
 
-}, [currentTextForTTS, sortedAnnotations]);
+}, [currentTextForTTS, sortedAnnotations, activeDoc, currentPdfPageNum, epubCurrentPageNum]);
 
 const renderedTextWithoutAnnotations = useMemo(() => {
     const text = currentTextForTTS;
