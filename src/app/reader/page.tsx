@@ -62,6 +62,7 @@ const PUNCTUATION_REGEX = /[.,?!,。？！，、\n\r"“„”'‘’`*_{}\[\]()
 type SpeechOrigin = 'main' | 'repeat' | null;
 
 
+
 const groupVoicesByLanguage = (voices: TTSVoice[]) => {
   return voices.reduce((acc, voice) => {
     const lang = voice.lang || 'Unknown';
@@ -211,7 +212,6 @@ const getCharPosition = (container: HTMLElement, charIndex: number): { top: numb
       const nodeLength = currentNode.textContent?.length || 0;
       if (currentOffset + nodeLength >= charIndex) {
           range.setStart(currentNode, charIndex - currentOffset);
-          range.setEnd(currentNode, charIndex - currentOffset);
           const rect = range.getBoundingClientRect();
           const containerRect = container.getBoundingClientRect();
           return {
@@ -287,14 +287,15 @@ const renderedTextWithAnnotations = useMemo(() => {
 const renderedTextWithoutAnnotations = useMemo(() => {
     const text = currentTextForTTS;
     if (!text) return null;
+    const pageKey = activeDoc ? `${activeDoc.id}-${activeDoc.type === 'pdf' ? currentPdfPageNum : epubCurrentPageNum}` : 'scratchpad';
     return (
-        <div ref={mainHighlightedContentRef} className="relative w-full h-full">
+        <div key={pageKey} ref={mainHighlightedContentRef} className="relative w-full h-full">
             <div className="w-full h-full whitespace-pre-wrap select-text">
                 {text}
             </div>
         </div>
     );
-}, [currentTextForTTS]);
+}, [currentTextForTTS, activeDoc, currentPdfPageNum, epubCurrentPageNum]);
 
 
   const speakingViewContent = useMemo(() => {
@@ -613,9 +614,10 @@ const renderedTextWithoutAnnotations = useMemo(() => {
                           LocalStorageService.saveCurrentEpubCfiForDoc(currentDocId, location.start.cfi);
                       }
 
+                      // Update page number based on new location
                       if (epubBookRef.current.locations.length() > 0) {
                           const percentage = epubBookRef.current.locations.percentageFromCfi(location.start.cfi);
-                          const total = epubBookRef.current.locations.length();
+                          const total = epubTotalPages || epubBookRef.current.locations.length();
                           const pageNum = Math.max(1, Math.round(percentage * total));
                           setEpubCurrentPageNum(pageNum);
                       }
@@ -1605,7 +1607,7 @@ const renderedTextWithoutAnnotations = useMemo(() => {
 
                   {activeDoc?.type === 'pdf' && isPdfTextView && (
                     <div className="w-full h-full px-3 py-2 text-sm">
-                        {renderedTextWithAnnotations}
+                        {renderedTextWithoutAnnotations}
                     </div>
                   )}
 
