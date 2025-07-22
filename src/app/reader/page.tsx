@@ -559,16 +559,15 @@ const renderedTextWithAnnotations = useMemo(() => {
                   };
 
                   rendition.on('relocated', (location: any) => {
-                      if (!isMountedRef.current || !epubBookRef.current?.locations || !epubBookRef.current.navigation) return;
+                      if (!isMountedRef.current || !epubBookRef.current?.locations || !epubBookRef.current.navigation || !isEpubReadyForJumping) return;
                       
                       const currentDocId = (activeDoc as ActiveMangaDocument | null)?.id;
                       if (currentDocId) {
                           LocalStorageService.saveCurrentEpubCfiForDoc(currentDocId, location.start.cfi);
                       }
 
-                      if (isEpubReadyForJumping && epubBookRef.current.locations.length() > 0) {
+                      if (epubBookRef.current.locations.length() > 0) {
                           const bookInstance = epubBookRef.current;
-                          // Use percentage-based calculation for current page number
                           const percentage = bookInstance.locations.percentageFromCfi(location.start.cfi);
                           const pageNum = Math.ceil(percentage * bookInstance.locations.length());
                           setEpubCurrentPageNum(pageNum > 0 ? pageNum : 1);
@@ -1319,6 +1318,7 @@ const renderedTextWithAnnotations = useMemo(() => {
         if (typeof percentage === 'number') {
             stopSpeech(true);
             epubRenditionRef.current.display(percentage);
+            setEpubCurrentPageNum(pageNum);
         } else {
              toast({ variant: "destructive", title: "Jump Failed", description: "Could not find the location for the specified page." });
         }
