@@ -281,6 +281,17 @@ const renderedTextWithAnnotations = useMemo(() => {
 
 }, [currentTextForTTS, sortedAnnotations]);
 
+const renderedTextWithoutAnnotations = useMemo(() => {
+    const text = currentTextForTTS;
+    if (!text) return null;
+    return (
+        <div ref={mainHighlightedContentRef} className="relative w-full h-full">
+            <div className="w-full h-full whitespace-pre-wrap select-text">
+                {text}
+            </div>
+        </div>
+    );
+}, [currentTextForTTS]);
 
 
   const speakingViewContent = useMemo(() => {
@@ -1613,7 +1624,7 @@ const renderedTextWithAnnotations = useMemo(() => {
 
                   {activeDoc?.type === 'txt' && (
                     <div className="w-full h-full px-3 py-2 text-sm max-h-[calc(100vh-24rem)] overflow-auto">
-                        {renderedTextWithAnnotations}
+                        {renderedTextWithoutAnnotations}
                     </div>
                   )}
 
