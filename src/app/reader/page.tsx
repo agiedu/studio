@@ -201,45 +201,84 @@ function ReaderPageContent() {
 }, [activeDoc, scratchpadAnnotations, currentPdfPageNum, epubCurrentPageNum]);
 
 
+const getCharPosition = (container: HTMLElement, charIndex: number): { top: number, left: number } | null => {
+  const range = document.createRange();
+  let walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+  let currentNode: Node | null = null;
+  let currentOffset = 0;
 
-const renderedTextWithAnnotations = useMemo(() => {
-    const text = currentTextForTTS;
-    if (!text || sortedAnnotations.length === 0) return <span>{text}</span>;
+  while ((currentNode = walker.nextNode())) {
+      const nodeLength = currentNode.textContent?.length || 0;
+      if (currentOffset + nodeLength >= charIndex) {
+          range.setStart(currentNode, charIndex - currentOffset);
+          range.setEnd(currentNode, charIndex - currentOffset + 1);
+          const rect = range.getBoundingClientRect();
+          const containerRect = container.getBoundingClientRect();
+          return {
+              top: rect.top - containerRect.top + container.scrollTop,
+              left: rect.left - containerRect.left + container.scrollLeft
+          };
+      }
+      currentOffset += nodeLength;
+  }
+  return null;
+};
 
-    const parts: (string | JSX.Element)[] = [];
-    let lastIndex = 0;
+const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: React.RefObject<HTMLElement>, annotations: Annotation[], text: string }) => {
+    const [positions, setPositions] = useState<Record<string, { top: number, left: number }>>({});
 
-    sortedAnnotations.forEach((annotation, index) => {
-        // Ensure annotation is within the current text bounds before processing
-        if (annotation.startIndex >= lastIndex && (annotation.startIndex + annotation.targetText.length) <= text.length) {
-            // Part of the text before the annotation
-            if (annotation.startIndex > lastIndex) {
-                parts.push(text.substring(lastIndex, annotation.startIndex));
-            }
-            
-            // The annotated text itself, with the superscript
-            parts.push(
-                <span key={annotation.id} className="relative">
-                    {text.substring(annotation.startIndex, annotation.startIndex + annotation.targetText.length)}
+    useEffect(() => {
+        if (containerRef.current && annotations.length > 0) {
+            const newPositions: Record<string, { top: number, left: number }> = {};
+            annotations.forEach(ann => {
+                const pos = getCharPosition(containerRef.current!, ann.startIndex + ann.targetText.length -1);
+                if (pos) {
+                    newPositions[ann.id] = pos;
+                }
+            });
+            setPositions(newPositions);
+        }
+    }, [annotations, containerRef, text]); // Re-calculate when text or annotations change
+
+    if (annotations.length === 0) return null;
+
+    return (
+        <>
+            {annotations.map((annotation, index) => {
+                const pos = positions[annotation.id];
+                if (!pos) return null;
+
+                return (
                     <sup
-                        className="absolute -top-1 -right-2 w-4 h-4 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs leading-none cursor-pointer"
+                        key={annotation.id}
+                        className="absolute w-4 h-4 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs leading-none cursor-pointer"
+                        style={{ top: pos.top, left: pos.left, transform: 'translate(0, -50%)' }}
                         onClick={(e) => { e.stopPropagation(); setViewingAnnotation(annotation); }}
                     >
                         {index + 1}
                     </sup>
-                </span>
-            );
+                );
+            })}
+        </>
+    );
+};
 
-            lastIndex = annotation.startIndex + annotation.targetText.length;
-        }
-    });
 
-    // The remaining part of the text after the last annotation
-    if (lastIndex < text.length) {
-        parts.push(text.substring(lastIndex));
-    }
+const renderedTextWithAnnotations = useMemo(() => {
+  const text = currentTextForTTS;
+  if (!text) return null;
 
-    return <>{parts.map((part, i) => <React.Fragment key={i}>{part}</React.Fragment>)}</>;
+  const renderContent = (ref: React.RefObject<HTMLDivElement>, isInteractive: boolean) => (
+    <div ref={ref} className="relative w-full h-full">
+      <div className={cn("w-full h-full whitespace-pre-wrap", isInteractive && "select-text")}>
+        {text}
+      </div>
+      {isInteractive && <AnnotationMarkers containerRef={ref} annotations={sortedAnnotations} text={text} />}
+    </div>
+  );
+  
+  return renderContent(mainHighlightedContentRef, true);
+
 }, [currentTextForTTS, sortedAnnotations]);
 
 
@@ -255,85 +294,80 @@ const renderedTextWithAnnotations = useMemo(() => {
     const postText = textSegments.slice(highlightedSegmentIndex + 1).join('');
 
     return (
-      <>
+      <div className="whitespace-pre-wrap">
         {preText}
         <span className="text-green-600 dark:text-green-500">{highlightedText}</span>
         {postText}
-      </>
+      </div>
     );
   }, [isSpeaking, isPaused, highlightedSegmentIndex, textSegments, renderedTextWithAnnotations]);
 
 
   const getSelectedText = useCallback((): { text: string; startIndex: number | null } => {
     if (typeof window === 'undefined') {
-      return { text: '', startIndex: null };
+        return { text: '', startIndex: null };
+    }
+
+    let activeElement: HTMLTextAreaElement | HTMLDivElement | null = null;
+    if (document.activeElement === mainTextAreaRef.current) {
+        activeElement = mainTextAreaRef.current;
+    } else if (document.activeElement === ttsBoxTextAreaRef.current) {
+        activeElement = ttsBoxTextAreaRef.current;
+    }
+
+    if (activeElement && 'selectionStart' in activeElement && activeElement.selectionStart !== activeElement.selectionEnd) {
+        return {
+            text: activeElement.value.substring(activeElement.selectionStart, activeElement.selectionEnd),
+            startIndex: activeElement.selectionStart,
+        };
     }
   
-    const getIndexFromSelection = (selection: Selection, container: HTMLElement): { text: string, startIndex: number } | null => {
-        if (!selection.rangeCount || selection.isCollapsed) return null;
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) return { text: '', startIndex: null };
+
+    const getSelectionDetails = (container: HTMLElement): { text: string; startIndex: number } | null => {
+        if (!selection.rangeCount || !container.contains(selection.anchorNode)) {
+            return null;
+        }
 
         const range = selection.getRangeAt(0);
-        if (!container.contains(range.startContainer)) return null;
-
-        const selectionText = range.toString();
-
         const preSelectionRange = range.cloneRange();
         preSelectionRange.selectNodeContents(container);
         preSelectionRange.setEnd(range.startContainer, range.startOffset);
+        
         const startIndex = preSelectionRange.toString().length;
+        const text = range.toString();
 
-        return { text: selectionText, startIndex };
+        return { text, startIndex };
     };
 
-    const mainTextarea = mainTextAreaRef.current;
-    if (mainTextarea && mainTextarea.selectionStart !== mainTextarea.selectionEnd) {
-      return {
-        text: mainTextarea.value.substring(mainTextarea.selectionStart, mainTextarea.selectionEnd),
-        startIndex: mainTextarea.selectionStart
-      };
+    const mainContainer = mainHighlightedContentRef.current;
+    if(mainContainer) {
+      const details = getSelectionDetails(mainContainer);
+      if (details) return details;
     }
-    const ttsTextarea = ttsBoxTextAreaRef.current;
-    if (ttsTextarea && ttsTextarea.selectionStart !== ttsTextarea.selectionEnd) {
-      return {
-        text: ttsTextarea.value.substring(ttsTextarea.selectionStart, ttsTextarea.selectionEnd),
-        startIndex: ttsTextarea.selectionStart
-      };
-    }
-  
-    if (activeDoc?.type === 'epub' && epubRenditionRef.current) {
-      try {
-        const epubWindow = epubRenditionRef.current.getContents()?.[0]?.window;
-        if (epubWindow) {
-            const selection = epubWindow.getSelection();
-            if (selection) {
-                const result = getIndexFromSelection(selection, epubWindow.document.body);
-                if (result) return result;
-            }
-        }
-      } catch (e) {
-        console.warn("Could not get selection from EPUB iframe", e);
-      }
+
+    const ttsContainer = ttsBoxHighlightedContentRef.current;
+     if(ttsContainer && ttsContainer.contains(selection.anchorNode)) {
+      const details = getSelectionDetails(ttsContainer);
+      if (details) return details;
     }
     
-    const pageSelection = window.getSelection();
-    if (pageSelection && !pageSelection.isCollapsed) {
-        const scrollContainer = scrollContainerRef.current;
-        if (scrollContainer) {
-            const result = getIndexFromSelection(pageSelection, scrollContainer);
-            if(result) return result;
-        }
-
-        const ttsContainer = ttsBoxHighlightedContentRef.current;
-        if (ttsContainer) {
-            const result = getIndexFromSelection(pageSelection, ttsContainer);
-            if(result) return result;
-        }
-
-        return { text: pageSelection.toString(), startIndex: null };
+    // Fallback for EPUB iframe
+    if (activeDoc?.type === 'epub' && epubRenditionRef.current) {
+        try {
+            const epubWindow = epubRenditionRef.current.getContents()?.[0]?.window;
+            if (epubWindow && epubWindow.getSelection()?.toString()) {
+                const epubSelection = epubWindow.getSelection();
+                if(epubSelection) {
+                  return { text: epubSelection.toString(), startIndex: null }; // startIndex is hard for iframes
+                }
+            }
+        } catch (e) { console.warn("Could not get selection from EPUB iframe", e); }
     }
   
-    return { text: '', startIndex: null };
-  }, [activeDoc?.type]);
+    return { text: selection.toString(), startIndex: null };
+}, [activeDoc?.type]);
 
 
   useEffect(() => {
@@ -542,8 +576,7 @@ const renderedTextWithAnnotations = useMemo(() => {
                       try {
                           await b.ready;
                           if (isStale || !isMountedRef.current) return;
-                          // Using a more standard character count for generation.
-                          await b.locations.generate(1024);
+                          await b.locations.generate(1650);
                           if (isStale || !isMountedRef.current) return;
                           
                           setEpubTotalPages(b.locations.length());
@@ -566,12 +599,11 @@ const renderedTextWithAnnotations = useMemo(() => {
                           LocalStorageService.saveCurrentEpubCfiForDoc(currentDocId, location.start.cfi);
                       }
 
-                      // Update page number based on new location
                       if (epubBookRef.current.locations.length() > 0) {
                           const percentage = epubBookRef.current.locations.percentageFromCfi(location.start.cfi);
-                          const totalPages = epubBookRef.current.locations.length();
-                          const pageNum = Math.ceil(percentage * totalPages);
-                          setEpubCurrentPageNum(pageNum > 0 ? pageNum : 1);
+                          const total = epubBookRef.current.locations.length();
+                          const pageNum = Math.max(1, Math.round(percentage * total));
+                          setEpubCurrentPageNum(pageNum);
                       }
                       
                       processEpubView(epubRenditionRef.current?.getContents()?.[0]);
@@ -1224,8 +1256,7 @@ const renderedTextWithAnnotations = useMemo(() => {
 
   const navigateEpub = async (direction: 'prev' | 'next') => {
     const rendition = epubRenditionRef.current;
-    const book = epubBookRef.current;
-    if (!rendition || !book || !book.locations || isEpubLoading || isEpubPaginating) return;
+    if (!rendition || isEpubLoading || isEpubPaginating) return;
     stopSpeech(true);
 
     try {
@@ -1317,11 +1348,10 @@ const renderedTextWithAnnotations = useMemo(() => {
     } else if (type === 'epub') {
         const bookInstance = epubBookRef.current;
         if (bookInstance && epubRenditionRef.current && isEpubReadyForJumping && pageNum !== epubCurrentPageNum) {
-            const percentage = (pageNum - 1) / totalPages;
+             const percentage = (pageNum - 1) / totalPages;
             if (typeof percentage === 'number' && percentage >= 0 && percentage <= 1) {
                 stopSpeech(true);
                 epubRenditionRef.current.display(percentage);
-                setEpubCurrentPageNum(pageNum);
             } else {
                  toast({ variant: "destructive", title: "Jump Failed", description: "Could not find the location for the specified page." });
             }
@@ -1560,8 +1590,8 @@ const renderedTextWithAnnotations = useMemo(() => {
                   )}
 
                   {activeDoc?.type === 'pdf' && isPdfTextView && (
-                    <div ref={mainHighlightedContentRef} className="w-full h-full whitespace-pre-wrap select-text px-3 py-2 text-sm">
-                        {(isSpeaking || isPaused) ? speakingViewContent : renderedTextWithAnnotations}
+                    <div className="w-full h-full px-3 py-2 text-sm">
+                        {renderedTextWithAnnotations}
                     </div>
                   )}
 
@@ -1582,8 +1612,8 @@ const renderedTextWithAnnotations = useMemo(() => {
                   </div>
 
                   {activeDoc?.type === 'txt' && (
-                    <div ref={mainHighlightedContentRef} className="w-full h-full whitespace-pre-wrap select-text px-3 py-2 text-sm max-h-[calc(100vh-24rem)] overflow-auto">
-                        {(isSpeaking || isPaused) ? speakingViewContent : renderedTextWithAnnotations}
+                    <div className="w-full h-full px-3 py-2 text-sm max-h-[calc(100vh-24rem)] overflow-auto">
+                        {renderedTextWithAnnotations}
                     </div>
                   )}
 
