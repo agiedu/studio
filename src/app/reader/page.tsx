@@ -1328,7 +1328,7 @@ const renderedTextWithAnnotations = useMemo(() => {
     } else if (type === 'epub') {
         const bookInstance = epubBookRef.current;
         if (bookInstance && isEpubReadyForJumping && typeof bookInstance.locations.cfiFromPage === 'function' && pageNum !== epubCurrentPageNum) {
-            const cfi = bookInstance.locations.cfiFromPage(pageNum - 1);
+            const cfi = bookInstance.locations.cfiFromPage(pageNum - 1); // Page num is 1-based, cfi from page is 0-based index
             if (cfi && epubRenditionRef.current) {
                 stopSpeech(true);
                 epubRenditionRef.current.display(cfi);
