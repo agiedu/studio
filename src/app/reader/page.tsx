@@ -576,7 +576,7 @@ const renderedTextWithAnnotations = useMemo(() => {
                       }
                       
                       // Update page number only if pagination is ready
-                      if (isEpubReadyForJumping) {
+                      if (isEpubReadyForJumping && typeof epubBookRef.current.locations.pageFromCfi === 'function') {
                           const bookInstance = epubBookRef.current;
                           const currentPage = bookInstance.locations.pageFromCfi(location.start.cfi);
                           setEpubCurrentPageNum(currentPage > 0 ? currentPage : 1);
@@ -1324,7 +1324,7 @@ const renderedTextWithAnnotations = useMemo(() => {
     } else if (type === 'epub') {
         const bookInstance = epubBookRef.current;
         if (bookInstance && epubRenditionRef.current && isEpubReadyForJumping && pageNum !== epubCurrentPageNum) {
-            const cfi = bookInstance.locations.cfiFromPage(pageNum - 1);
+            const cfi = bookInstance.locations[pageNum - 1];
             if (cfi) {
                 stopSpeech(true);
                 epubRenditionRef.current.display(cfi);
