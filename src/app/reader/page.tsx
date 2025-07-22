@@ -537,9 +537,12 @@ const renderedTextWithAnnotations = useMemo(() => {
                   const rendition = book.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
                   epubRenditionRef.current = rendition;
 
+                  // This function now robustly handles pagination and unlocks jumping.
                   const generateEpubPagination = async (b: Book) => {
                       if (!isMountedRef.current || isStale) return;
                       try {
+                          await b.ready;
+                          if (isStale || !isMountedRef.current) return;
                           await b.locations.generate(1650);
                           if (isStale || !isMountedRef.current) return;
                           
@@ -552,28 +555,29 @@ const renderedTextWithAnnotations = useMemo(() => {
                           } else {
                             setEpubCurrentPageNum(1);
                           }
-
-                          setIsEpubReadyForJumping(true); // Unlock jumping
+                          // Only unlock jumping after pagination is fully complete.
+                          setIsEpubReadyForJumping(true); 
                       } catch (e: any) {
                           if (isStale) return;
                           console.error("EPUB pagination failed:", e.message);
                           setEpubTotalPages(0);
-                          setIsEpubReadyForJumping(false); // Keep jumping locked on failure
+                          setIsEpubReadyForJumping(false); 
                       } finally {
                           if (isMountedRef.current) setIsEpubPaginating(false);
                       }
                   };
-                  
+
                   rendition.on('relocated', (location: any) => {
-                      if (!isMountedRef.current || isEpubPaginating || !epubBookRef.current?.locations) return;
+                      if (!isMountedRef.current || !epubBookRef.current?.locations) return;
                       
                       const currentDocId = (activeDoc as ActiveMangaDocument | null)?.id;
                       if (currentDocId) {
                           LocalStorageService.saveCurrentEpubCfiForDoc(currentDocId, location.start.cfi);
                       }
                       
-                      const bookInstance = epubBookRef.current;
-                      if (isEpubReadyForJumping && typeof bookInstance.locations.pageFromCfi === 'function') {
+                      // Update page number only if pagination is ready
+                      if (isEpubReadyForJumping) {
+                          const bookInstance = epubBookRef.current;
                           const currentPage = bookInstance.locations.pageFromCfi(location.start.cfi);
                           setEpubCurrentPageNum(currentPage > 0 ? currentPage : 1);
                       }
@@ -581,18 +585,10 @@ const renderedTextWithAnnotations = useMemo(() => {
                       processEpubView(epubRenditionRef.current?.getContents()?.[0]);
                   });
 
-                  rendition.on('rendered', (section: any, view: any) => {
-                      if (!isMountedRef.current || isStale) return;
-                      // Only generate pagination once, on first render
-                      if (epubBookRef.current && !epubBookRef.current.locations.length() && !isEpubReadyForJumping) {
-                        generateEpubPagination(epubBookRef.current);
-                      }
-                      processEpubView(view);
-                  });
-                  
-                  await book.ready;
-                  if(isStale) return;
+                  // Start pagination as soon as the book is ready
+                  generateEpubPagination(book);
 
+                  // Display the last known location
                   const lastLocation = LocalStorageService.loadCurrentEpubCfiForDoc(doc.id); 
                   await rendition.display(lastLocation || undefined);
 
@@ -1294,7 +1290,7 @@ const renderedTextWithAnnotations = useMemo(() => {
   const openJumpDialog = (type: 'pdf' | 'epub', currentPage: number, totalPages: number) => {
     if (type === 'pdf' && totalPages <= 0) return;
     if (type === 'epub' && !isEpubReadyForJumping) {
-      toast({ variant: "default", title: "EPUB Info", description: "This book does not support jumping to a specific page." });
+      toast({ variant: "default", title: "EPUB Info", description: "Pagination is still calculating. Please try again shortly." });
       return;
     }
     
@@ -1327,11 +1323,14 @@ const renderedTextWithAnnotations = useMemo(() => {
         }
     } else if (type === 'epub') {
         const bookInstance = epubBookRef.current;
-        if (bookInstance && isEpubReadyForJumping && typeof bookInstance.locations.cfiFromPage === 'function' && pageNum !== epubCurrentPageNum) {
-            const cfi = bookInstance.locations.cfiFromPage(pageNum - 1); // Page num is 1-based, cfi from page is 0-based index
-            if (cfi && epubRenditionRef.current) {
+        if (bookInstance && epubRenditionRef.current && isEpubReadyForJumping && pageNum !== epubCurrentPageNum) {
+            // This is the more robust, percentage-based navigation method
+            const percentage = bookInstance.locations.percentageFromPage(pageNum);
+            if (typeof percentage === 'number') {
                 stopSpeech(true);
-                epubRenditionRef.current.display(cfi);
+                epubRenditionRef.current.display(percentage);
+            } else {
+                 toast({ variant: "destructive", title: "Jump Failed", description: "Could not find the location for the specified page." });
             }
         }
     }
