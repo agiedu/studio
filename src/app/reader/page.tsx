@@ -1222,19 +1222,27 @@ const renderedTextWithAnnotations = useMemo(() => {
   };
 
   const navigateEpub = async (direction: 'prev' | 'next') => {
-    if (!epubRenditionRef.current || isEpubLoading || isEpubPaginating) return;
+    const rendition = epubRenditionRef.current;
+    const book = epubBookRef.current;
+    if (!rendition || !book || !book.locations || isEpubLoading || isEpubPaginating) return;
     stopSpeech(true);
+
     try {
-      if (direction === 'prev') {
-        await epubRenditionRef.current.prev();
-      } else {
-        await epubRenditionRef.current.next();
-      }
+        if (direction === 'prev') {
+            await rendition.prev();
+        } else {
+            await rendition.next();
+        }
+        // After navigation, get the new location and update the page number state
+        const newLocation = rendition.location;
+        const percentage = book.locations.percentageFromCfi(newLocation.start.cfi);
+        const newPageNum = Math.ceil(percentage * book.locations.length());
+        setEpubCurrentPageNum(newPageNum > 0 ? newPageNum : 1);
     } catch (error) {
         console.warn(`[EPUB Nav] Error during rendition.${direction}():`, error);
         toast({ variant: "destructive", title: "EPUB Navigation Error", description: `Failed to turn page.` });
     }
-  };
+};
 
   const handleSwitchToScratchpad = async () => {
     stopSpeech(true);
@@ -1311,18 +1319,18 @@ const renderedTextWithAnnotations = useMemo(() => {
         setCurrentPdfPageNum(pageNum);
       }
     } else if (type === 'epub') {
-      const bookInstance = epubBookRef.current;
-      if (bookInstance && epubRenditionRef.current && isEpubReadyForJumping && pageNum !== epubCurrentPageNum) {
-        // This is the more robust, percentage-based navigation method
-        const percentage = (pageNum - 1) / totalPages;
-        if (typeof percentage === 'number') {
-            stopSpeech(true);
-            epubRenditionRef.current.display(percentage);
-            setEpubCurrentPageNum(pageNum);
-        } else {
-             toast({ variant: "destructive", title: "Jump Failed", description: "Could not find the location for the specified page." });
+        const bookInstance = epubBookRef.current;
+        if (bookInstance && epubRenditionRef.current && isEpubReadyForJumping && pageNum !== epubCurrentPageNum) {
+            // This is the more robust, percentage-based navigation method
+            const percentage = (pageNum - 1) / totalPages;
+            if (typeof percentage === 'number') {
+                stopSpeech(true);
+                epubRenditionRef.current.display(percentage);
+                setEpubCurrentPageNum(pageNum);
+            } else {
+                 toast({ variant: "destructive", title: "Jump Failed", description: "Could not find the location for the specified page." });
+            }
         }
-      }
     }
     handleCancelJump();
   };
