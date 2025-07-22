@@ -1324,11 +1324,10 @@ const renderedTextWithAnnotations = useMemo(() => {
     } else if (type === 'epub') {
         const bookInstance = epubBookRef.current;
         if (bookInstance && epubRenditionRef.current && isEpubReadyForJumping && pageNum !== epubCurrentPageNum) {
-            // This is the more robust, percentage-based navigation method
-            const percentage = bookInstance.locations.percentageFromPage(pageNum);
-            if (typeof percentage === 'number') {
+            const cfi = bookInstance.locations.cfiFromPage(pageNum - 1);
+            if (cfi) {
                 stopSpeech(true);
-                epubRenditionRef.current.display(percentage);
+                epubRenditionRef.current.display(cfi);
             } else {
                  toast({ variant: "destructive", title: "Jump Failed", description: "Could not find the location for the specified page." });
             }
