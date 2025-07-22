@@ -559,17 +559,18 @@ const renderedTextWithAnnotations = useMemo(() => {
                   };
 
                   rendition.on('relocated', (location: any) => {
-                      if (!isMountedRef.current || !epubBookRef.current?.locations || !epubBookRef.current.navigation || !isEpubReadyForJumping) return;
+                      if (!isMountedRef.current || !epubBookRef.current?.locations || !epubBookRef.current.navigation) return;
                       
                       const currentDocId = (activeDoc as ActiveMangaDocument | null)?.id;
                       if (currentDocId) {
                           LocalStorageService.saveCurrentEpubCfiForDoc(currentDocId, location.start.cfi);
                       }
 
+                      // Update page number based on new location
                       if (epubBookRef.current.locations.length() > 0) {
-                          const bookInstance = epubBookRef.current;
-                          const percentage = bookInstance.locations.percentageFromCfi(location.start.cfi);
-                          const pageNum = Math.ceil(percentage * bookInstance.locations.length());
+                          const percentage = epubBookRef.current.locations.percentageFromCfi(location.start.cfi);
+                          const totalPages = epubBookRef.current.locations.length();
+                          const pageNum = Math.ceil(percentage * totalPages);
                           setEpubCurrentPageNum(pageNum > 0 ? pageNum : 1);
                       }
                       
@@ -1233,11 +1234,6 @@ const renderedTextWithAnnotations = useMemo(() => {
         } else {
             await rendition.next();
         }
-        // After navigation, get the new location and update the page number state
-        const newLocation = rendition.location;
-        const percentage = book.locations.percentageFromCfi(newLocation.start.cfi);
-        const newPageNum = Math.ceil(percentage * book.locations.length());
-        setEpubCurrentPageNum(newPageNum > 0 ? newPageNum : 1);
     } catch (error) {
         console.warn(`[EPUB Nav] Error during rendition.${direction}():`, error);
         toast({ variant: "destructive", title: "EPUB Navigation Error", description: `Failed to turn page.` });
@@ -1321,9 +1317,8 @@ const renderedTextWithAnnotations = useMemo(() => {
     } else if (type === 'epub') {
         const bookInstance = epubBookRef.current;
         if (bookInstance && epubRenditionRef.current && isEpubReadyForJumping && pageNum !== epubCurrentPageNum) {
-            // This is the more robust, percentage-based navigation method
             const percentage = (pageNum - 1) / totalPages;
-            if (typeof percentage === 'number') {
+            if (typeof percentage === 'number' && percentage >= 0 && percentage <= 1) {
                 stopSpeech(true);
                 epubRenditionRef.current.display(percentage);
                 setEpubCurrentPageNum(pageNum);
