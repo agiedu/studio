@@ -1556,7 +1556,7 @@ const renderedTextWithoutAnnotations = useMemo(() => {
   const showOcrButtonForImage = activeDoc?.type === 'image' && displayedImageSrc && !isLoadingDoc && !isPerformingOcr;
   const showOcrButtonForEpubPage = activeDoc?.type === 'epub' && epubPageIsImage && !isLoadingDoc && !isPerformingOcr;
 
-  const showViewControls = activeDoc?.type && ['pdf', 'image', 'epub', 'txt'].includes(activeDoc.type);
+  const showViewControls = !activeDoc || (activeDoc?.type && ['pdf', 'image', 'epub', 'txt'].includes(activeDoc.type));
   const groupedLocalVoices = groupVoicesByLanguage(availableVoices);
 
 
@@ -1594,15 +1594,15 @@ const renderedTextWithoutAnnotations = useMemo(() => {
                   }}
                 >
                   {!activeDoc && !isLoadingDoc && !docErrorMessage && (
-                     <div className="w-full h-full">
-                        <Textarea 
-                            ref={mainTextAreaRef}
-                            className="w-full h-full min-h-[200px] whitespace-pre-wrap select-text text-sm resize-none" 
-                            value={scratchpadText}
-                            onChange={(e) => setScratchpadText(e.target.value)}
-                            placeholder="Welcome to the Scratchpad! Type or paste your text here..."
-                        />
-                     </div>
+                    <div className="w-full h-full">
+                      <Textarea 
+                          ref={mainTextAreaRef}
+                          className="w-full h-full min-h-[200px] whitespace-pre-wrap select-text text-sm resize-none" 
+                          value={scratchpadText}
+                          onChange={(e) => setScratchpadText(e.target.value)}
+                          placeholder="Welcome to the Scratchpad! Type or paste your text here..."
+                      />
+                    </div>
                   )}
 
                   {activeDoc?.type === 'pdf' && isPdfTextView && (
@@ -1610,7 +1610,6 @@ const renderedTextWithoutAnnotations = useMemo(() => {
                         {renderedTextWithoutAnnotations}
                     </div>
                   )}
-
 
                   {activeDoc?.type === 'pdf' && !isPdfTextView && (
                       <div className="w-full text-center space-y-4">
@@ -2089,4 +2088,5 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
+
 
