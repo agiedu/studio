@@ -1606,7 +1606,7 @@ const renderedTextWithoutAnnotations = useMemo(() => {
                   )}
 
                   {activeDoc?.type === 'pdf' && isPdfTextView && (
-                    <div className="w-full h-full px-3 py-2 text-sm">
+                     <div className="w-full h-full px-3 py-2 text-sm">
                         {renderedTextWithoutAnnotations}
                     </div>
                   )}
@@ -1628,7 +1628,7 @@ const renderedTextWithoutAnnotations = useMemo(() => {
                   </div>
 
                   {activeDoc?.type === 'txt' && (
-                    <div className="w-full h-full px-3 py-2 text-sm max-h-[calc(100vh-24rem)] overflow-auto">
+                    <div className="w-full h-full px-3 py-2 text-sm">
                         {renderedTextWithoutAnnotations}
                     </div>
                   )}
@@ -2089,3 +2089,4 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
+
