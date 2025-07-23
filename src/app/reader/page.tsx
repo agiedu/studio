@@ -1586,10 +1586,10 @@ const renderedTextWithoutAnnotations = useMemo(() => {
                 )}
                 
                 <div 
-                  className="w-full h-full p-2 md:p-4 flex flex-col items-center justify-start"
+                  className="w-full h-full p-2 md:p-4 flex flex-col items-start justify-start"
                   style={{
                     transform: `scale(${viewScale})`,
-                    transformOrigin: 'top center',
+                    transformOrigin: 'top left',
                     transition: 'transform 0.2s ease-out'
                   }}
                 >
