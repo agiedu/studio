@@ -2100,5 +2100,3 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
-
-    

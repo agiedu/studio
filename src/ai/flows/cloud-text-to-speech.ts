@@ -1,3 +1,4 @@
+
 // src/ai/flows/cloud-text-to-speech.ts
 'use server';
 
@@ -28,7 +29,7 @@ export async function cloudTTS(input: CloudTTSInput): Promise<CloudTTSOutput> {
 }
 
 const API_BASE_URL = 'https://yu.yayaxueyu.dpdns.org'; // Based on the user-referenced project
-const PUNCTUATION_REGEX = /[.,?!,。？！，、\n]/g;
+const PUNCTUATION_REGEX = /[.,?!,。？！，、\n\r"“„”'‘’`*_{}\[\]()#&@:;~<>/\\|\-—–^%$]/g;
 
 const cloudTTSFlow = ai.defineFlow(
   {
