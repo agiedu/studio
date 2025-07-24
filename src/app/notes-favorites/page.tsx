@@ -203,7 +203,7 @@ function NotesFavoritesPageContent() {
                       newSettings.language = defaultLocale;
                       newSettings.cloudVoiceId = edgeTTSLanguageVoices[defaultLocale].voices[0].id;
                   } else if (!newSettings.cloudVoiceId?.startsWith(currentLang)) {
-                      newSettings.cloudVoiceId = cloudLangData.voices[0].id;
+                      newSettings.cloudVoiceId = langVoices[0].id;
                   }
               } else if (value === 'local') {
                   const currentVoice = availableVoices.find(v => v.voiceURI === newSettings.voiceURI);
@@ -347,144 +347,145 @@ function NotesFavoritesPageContent() {
 
 
   return (
-    <div className="container mx-auto p-4 md:p-6 space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><NotebookText className="text-primary" /> My Note Favorites</CardTitle>
-          <CardDescription>Your saved annotations. Click to review, play or delete.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="mb-6 p-4 border rounded-md bg-muted/20">
-              <div className="mb-4">
-                    <Label className="font-medium text-sm">Playback Mode</Label>
-                    <RadioGroup
-                      value={playbackMode}
-                      onValueChange={(v) => {
-                        setPlaybackMode(v as 'default' | 'loop-single' | 'sequential');
-                      }}
-                      className="flex items-center gap-4 mt-2"
-                      disabled={isPlaying}
-                    >
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="default" id="mode-default" />
-                        <Label htmlFor="mode-default" className="flex items-center gap-1 cursor-pointer"><Play className="h-4 w-4"/>Default</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="loop-single" id="mode-loop" />
-                        <Label htmlFor="mode-loop" className="flex items-center gap-1 cursor-pointer"><Repeat1 className="h-4 w-4"/>Loop Single</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="sequential" id="mode-sequential" />
-                        <Label htmlFor="mode-sequential" className="flex items-center gap-1 cursor-pointer"><ListOrdered className="h-4 w-4"/>Sequential</Label>
-                      </div>
-                    </RadioGroup>
-                </div>
-                <div className="flex items-center justify-center gap-4 my-4 p-2 rounded-lg bg-muted/50">
-                    <Button variant="ghost" size="icon" onClick={previous} disabled={!hasPrevious() || isLoading}><SkipBack className="h-5 w-5"/></Button>
-                    <Button variant="ghost" size="icon" onClick={handleGlobalPlayPause} disabled={isLoading || favoriteNotes.length === 0}>
-                    {isLoading ? <Loader2 className="h-6 w-6 animate-spin"/> : isPlaying && !isPaused ? <Pause className="h-6 w-6"/> : <Play className="h-6 w-6"/>}
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={next} disabled={!hasNext() || isLoading}><SkipForward className="h-5 w-5"/></Button>
-                </div>
-              <Separator className="my-6" />
-              {renderTtsPanel('original', 'Original Text TTS Settings', originalTextTtsSettings)}
-              <Separator className="my-6" />
-              {renderTtsPanel('note', 'Your Note TTS Settings', yourNoteTtsSettings)}
-          </div>
-
-          {favoriteNotes.length === 0 ? (
-            <p className="text-muted-foreground flex items-center gap-2"><Info className="h-5 w-5" /> Your note favorites list is empty. In the reader, select text, add a note, and then save it to favorites.</p>
-          ) : (
-            <ul className="space-y-4">
-              {favoriteNotes.map(item => {
-                const isCurrentlyPlayingThisItem = currentItem?.item.id === item.id;
-                let buttonIcon = <Play className="mr-1.5 h-4 w-4" />;
-                let buttonText = "Play";
-                if (isCurrentlyPlayingThisItem) {
-                    if (isLoading) {
-                        buttonIcon = <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />;
-                        buttonText = "Loading...";
-                    } else if (isPaused) {
-                        buttonIcon = <Play className="mr-1.5 h-4 w-4" />;
-                        buttonText = "Resume";
-                    } else {
-                        buttonIcon = <Pause className="mr-1.5 h-4 w-4" />;
-                        buttonText = "Pause";
-                    }
-                }
-                const hasContentToPlay = item.annotation.targetText || item.annotation.note;
-
-                const isHighlightingTarget = isCurrentlyPlayingThisItem && currentItem?.part === 'original';
-                const isHighlightingNote = isCurrentlyPlayingThisItem && currentItem?.part === 'note';
-
-                return (
-                  <li key={item.id} className="p-4 border rounded-md flex flex-col justify-between gap-4 bg-card hover:shadow-md transition-shadow">
-                    <div className="flex-grow space-y-3 w-full">
-                        <div className="p-3 bg-muted/50 rounded-md">
-                            <p className="text-xs text-muted-foreground mb-1">Original Text:</p>
-                            <p className={cn("text-sm italic", !item.annotation.targetText && "text-muted-foreground")}>
-                              <HighlightableText
-                                text={item.annotation.targetText || ''}
-                                isSpeaking={isHighlightingTarget}
-                                highlightedText={currentText}
-                              />
-                            </p>
+    <>
+      <div className="container mx-auto p-4 md:p-6 space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><NotebookText className="text-primary" /> My Note Favorites</CardTitle>
+            <CardDescription>Your saved annotations. Click to review, play or delete.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="mb-6 p-4 border rounded-md bg-muted/20">
+                <div className="mb-4">
+                      <Label className="font-medium text-sm">Playback Mode</Label>
+                      <RadioGroup
+                        value={playbackMode}
+                        onValueChange={(v) => {
+                          setPlaybackMode(v as 'default' | 'loop-single' | 'sequential');
+                        }}
+                        className="flex items-center gap-4 mt-2"
+                        disabled={isPlaying}
+                      >
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="default" id="mode-default" />
+                          <Label htmlFor="mode-default" className="flex items-center gap-1 cursor-pointer"><Play className="h-4 w-4"/>Default</Label>
                         </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="loop-single" id="mode-loop" />
+                          <Label htmlFor="mode-loop" className="flex items-center gap-1 cursor-pointer"><Repeat1 className="h-4 w-4"/>Loop Single</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="sequential" id="mode-sequential" />
+                          <Label htmlFor="mode-sequential" className="flex items-center gap-1 cursor-pointer"><ListOrdered className="h-4 w-4"/>Sequential</Label>
+                        </div>
+                      </RadioGroup>
+                  </div>
+                  <div className="flex items-center justify-center gap-4 my-4 p-2 rounded-lg bg-muted/50">
+                      <Button variant="ghost" size="icon" onClick={previous} disabled={!hasPrevious() || isLoading}><SkipBack className="h-5 w-5"/></Button>
+                      <Button variant="ghost" size="icon" onClick={handleGlobalPlayPause} disabled={isLoading || favoriteNotes.length === 0}>
+                      {isLoading ? <Loader2 className="h-6 w-6 animate-spin"/> : isPlaying && !isPaused ? <Pause className="h-6 w-6"/> : <Play className="h-6 w-6"/>}
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={next} disabled={!hasNext() || isLoading}><SkipForward className="h-5 w-5"/></Button>
+                  </div>
+                <Separator className="my-6" />
+                {renderTtsPanel('original', 'Original Text TTS Settings', originalTextTtsSettings)}
+                <Separator className="my-6" />
+                {renderTtsPanel('note', 'Your Note TTS Settings', yourNoteTtsSettings)}
+            </div>
 
-                        <div className="p-3 bg-background rounded-md border">
-                             <p className="text-xs text-muted-foreground mb-1">Your Note:</p>
-                            <p className={cn("text-sm whitespace-pre-wrap", !item.annotation.note && "italic text-muted-foreground")}>
-                              <HighlightableText
-                                  text={item.annotation.note || ''}
-                                  isSpeaking={isHighlightingNote}
+            {favoriteNotes.length === 0 ? (
+              <p className="text-muted-foreground flex items-center gap-2"><Info className="h-5 w-5" /> Your note favorites list is empty. In the reader, select text, add a note, and then save it to favorites.</p>
+            ) : (
+              <ul className="space-y-4">
+                {favoriteNotes.map(item => {
+                  const isCurrentlyPlayingThisItem = currentItem?.item.id === item.id;
+                  let buttonIcon = <Play className="mr-1.5 h-4 w-4" />;
+                  let buttonText = "Play";
+                  if (isCurrentlyPlayingThisItem) {
+                      if (isLoading) {
+                          buttonIcon = <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />;
+                          buttonText = "Loading...";
+                      } else if (isPaused) {
+                          buttonIcon = <Play className="mr-1.5 h-4 w-4" />;
+                          buttonText = "Resume";
+                      } else {
+                          buttonIcon = <Pause className="mr-1.5 h-4 w-4" />;
+                          buttonText = "Pause";
+                      }
+                  }
+                  const hasContentToPlay = item.annotation.targetText || item.annotation.note;
+
+                  const isHighlightingTarget = isCurrentlyPlayingThisItem && currentItem?.part === 'original';
+                  const isHighlightingNote = isCurrentlyPlayingThisItem && currentItem?.part === 'note';
+
+                  return (
+                    <li key={item.id} className="p-4 border rounded-md flex flex-col justify-between gap-4 bg-card hover:shadow-md transition-shadow">
+                      <div className="flex-grow space-y-3 w-full">
+                          <div className="p-3 bg-muted/50 rounded-md">
+                              <p className="text-xs text-muted-foreground mb-1">Original Text:</p>
+                              <p className={cn("text-sm italic", !item.annotation.targetText && "text-muted-foreground")}>
+                                <HighlightableText
+                                  text={item.annotation.targetText || ''}
+                                  isSpeaking={isHighlightingTarget}
                                   highlightedText={currentText}
                                 />
-                            </p>
-                        </div>
-                      
-                        {item.annotation.imageDataUrl && (
-                            <div className="p-2 border rounded-md">
-                                <p className="text-xs text-muted-foreground mb-2">Attached Image:</p>
-                                <div className="relative w-full max-w-xs">
-                                     <NextImage src={item.annotation.imageDataUrl} alt="Annotation attachment" width={300} height={200} className="rounded-md object-contain" />
-                                </div>
-                            </div>
-                        </div>
-                        )}
-                    </div>
-                    <div className="flex flex-col sm:flex-row gap-2 sm:items-center justify-between pt-3 border-t">
-                         <p className="text-xs text-muted-foreground">
-                          {item.sourceDocumentName && <span className="flex items-center gap-1"><FileText className="h-3 w-3"/> From: {item.sourceDocumentName} | </span>}
-                          Favorited: {format(new Date(item.favoritedAt), "MMM d, yyyy HH:mm")}
-                        </p>
-                        <div className="flex gap-2 self-end sm:self-center">
-                          <Button 
-                            size="sm" 
-                            variant={isCurrentlyPlayingThisItem && !isPaused ? "outline" : "default"}
-                            onClick={() => handlePlayPauseNote(item)} 
-                            disabled={(isLoading && !isCurrentlyPlayingThisItem) || !hasContentToPlay}
-                            className="w-[100px]"
-                            title={hasContentToPlay ? "Play/Pause Note" : "No text in note to play"}
-                            >
-                            {buttonIcon} {buttonText}
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={() => setNoteToDelete(item)} aria-label="Delete Note Favorite" disabled={isLoading && isCurrentlyPlayingThisItem}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
+                              </p>
+                          </div>
+
+                          <div className="p-3 bg-background rounded-md border">
+                               <p className="text-xs text-muted-foreground mb-1">Your Note:</p>
+                              <p className={cn("text-sm whitespace-pre-wrap", !item.annotation.note && "italic text-muted-foreground")}>
+                                <HighlightableText
+                                    text={item.annotation.note || ''}
+                                    isSpeaking={isHighlightingNote}
+                                    highlightedText={currentText}
+                                  />
+                              </p>
+                          </div>
+                        
+                          {item.annotation.imageDataUrl && (
+                              <div className="p-2 border rounded-md">
+                                  <p className="text-xs text-muted-foreground mb-2">Attached Image:</p>
+                                  <div className="relative w-full max-w-xs">
+                                       <NextImage src={item.annotation.imageDataUrl} alt="Annotation attachment" width={300} height={200} className="rounded-md object-contain" />
+                                  </div>
+                              </div>
+                          )}
                       </div>
-                  </li>
-                )
-              })}
-            </ul>
+                      <div className="flex flex-col sm:flex-row gap-2 sm:items-center justify-between pt-3 border-t">
+                           <p className="text-xs text-muted-foreground">
+                            {item.sourceDocumentName && <span className="flex items-center gap-1"><FileText className="h-3 w-3"/> From: {item.sourceDocumentName} | </span>}
+                            Favorited: {format(new Date(item.favoritedAt), "MMM d, yyyy HH:mm")}
+                          </p>
+                          <div className="flex gap-2 self-end sm:self-center">
+                            <Button 
+                              size="sm" 
+                              variant={isCurrentlyPlayingThisItem && !isPaused ? "outline" : "default"}
+                              onClick={() => handlePlayPauseNote(item)} 
+                              disabled={(isLoading && !isCurrentlyPlayingThisItem) || !hasContentToPlay}
+                              className="w-[100px]"
+                              title={hasContentToPlay ? "Play/Pause Note" : "No text in note to play"}
+                              >
+                              {buttonIcon} {buttonText}
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => setNoteToDelete(item)} aria-label="Delete Note Favorite" disabled={isLoading && isCurrentlyPlayingThisItem}>
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </CardContent>
+          {favoriteNotes.length > 0 && (
+            <CardFooter>
+              <p className="text-xs text-muted-foreground">Your note favorites are stored in your browser's local storage.</p>
+            </CardFooter>
           )}
-        </CardContent>
-        {favoriteNotes.length > 0 && (
-          <CardFooter>
-            <p className="text-xs text-muted-foreground">Your note favorites are stored in your browser's local storage.</p>
-          </CardFooter>
-        )}
-      </Card>
+        </Card>
+      </div>
       
       <AlertDialog open={!!noteToDelete} onOpenChange={(isOpen) => !isOpen && setNoteToDelete(null)}>
         <AlertDialogContent>
@@ -500,7 +501,7 @@ function NotesFavoritesPageContent() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </>
   );
 }
 
