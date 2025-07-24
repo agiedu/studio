@@ -192,8 +192,6 @@ function ReaderPageContent() {
     const allAnnotations = activeDoc ? activeDoc.annotations || [] : scratchpadAnnotations;
     if (!currentTextForTTS) return [];
 
-    // Filter annotations based on whether their target text is present in the current view.
-    // This is more robust than page numbers for flowing content like EPUB or long text views.
     return allAnnotations
         .filter(ann => ann.targetText && currentTextForTTS.includes(ann.targetText))
         .sort((a, b) => a.startIndex - b.startIndex);
