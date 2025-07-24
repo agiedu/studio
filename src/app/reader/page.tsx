@@ -189,38 +189,15 @@ function ReaderPageContent() {
   
   
   const sortedAnnotations = useMemo(() => {
-    if (!activeDoc || !activeDoc.annotations) {
-      // Handle scratchpad annotations
-      return scratchpadAnnotations.sort((a, b) => a.startIndex - b.startIndex);
-    }
-  
-    // PDF LOGIC (DIFFERENTIATED)
-    if (activeDoc.type === 'pdf') {
-        // In IMAGE view, filter by page number
-        if (!isPdfTextView) {
-            return activeDoc.annotations
-                .filter(ann => ann.pageNumber === currentPdfPageNum)
-                .sort((a, b) => a.startIndex - b.startIndex);
-        }
-        // In TEXT view, filter by checking if the *single page's text* includes the annotation text.
-        // This is a proxy for page number filtering when the entire text is loaded.
-        // We'll need to improve this if text view shows all pages at once. For now, assuming it shows one logical page's text.
-        return activeDoc.annotations
-                .filter(ann => ann.pageNumber === currentPdfPageNum)
-                .sort((a, b) => a.startIndex - b.startIndex);
-    }
-  
-    // EPUB & OTHERS LOGIC: Filter by checking if the current visible text includes the annotation's target text.
-    // This is more reliable for reflowing content like EPUB where page numbers are not fixed.
-    if (currentTextForTTS && (activeDoc.type === 'epub' || activeDoc.type === 'txt' || activeDoc.type === 'image')) {
-      return activeDoc.annotations
+    const allAnnotations = activeDoc ? activeDoc.annotations || [] : scratchpadAnnotations;
+    
+    // Filter annotations based on whether their target text is present in the current view.
+    // This is more robust than page numbers for flowing content like EPUB or long text views.
+    return allAnnotations
         .filter(ann => ann.targetText && currentTextForTTS.includes(ann.targetText))
         .sort((a, b) => a.startIndex - b.startIndex);
-    }
-  
-    // Default fallback
-    return [];
-  }, [activeDoc, scratchpadAnnotations, currentTextForTTS, currentPdfPageNum, isPdfTextView]);
+
+}, [activeDoc, scratchpadAnnotations, currentTextForTTS]);
 
 
 const getCharPosition = (container: HTMLElement, charIndex: number): { top: number, left: number } | null => {
@@ -285,57 +262,72 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
 };
 
 
-const renderedTextWithAnnotations = useMemo(() => {
+const renderedTextWithoutAnnotations = useMemo(() => {
   const text = currentTextForTTS;
   if (!text) return null;
   
   const pageKey = activeDoc ? `${activeDoc.id}-${activeDoc.type === 'pdf' ? currentPdfPageNum : epubCurrentPageNum}` : 'scratchpad';
 
-  const renderContent = (ref: React.RefObject<HTMLDivElement>, isInteractive: boolean) => (
-    <div key={pageKey} ref={ref} className="relative w-full h-full">
-      <div className={cn("w-full h-full whitespace-pre-wrap", isInteractive && "select-text")}>
+  return (
+    <div key={pageKey} ref={mainHighlightedContentRef} className="relative w-full h-full">
+      <div className="w-full h-full whitespace-pre-wrap select-text">
         {text}
       </div>
-      {isInteractive && <AnnotationMarkers containerRef={ref} annotations={sortedAnnotations} text={text} />}
     </div>
   );
-  
-  return renderContent(mainHighlightedContentRef, true);
 
-}, [currentTextForTTS, sortedAnnotations, activeDoc, currentPdfPageNum, epubCurrentPageNum]);
-
-const renderedTextWithoutAnnotations = useMemo(() => {
-    const text = currentTextForTTS;
-    if (!text) return null;
-    const pageKey = activeDoc ? `${activeDoc.id}-${activeDoc.type === 'pdf' ? currentPdfPageNum : epubCurrentPageNum}` : 'scratchpad';
-    return (
-        <div key={pageKey} ref={mainHighlightedContentRef} className="relative w-full h-full">
-            <div className="w-full h-full whitespace-pre-wrap select-text">
-                {text}
-            </div>
-        </div>
-    );
 }, [currentTextForTTS, activeDoc, currentPdfPageNum, epubCurrentPageNum]);
 
 
-  const speakingViewContent = useMemo(() => {
-    if (!isSpeaking && !isPaused) return renderedTextWithAnnotations;
-    if (highlightedSegmentIndex < 0 || !textSegments[highlightedSegmentIndex]) {
-      return renderedTextWithAnnotations;
-    }
+const speakingViewContent = useMemo(() => {
+    const textToRender = currentTextForTTS;
+    if (!textToRender) return null;
 
-    const preText = textSegments.slice(0, highlightedSegmentIndex).join('');
-    const highlightedText = textSegments[highlightedSegmentIndex];
-    const postText = textSegments.slice(highlightedSegmentIndex + 1).join('');
+    let content;
+    if (isSpeaking || isPaused) {
+        if (highlightedSegmentIndex < 0 || !textSegments[highlightedSegmentIndex]) {
+            content = <>{textToRender}</>;
+        } else {
+            const preText = textSegments.slice(0, highlightedSegmentIndex).join('');
+            const highlightedText = textSegments[highlightedSegmentIndex];
+            const postText = textSegments.slice(highlightedSegmentIndex + 1).join('');
+            content = (
+                <>
+                    {preText}
+                    <span className="text-primary">{highlightedText}</span>
+                    {postText}
+                </>
+            );
+        }
+    } else {
+        content = <>{textToRender}</>;
+    }
+    
+    return (
+        <div className="whitespace-pre-wrap">
+            {content}
+        </div>
+    );
+}, [isSpeaking, isPaused, highlightedSegmentIndex, textSegments, currentTextForTTS]);
+
+
+const ttsTextWithAnnotations = useMemo(() => {
+    const text = currentTextForTTS;
+    if (!text) return null;
+
+    const pageKey = activeDoc ? `tts-${activeDoc.id}-${activeDoc.type === 'pdf' ? currentPdfPageNum : epubCurrentPageNum}` : 'tts-scratchpad';
 
     return (
-      <div className="whitespace-pre-wrap">
-        {preText}
-        <span className="text-primary">{highlightedText}</span>
-        {postText}
-      </div>
+        <div key={pageKey} ref={ttsBoxHighlightedContentRef} className="relative w-full h-full">
+            <div className={cn("w-full h-full whitespace-pre-wrap select-text")}>
+               {isSpeaking || isPaused ? speakingViewContent : text}
+            </div>
+            {/* Markers are only rendered in the TTS box */}
+            <AnnotationMarkers containerRef={ttsBoxHighlightedContentRef} annotations={sortedAnnotations} text={text} />
+        </div>
     );
-  }, [isSpeaking, isPaused, highlightedSegmentIndex, textSegments, renderedTextWithAnnotations]);
+}, [currentTextForTTS, sortedAnnotations, activeDoc, currentPdfPageNum, epubCurrentPageNum, speakingViewContent, isSpeaking, isPaused]);
+
 
 
   const getSelectedText = useCallback((): { text: string; startIndex: number | null } => {
@@ -1627,7 +1619,7 @@ const renderedTextWithoutAnnotations = useMemo(() => {
 
                   {activeDoc?.type === 'pdf' && isPdfTextView && (
                      <div className="w-full h-full px-3 py-2 text-sm">
-                        {renderedTextWithAnnotations}
+                        {renderedTextWithoutAnnotations}
                     </div>
                   )}
 
@@ -1648,7 +1640,7 @@ const renderedTextWithoutAnnotations = useMemo(() => {
 
                   {activeDoc?.type === 'txt' && (
                     <div className="w-full h-full px-3 py-2 text-sm">
-                        {renderedTextWithAnnotations}
+                        {renderedTextWithoutAnnotations}
                     </div>
                   )}
 
@@ -1725,8 +1717,8 @@ const renderedTextWithoutAnnotations = useMemo(() => {
                       </div>
                   </CardHeader>
                   <CardContent className="pt-0">
-                      <div ref={ttsBoxHighlightedContentRef} className={cn("w-full px-3 py-2 border rounded-md bg-muted/30 overflow-y-auto whitespace-pre-wrap select-text transition-all duration-300 ease-in-out", isTtsAreaExpanded ? "h-64" : "h-20")} style={{ fontSize: `${ttsTextSize}px` }}>
-                        {isSpeaking || isPaused ? speakingViewContent : renderedTextWithAnnotations}
+                      <div className={cn("w-full px-3 py-2 border rounded-md bg-muted/30 overflow-y-auto whitespace-pre-wrap select-text transition-all duration-300 ease-in-out", isTtsAreaExpanded ? "h-64" : "h-20")} style={{ fontSize: `${ttsTextSize}px` }}>
+                        {ttsTextWithAnnotations}
                       </div>
                   </CardContent>
               </Card>

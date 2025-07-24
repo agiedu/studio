@@ -7,7 +7,7 @@ import { getCloudSpeech } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
 
 const PUNCTUATION_REGEX_FOR_SPLIT = /([.,?!,。？！，、\n\r]+)/g;
-const PUNCTUATION_REGEX_FOR_CLEANUP = /[.,?!,。？！，、\n\r"“„”'‘’`*_{}\[\]()#&@:;~<>/\\|\-—–^%$]/g;
+const PUNCTUATION_REGEX = /[.,?!,。？！，、\n\r"“„”'‘’`*_{}\[\]()#&@:;~<>/\\|\-—–^%$]/g;
 
 type PlayableItem =
   | { type: 'favorite'; item: FavoriteItem }
@@ -164,7 +164,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (isMountedRef.current) setIsLoading(true);
     
     const segmentText = segments[segmentIndexRef.current];
-    const cleanedText = segmentText.replace(PUNCTUATION_REGEX_FOR_CLEANUP, ' ').trim();
+    const cleanedText = segmentText.replace(PUNCTUATION_REGEX, ' ').trim();
 
     if (isMountedRef.current) {
       setCurrentText(cleanedText);
