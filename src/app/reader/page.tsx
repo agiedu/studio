@@ -207,7 +207,9 @@ const getCharPosition = (container: HTMLElement, charIndex: number): { top: numb
   let currentOffset = 0;
 
   while ((currentNode = walker.nextNode())) {
-      const nodeLength = currentNode.textContent?.length || 0;
+      const nodeText = currentNode.textContent || "";
+      const nodeLength = nodeText.length;
+      
       if (currentOffset + nodeLength >= charIndex) {
           range.setStart(currentNode, charIndex - currentOffset);
           const rect = range.getBoundingClientRect();
