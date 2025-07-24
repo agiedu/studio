@@ -59,7 +59,7 @@ const HighlightableText: React.FC<{
     return (
         <>
         &quot;{preText}
-        <span className="text-green-600 font-semibold">{highlightedText}</span>
+        <span className="text-green-600">{highlightedText}</span>
         {postText}&quot;
         </>
     );

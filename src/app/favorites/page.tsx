@@ -394,7 +394,7 @@ function FavoritesPageContent() {
                       <div className="flex-grow">
                         <p className="text-sm mb-1 whitespace-pre-wrap">
                           {isCurrentlyPlaying && currentText ? 
-                            <span className="text-green-600 font-semibold">{`“${currentText}”`}</span>
+                            <span className="text-green-600">{`“${currentText}”`}</span>
                             : 
                             `"${item.text}"`
                           }
