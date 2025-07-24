@@ -393,9 +393,9 @@ function FavoritesPageContent() {
                     <li key={item.id} className="p-3 border rounded-md flex flex-col sm:flex-row justify-between items-start gap-2 bg-card hover:shadow-md transition-shadow">
                       <div className="flex-grow">
                         <p className="text-sm mb-1 whitespace-pre-wrap">
-                          {isCurrentlyPlaying && currentText ?
-                            <span className="text-primary">`{currentText}`</span>
-                            :
+                          {isCurrentlyPlaying && currentText ? 
+                            <span className="text-green-600 font-semibold">{`“${currentText}”`}</span>
+                            : 
                             `"${item.text}"`
                           }
                         </p>

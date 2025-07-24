@@ -59,7 +59,7 @@ const HighlightableText: React.FC<{
     return (
         <>
         &quot;{preText}
-        <span className="text-primary">{highlightedText}</span>
+        <span className="text-green-600 font-semibold">{highlightedText}</span>
         {postText}&quot;
         </>
     );
@@ -203,7 +203,7 @@ function NotesFavoritesPageContent() {
                       newSettings.language = defaultLocale;
                       newSettings.cloudVoiceId = edgeTTSLanguageVoices[defaultLocale].voices[0].id;
                   } else if (!newSettings.cloudVoiceId?.startsWith(currentLang)) {
-                      newSettings.cloudVoiceId = langVoices[0].id;
+                      newSettings.cloudVoiceId = cloudLangData.voices[0].id;
                   }
               } else if (value === 'local') {
                   const currentVoice = availableVoices.find(v => v.voiceURI === newSettings.voiceURI);
