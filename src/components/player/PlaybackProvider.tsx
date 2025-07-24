@@ -245,8 +245,24 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   
   const play = useCallback((item: PlayableItem, newPlaylist: PlayableItem[], startIndex: number) => {
     if (!isMountedRef.current) return;
-
-    stop(false); 
+    
+    // Stop any existing playback without clearing the entire player state
+    isSpeakingRef.current = false;
+    speechQueueRef.current = [];
+    if (utteranceRef.current) {
+        utteranceRef.current.onend = null;
+        utteranceRef.current.onerror = null;
+    }
+    if (typeof window !== 'undefined') {
+        window.speechSynthesis.cancel();
+    }
+    if (audioPlayerRef.current) {
+        audioPlayerRef.current.pause();
+        if (audioPlayerRef.current.src) {
+            audioPlayerRef.current.src = "";
+        }
+    }
+    utteranceRef.current = null;
     
     isSpeakingRef.current = true;
     setCurrentItem(item);
