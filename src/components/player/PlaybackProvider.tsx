@@ -71,6 +71,9 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const isSpeakingRef = useRef(false);
   const isMountedRef = useRef(false);
 
+  const functionsRef = useRef<any>({});
+
+
   useEffect(() => {
     isMountedRef.current = true;
     return () => { isMountedRef.current = false; };
@@ -107,19 +110,139 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, []);
   
-  const speakNextSegment = useCallback(async () => {
-    // This function will be defined after onPlaybackEnd.
-  }, []);
-  
+
   const onPlaybackEnd = useCallback(() => {
-    // This function will be defined after play.
-  }, []);
+    if (!isSpeakingRef.current) return;
+  
+    if (playbackMode === 'loop-single' && currentItem) {
+        const currentPlaylist = playlist;
+        const currentIdx = currentIndex;
+        setTimeout(() => functionsRef.current.play(currentItem, currentPlaylist, currentIdx), 100);
+    } else if (playbackMode === 'sequential') {
+      const nextIndex = currentIndex + 1;
+      if (nextIndex < playlist.length) {
+        setTimeout(() => functionsRef.current.play(playlist[nextIndex], playlist, nextIndex), 100);
+      } else {
+        stop();
+      }
+    } else {
+      stop();
+    }
+  }, [currentIndex, playlist, playbackMode, stop, currentItem]);
+
+  const speakNextSegment = useCallback(async () => {
+    if (!isSpeakingRef.current || speechQueueRef.current.length === 0) {
+      if (isMountedRef.current) {
+        onPlaybackEnd();
+      }
+      return;
+    }
+
+    const currentPart = speechQueueRef.current[0];
+    const segments = (currentPart.text.split(PUNCTUATION_REGEX_FOR_SPLIT) || [currentPart.text]).filter(Boolean);
+    
+    if (segmentIndexRef.current >= segments.length) {
+      speechQueueRef.current.shift();
+      segmentIndexRef.current = 0;
+      if (speechQueueRef.current.length > 0) {
+        if (isMountedRef.current) {
+          setCurrentItem(prev => {
+            if (!prev) return null;
+            const nextPart = speechQueueRef.current[0];
+            return {...prev, part: nextPart.part};
+          });
+        }
+        speakNextSegment();
+      } else {
+         if (isMountedRef.current) {
+           onPlaybackEnd();
+         }
+      }
+      return;
+    }
+
+    if (isMountedRef.current) setIsLoading(true);
+    
+    const segmentText = segments[segmentIndexRef.current];
+    const cleanedText = segmentText.replace(PUNCTUATION_REGEX_FOR_CLEANUP, ' ').trim();
+
+    if (isMountedRef.current) {
+      setCurrentText(cleanedText);
+      if (currentItem?.type === 'note_favorite') {
+        setCurrentItem(prev => prev ? {...prev, part: currentPart.part} : null);
+      }
+    }
+
+    if (navigator.mediaSession && currentItem) {
+        let title = cleanedText || (currentItem.type === 'media_favorite' ? currentItem.item.name : 'Reading...');
+        
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: title,
+          artist: currentItem.item.sourceDocumentName || 'MangaTalk',
+          album: currentItem.type === 'favorite' ? 'Favorited Texts' : (currentItem.type === 'note_favorite' ? 'Favorited Notes' : 'Media Favorites'),
+        });
+    }
+
+    if (!cleanedText) {
+      segmentIndexRef.current++;
+      speakNextSegment();
+      return;
+    }
+    
+    if (currentPart.settings.engine === 'local') {
+      if (typeof window === 'undefined' || !window.speechSynthesis) {
+        toast({ variant: "destructive", title: "TTS Error", description: "Browser Speech Synthesis not supported." });
+        stop(); return;
+      }
+      const utterance = new SpeechSynthesisUtterance(cleanedText);
+      utterance.lang = currentPart.settings.language;
+      utterance.pitch = currentPart.settings.pitch;
+      utterance.rate = currentPart.settings.rate;
+      if (currentPart.settings.voiceURI) {
+        const voice = window.speechSynthesis.getVoices().find(v => v.voiceURI === currentPart.settings.voiceURI);
+        if (voice) utterance.voice = voice;
+      }
+      
+      utterance.onend = () => { 
+        if(utteranceRef.current === utterance && isSpeakingRef.current) { 
+          utteranceRef.current = null;
+          segmentIndexRef.current++;
+          speakNextSegment();
+        }
+      };
+      utterance.onerror = (event) => {
+          if(utteranceRef.current === utterance && event.error !== 'canceled' && event.error !== 'interrupted') {
+              console.error('SpeechSynthesis Error:', event);
+              toast({ variant: "destructive", title: "TTS Error", description: event.error || "Speech failed." });
+              stop();
+          }
+      };
+      utteranceRef.current = utterance;
+      if (isMountedRef.current) setIsLoading(false);
+      window.speechSynthesis.speak(utterance);
+    } else {
+      try {
+        const result = await getCloudSpeech(cleanedText, currentPart.settings.language, currentPart.settings.cloudVoiceId);
+        if (!isMountedRef.current || !isSpeakingRef.current) return;
+        if ('audioUrl' in result && audioPlayerRef.current) {
+          audioPlayerRef.current.src = result.audioUrl;
+          await audioPlayerRef.current.play();
+        } else if ('error' in result) {
+          toast({ variant: "destructive", title: "Cloud TTS Error", description: result.error });
+          stop();
+        }
+      } catch (error: any) {
+        if (!isMountedRef.current) return;
+        toast({ variant: "destructive", title: "Cloud TTS Failed", description: error.message });
+        stop();
+      }
+    }
+  }, [stop, toast, currentItem, onPlaybackEnd]);
 
 
   const play = useCallback((item: PlayableItem, newPlaylist: PlayableItem[], startIndex: number) => {
     if (!isMountedRef.current) return;
 
-    // Always stop previous playback before starting a new one
     stop(false); 
     
     isSpeakingRef.current = true;
@@ -149,147 +272,17 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [stop, originalTextTtsSettings, yourNoteTtsSettings, speakNextSegment]);
 
-  const onPlaybackEndCallback = useCallback(() => {
-    if (!isSpeakingRef.current) return;
-  
-    if (playbackMode === 'loop-single' && currentItem) {
-        const currentPlaylist = playlist;
-        const currentIdx = currentIndex;
-        setTimeout(() => play(currentItem, currentPlaylist, currentIdx), 100);
-    } else if (playbackMode === 'sequential') {
-      const nextIndex = currentIndex + 1;
-      if (nextIndex < playlist.length) {
-        setTimeout(() => play(playlist[nextIndex], playlist, nextIndex), 100);
-      } else {
-        stop();
-      }
-    } else {
-      stop();
-    }
-  }, [currentIndex, playlist, playbackMode, stop, currentItem, play]);
-
-  const speakNextSegmentCallback = useCallback(async () => {
-    if (!isSpeakingRef.current || speechQueueRef.current.length === 0) {
-      if (isMountedRef.current) {
-        onPlaybackEndCallback();
-      }
-      return;
-    }
-
-    const currentPart = speechQueueRef.current[0];
-    const segments = (currentPart.text.split(PUNCTUATION_REGEX_FOR_SPLIT) || [currentPart.text]).filter(Boolean);
-    
-    if (segmentIndexRef.current >= segments.length) {
-      speechQueueRef.current.shift();
-      segmentIndexRef.current = 0;
-      if (speechQueueRef.current.length > 0) {
-        if (isMountedRef.current && currentItem) {
-          setCurrentItem(prev => prev ? {...prev, part: currentPart.part} : null);
-        }
-        speakNextSegmentCallback();
-      } else {
-         if (isMountedRef.current) {
-           onPlaybackEndCallback();
-         }
-      }
-      return;
-    }
-
-    if (isMountedRef.current) setIsLoading(true);
-    
-    const segmentText = segments[segmentIndexRef.current];
-    const cleanedText = segmentText.replace(PUNCTUATION_REGEX_FOR_CLEANUP, ' ').trim();
-
-    if (isMountedRef.current) {
-      setCurrentText(cleanedText);
-      setCurrentItem(prev => prev ? {...prev, part: currentPart.part} : null);
-    }
-
-    if (navigator.mediaSession && currentItem) {
-        let title = '';
-        if (currentItem.type === 'media_favorite') {
-            title = currentItem.item.name;
-        } else {
-            title = cleanedText;
-        }
-
-        navigator.mediaSession.metadata = new MediaMetadata({
-          title: title,
-          artist: currentItem.item.sourceDocumentName || 'MangaTalk',
-          album: currentItem.type === 'favorite' ? 'Favorited Texts' : (currentItem.type === 'note_favorite' ? 'Favorited Notes' : 'Media Favorites'),
-        });
-    }
-
-    if (!cleanedText) {
-      segmentIndexRef.current++;
-      speakNextSegmentCallback();
-      return;
-    }
-    
-    if (currentPart.settings.engine === 'local') {
-      if (typeof window === 'undefined' || !window.speechSynthesis) {
-        toast({ variant: "destructive", title: "TTS Error", description: "Browser Speech Synthesis not supported." });
-        stop(); return;
-      }
-      const utterance = new SpeechSynthesisUtterance(cleanedText);
-      utterance.lang = currentPart.settings.language;
-      utterance.pitch = currentPart.settings.pitch;
-      utterance.rate = currentPart.settings.rate;
-      if (currentPart.settings.voiceURI) {
-        const voice = window.speechSynthesis.getVoices().find(v => v.voiceURI === currentPart.settings.voiceURI);
-        if (voice) utterance.voice = voice;
-      }
-      
-      utterance.onend = () => { 
-        if(utteranceRef.current === utterance && isSpeakingRef.current) { 
-          utteranceRef.current = null;
-          segmentIndexRef.current++;
-          speakNextSegmentCallback();
-        }
-      };
-      utterance.onerror = (event) => {
-          if(utteranceRef.current === utterance && event.error !== 'canceled') {
-              console.error('SpeechSynthesis Error:', event);
-              toast({ variant: "destructive", title: "TTS Error", description: event.error || "Speech failed." });
-              stop();
-          }
-      };
-      utteranceRef.current = utterance;
-      if (isMountedRef.current) setIsLoading(false);
-      window.speechSynthesis.speak(utterance);
-    } else {
-      try {
-        const result = await getCloudSpeech(cleanedText, currentPart.settings.language, currentPart.settings.cloudVoiceId);
-        if (!isMountedRef.current || !isSpeakingRef.current) return;
-        if ('audioUrl' in result && audioPlayerRef.current) {
-          audioPlayerRef.current.src = result.audioUrl;
-          await audioPlayerRef.current.play();
-        } else if ('error' in result) {
-          toast({ variant: "destructive", title: "Cloud TTS Error", description: result.error });
-          stop();
-        }
-      } catch (error: any) {
-        if (!isMountedRef.current) return;
-        toast({ variant: "destructive", title: "Cloud TTS Failed", description: error.message });
-        stop();
-      }
-    }
-  }, [stop, toast, currentItem, onPlaybackEndCallback]);
-
-  // Assign the real implementation to the placeholder refs.
-  (speakNextSegment as any).current = speakNextSegmentCallback;
-  (onPlaybackEnd as any).current = onPlaybackEndCallback;
-
-
   const pause = useCallback(() => {
     if (!isSpeakingRef.current || !isMountedRef.current || isPaused) return;
     setIsPaused(true);
     if (currentItem?.type !== 'media_favorite') {
-        if (utteranceRef.current) {
-            if(window.speechSynthesis.speaking) window.speechSynthesis.pause();
+        if (utteranceRef.current && window.speechSynthesis.speaking) {
+            window.speechSynthesis.pause();
         } else if (audioPlayerRef.current) {
             audioPlayerRef.current.pause();
         }
+    } else {
+        audioPlayerRef.current?.pause();
     }
     if (navigator.mediaSession) navigator.mediaSession.playbackState = 'paused';
   }, [isPaused, currentItem]);
@@ -306,30 +299,32 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           stop();
         });
       } else if (!utteranceRef.current && !audioPlayerRef.current?.src) {
-        speakNextSegmentCallback();
+        speakNextSegment();
       }
+    } else {
+      audioPlayerRef.current?.play().catch(e => stop());
     }
     if (navigator.mediaSession) navigator.mediaSession.playbackState = 'playing';
-  }, [isPaused, currentItem, stop, speakNextSegmentCallback]);
+  }, [isPaused, currentItem, stop, speakNextSegment]);
 
   const hasNext = () => currentIndex > -1 && currentIndex < playlist.length - 1;
   const hasPrevious = () => currentIndex > 0;
 
-  const next = () => {
+  const next = useCallback(() => {
     if (hasNext()) {
         const nextIndex = currentIndex + 1;
         const nextItem = playlist[nextIndex];
         play(nextItem, playlist, nextIndex);
     }
-  };
+  }, [currentIndex, hasNext, playlist, play]);
 
-  const previous = () => {
+  const previous = useCallback(() => {
     if (hasPrevious()) {
         const prevIndex = currentIndex - 1;
         const prevItem = playlist[prevIndex];
         play(prevItem, playlist, prevIndex);
     }
-  };
+  }, [currentIndex, hasPrevious, playlist, play]);
   
   const handlePlayAction = useCallback(() => {
       if (isPaused) {
@@ -343,6 +338,11 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
   }, [isPaused, isPlaying, resume, pause, play, playlist, currentItem, currentIndex]);
 
+  // Update functionsRef with the latest functions
+  useEffect(() => {
+    functionsRef.current = { play, pause, resume, next, previous, stop };
+  });
+
   useEffect(() => {
     const player = new Audio();
     audioPlayerRef.current = player;
@@ -350,9 +350,9 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const handleAudioEnded = () => {
       if(isSpeakingRef.current && isMountedRef.current && currentItem?.type !== 'media_favorite'){
         segmentIndexRef.current++;
-        speakNextSegmentCallback();
+        speakNextSegment();
       } else if (currentItem?.type === 'media_favorite') {
-        onPlaybackEndCallback();
+        onPlaybackEnd();
       }
     };
 
@@ -370,11 +370,11 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     player.addEventListener('error', handleAudioError);
 
     if (navigator.mediaSession) {
-      navigator.mediaSession.setActionHandler('play', handlePlayAction);
-      navigator.mediaSession.setActionHandler('pause', pause);
-      navigator.mediaSession.setActionHandler('nexttrack', hasNext() ? () => next() : null);
-      navigator.mediaSession.setActionHandler('previoustrack', hasPrevious() ? () => previous() : null);
-      navigator.mediaSession.setActionHandler('stop', () => stop());
+      navigator.mediaSession.setActionHandler('play', () => functionsRef.current.play());
+      navigator.mediaSession.setActionHandler('pause', () => functionsRef.current.pause());
+      navigator.mediaSession.setActionHandler('nexttrack', hasNext() ? () => functionsRef.current.next() : null);
+      navigator.mediaSession.setActionHandler('previoustrack', hasPrevious() ? () => functionsRef.current.previous() : null);
+      navigator.mediaSession.setActionHandler('stop', () => functionsRef.current.stop());
     }
 
     return () => {
@@ -392,7 +392,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         navigator.mediaSession.setActionHandler('stop', null);
       }
     };
-  }, [speakNextSegmentCallback, stop, toast, isPlaying, pause, handlePlayAction, hasNext, hasPrevious, currentItem, onPlaybackEndCallback]);
+  }, [speakNextSegment, stop, toast, isPlaying, onPlaybackEnd, hasNext, hasPrevious]);
 
   const value: PlaybackContextType = {
     isPlaying,
