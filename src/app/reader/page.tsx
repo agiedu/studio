@@ -190,16 +190,19 @@ function ReaderPageContent() {
   
   const sortedAnnotations = useMemo(() => {
     let allAnnotations: Annotation[] = [];
-    if (activeDoc) {
-        // For documents, filter annotations by the current page number
-        const pageNum = activeDoc.type === 'pdf' ? currentPdfPageNum : activeDoc.type === 'epub' ? epubCurrentPageNum : 1;
-        allAnnotations = (activeDoc.annotations || []).filter(ann => ann.pageNumber === pageNum);
-    } else {
-        // For scratchpad, there are no page numbers
+    if (activeDoc && activeDoc.annotations) {
+        // New logic: Filter annotations based on whether their target text exists
+        // in the currently displayed text, regardless of page number.
+        allAnnotations = activeDoc.annotations.filter(ann => {
+            if (!currentTextForTTS || !ann.targetText) return false;
+            return currentTextForTTS.includes(ann.targetText);
+        });
+    } else if (!activeDoc) {
+        // Scratchpad logic remains the same (no pages).
         allAnnotations = scratchpadAnnotations;
     }
     return allAnnotations.sort((a, b) => a.startIndex - b.startIndex);
-}, [activeDoc, scratchpadAnnotations, currentPdfPageNum, epubCurrentPageNum]);
+  }, [activeDoc, scratchpadAnnotations, currentTextForTTS]);
 
 
 const getCharPosition = (container: HTMLElement, charIndex: number): { top: number, left: number } | null => {
@@ -2088,6 +2091,3 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
-
-
-
