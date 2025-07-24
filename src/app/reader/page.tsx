@@ -190,7 +190,8 @@ function ReaderPageContent() {
   
   const sortedAnnotations = useMemo(() => {
     const allAnnotations = activeDoc ? activeDoc.annotations || [] : scratchpadAnnotations;
-    
+    if (!currentTextForTTS) return [];
+
     // Filter annotations based on whether their target text is present in the current view.
     // This is more robust than page numbers for flowing content like EPUB or long text views.
     return allAnnotations
