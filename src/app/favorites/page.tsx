@@ -9,7 +9,6 @@ import { Play, Trash2, Loader2, Pause, Smartphone, Cloud as CloudIcon, Info, Sta
 import * as LocalStorage from '@/lib/localStorageService';
 import type { FavoriteItem, TTSVoice } from '@/types';
 import { format } from 'date-fns';
-import { getCloudSpeech } from '@/app/actions';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
@@ -18,6 +17,16 @@ import { edgeTTSLanguageVoices } from '@/lib/edge-tts-voices';
 import { cn } from '@/lib/utils';
 import { AuthGuard } from '@/components/auth/AuthGuard';
 import { usePlayback } from '@/components/player/PlaybackProvider';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 
 // Helper to group voices by language
@@ -35,6 +44,7 @@ const groupVoicesByLanguage = (voices: TTSVoice[]) => {
 function FavoritesPageContent() {
   const { toast } = useToast();
   const [favoriteItems, setFavoriteItems] = useState<FavoriteItem[]>([]);
+  const [itemToDelete, setItemToDelete] = useState<FavoriteItem | null>(null);
   const [availableVoices, setAvailableVoices] = useState<TTSVoice[]>([]);
 
   const {
@@ -48,6 +58,7 @@ function FavoritesPageContent() {
     isPaused,
     isLoading,
     currentItem,
+    currentText,
     playlist,
     playbackMode,
     setPlaybackMode,
@@ -162,12 +173,14 @@ function FavoritesPageContent() {
         }));
     }
   }, [availableVoices, ttsSettings.language, ttsSettings.voiceURI, ttsSettings.engine, setTtsSettings]);
-
-  const handleDeleteFavorite = (itemId: string) => {
-    if (currentItem?.item.id === itemId) stop();
-    LocalStorage.deleteFavoriteItem(itemId);
-    setFavoriteItems(prev => prev.filter(item => item.id !== itemId));
+  
+  const performDelete = () => {
+    if (!itemToDelete) return;
+    if (currentItem?.item.id === itemToDelete.id) stop();
+    LocalStorage.deleteFavoriteItem(itemToDelete.id);
+    setFavoriteItems(prev => prev.filter(item => item.id !== itemToDelete.id));
     toast({ title: "Favorite Removed" });
+    setItemToDelete(null);
   };
   
   const handleSettingChange = (key: any, value: any) => {
@@ -360,7 +373,7 @@ function FavoritesPageContent() {
             ) : (
               <ul className="space-y-3">
                 {favoriteItems.map(item => {
-                  const isCurrentlyPlaying = currentItem?.item.id === item.id;
+                  const isCurrentlyPlaying = currentItem?.item.id === item.id && currentItem?.type === 'favorite';
                   let buttonIcon = <Play className="mr-1.5 h-4 w-4" />;
                   let buttonText = "Play";
                   if (isCurrentlyPlaying) {
@@ -379,10 +392,13 @@ function FavoritesPageContent() {
                   return (
                     <li key={item.id} className="p-3 border rounded-md flex flex-col sm:flex-row justify-between items-start gap-2 bg-card hover:shadow-md transition-shadow">
                       <div className="flex-grow">
-                        <p className={cn(
-                            "text-sm mb-1 whitespace-pre-wrap transition-colors",
-                            isCurrentlyPlaying && "text-primary"
-                          )}>"{item.text}"</p>
+                        <p className="text-sm mb-1 whitespace-pre-wrap">
+                          {isCurrentlyPlaying && currentText ?
+                            <span className="text-primary">`{currentText}`</span>
+                            :
+                            `"${item.text}"`
+                          }
+                        </p>
                         <p className="text-xs text-muted-foreground">
                           {item.sourceDocumentName && `From: ${item.sourceDocumentName} | `}
                           Added: {format(new Date(item.createdAt), "MMM d, yyyy HH:mm")}
@@ -398,7 +414,7 @@ function FavoritesPageContent() {
                           >
                           {buttonIcon} {buttonText}
                         </Button>
-                        <Button size="sm" variant="ghost" onClick={() => handleDeleteFavorite(item.id)} disabled={isLoading && isCurrentlyPlaying} aria-label="Delete Favorite">
+                        <Button size="sm" variant="ghost" onClick={() => setItemToDelete(item)} disabled={isLoading && isCurrentlyPlaying} aria-label="Delete Favorite">
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
@@ -415,6 +431,20 @@ function FavoritesPageContent() {
           )}
         </Card>
       </div>
+      <AlertDialog open={!!itemToDelete} onOpenChange={(isOpen) => !isOpen && setItemToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete this favorite.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={performDelete}>Continue</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

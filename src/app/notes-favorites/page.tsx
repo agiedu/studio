@@ -48,15 +48,11 @@ const HighlightableText: React.FC<{
   isSpeaking: boolean;
   highlightedText: string;
 }> = ({ text, isSpeaking, highlightedText }) => {
-    if (!isSpeaking || !text) {
-        return <>{text ? `"${text}"` : "No original text."}</>;
+    if (!isSpeaking || !text || !highlightedText || !text.includes(highlightedText)) {
+        return <>{text ? `"${text}"` : "No text available."}</>;
     }
 
     const index = text.indexOf(highlightedText);
-    if (index === -1) {
-        return <>{text ? `"${text}"` : "No original text."}</>;
-    }
-
     const preText = text.substring(0, index);
     const postText = text.substring(index + highlightedText.length);
 
@@ -418,6 +414,9 @@ function NotesFavoritesPageContent() {
                 }
                 const hasContentToPlay = item.annotation.targetText || item.annotation.note;
 
+                const isHighlightingTarget = isCurrentlyPlayingThisItem && currentItem?.part === 'original';
+                const isHighlightingNote = isCurrentlyPlayingThisItem && currentItem?.part === 'note';
+
                 return (
                   <li key={item.id} className="p-4 border rounded-md flex flex-col justify-between gap-4 bg-card hover:shadow-md transition-shadow">
                     <div className="flex-grow space-y-3 w-full">
@@ -426,7 +425,7 @@ function NotesFavoritesPageContent() {
                             <p className={cn("text-sm italic", !item.annotation.targetText && "text-muted-foreground")}>
                               <HighlightableText
                                 text={item.annotation.targetText || ''}
-                                isSpeaking={isCurrentlyPlayingThisItem && currentItem?.type === 'note_favorite'}
+                                isSpeaking={isHighlightingTarget}
                                 highlightedText={currentText}
                               />
                             </p>
@@ -437,7 +436,7 @@ function NotesFavoritesPageContent() {
                             <p className={cn("text-sm whitespace-pre-wrap", !item.annotation.note && "italic text-muted-foreground")}>
                               <HighlightableText
                                   text={item.annotation.note || ''}
-                                  isSpeaking={isCurrentlyPlayingThisItem && currentItem?.type === 'note_favorite'}
+                                  isSpeaking={isHighlightingNote}
                                   highlightedText={currentText}
                                 />
                             </p>
@@ -450,6 +449,7 @@ function NotesFavoritesPageContent() {
                                      <NextImage src={item.annotation.imageDataUrl} alt="Annotation attachment" width={300} height={200} className="rounded-md object-contain" />
                                 </div>
                             </div>
+                        </div>
                         )}
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 sm:items-center justify-between pt-3 border-t">
