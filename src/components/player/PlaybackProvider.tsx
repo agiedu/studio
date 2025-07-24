@@ -289,7 +289,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         
         speakNextSegment();
     }
-  }, [stop, originalTextTtsSettings, yourNoteTtsSettings, speakNextSegment]);
+  }, [originalTextTtsSettings, yourNoteTtsSettings, speakNextSegment]);
 
 
   const pause = useCallback(() => {
