@@ -57,7 +57,7 @@ import { AuthGuard } from '@/components/auth/AuthGuard';
 import { edgeTTSLanguageVoices } from '@/lib/edge-tts-voices';
 
 const PDF_DEFAULT_SCALE = 1.0;
-const PUNCTUATION_REGEX = /[.,?!,。？！，、\n\r"“„”'‘’`*_{}\[\]()#&@:;~<>/\\|\-—–^%$]/g;
+const PUNCTUATION_REGEX = /[.,?!,。？！，、\n\r"“„”'‘’`*_{}\[\]()#&@:;~<>/\\|\-—–^%$《》]/g;
 
 type SpeechOrigin = 'main' | 'repeat' | null;
 
@@ -268,17 +268,15 @@ const renderedTextWithoutAnnotations = useMemo(() => {
   const text = currentTextForTTS;
   if (!text) return null;
   
-  const pageKey = activeDoc ? `${activeDoc.id}-${activeDoc.type === 'pdf' ? currentPdfPageNum : epubCurrentPageNum}` : 'scratchpad';
-
   return (
-    <div key={pageKey} ref={mainHighlightedContentRef} className="relative w-full h-full">
+    <div ref={mainHighlightedContentRef} className="relative w-full h-full">
       <div className="w-full h-full whitespace-pre-wrap select-text">
         {text}
       </div>
     </div>
   );
 
-}, [currentTextForTTS, activeDoc, currentPdfPageNum, epubCurrentPageNum]);
+}, [currentTextForTTS]);
 
 
 const speakingViewContent = useMemo(() => {
@@ -317,10 +315,8 @@ const ttsTextWithAnnotations = useMemo(() => {
     const text = currentTextForTTS;
     if (!text) return null;
 
-    const pageKey = activeDoc ? `tts-${activeDoc.id}-${activeDoc.type === 'pdf' ? currentPdfPageNum : epubCurrentPageNum}` : 'tts-scratchpad';
-
     return (
-        <div key={pageKey} ref={ttsBoxHighlightedContentRef} className="relative w-full h-full">
+        <div ref={ttsBoxHighlightedContentRef} className="relative w-full h-full">
             <div className={cn("w-full h-full whitespace-pre-wrap select-text")}>
                {isSpeaking || isPaused ? speakingViewContent : text}
             </div>
@@ -328,7 +324,7 @@ const ttsTextWithAnnotations = useMemo(() => {
             <AnnotationMarkers containerRef={ttsBoxHighlightedContentRef} annotations={sortedAnnotations} text={text} />
         </div>
     );
-}, [currentTextForTTS, sortedAnnotations, activeDoc, currentPdfPageNum, epubCurrentPageNum, speakingViewContent, isSpeaking, isPaused]);
+}, [currentTextForTTS, sortedAnnotations, speakingViewContent, isSpeaking, isPaused]);
 
 
 

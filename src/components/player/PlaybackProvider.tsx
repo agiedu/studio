@@ -7,7 +7,7 @@ import { getCloudSpeech } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
 
 const PUNCTUATION_REGEX_FOR_SPLIT = /([.,?!,。？！，、\n\r]+)/g;
-const PUNCTUATION_REGEX = /[.,?!,。？！，、\n\r"“„”'‘’`*_{}\[\]()#&@:;~<>/\\|\-—–^%$]/g;
+const PUNCTUATION_REGEX = /[.,?!,。？！，、\n\r"“„”'‘’`*_{}\[\]()#&@:;~<>/\\|\-—–^%$《》]/g;
 
 type PlayableItem =
   | { type: 'favorite'; item: FavoriteItem }
