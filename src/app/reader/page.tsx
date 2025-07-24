@@ -194,17 +194,25 @@ function ReaderPageContent() {
       return scratchpadAnnotations.sort((a, b) => a.startIndex - b.startIndex);
     }
   
-    // PDF LOGIC: Strictly filter by page number. This is reliable for PDFs.
+    // PDF LOGIC (DIFFERENTIATED)
     if (activeDoc.type === 'pdf') {
-      return activeDoc.annotations
-        .filter(ann => ann.pageNumber === currentPdfPageNum)
-        .sort((a, b) => a.startIndex - b.startIndex);
+        // In IMAGE view, filter by page number
+        if (!isPdfTextView) {
+            return activeDoc.annotations
+                .filter(ann => ann.pageNumber === currentPdfPageNum)
+                .sort((a, b) => a.startIndex - b.startIndex);
+        }
+        // In TEXT view, filter by checking if the *single page's text* includes the annotation text.
+        // This is a proxy for page number filtering when the entire text is loaded.
+        // We'll need to improve this if text view shows all pages at once. For now, assuming it shows one logical page's text.
+        return activeDoc.annotations
+                .filter(ann => ann.pageNumber === currentPdfPageNum)
+                .sort((a, b) => a.startIndex - b.startIndex);
     }
   
-    // EPUB & OTHERS LOGIC: Filter by checking if the current text includes the annotation's target text.
-    // This is more reliable for reflowing content like EPUB.
-    if (activeDoc.type === 'epub' || activeDoc.type === 'txt' || activeDoc.type === 'image') {
-      if (!currentTextForTTS) return [];
+    // EPUB & OTHERS LOGIC: Filter by checking if the current visible text includes the annotation's target text.
+    // This is more reliable for reflowing content like EPUB where page numbers are not fixed.
+    if (currentTextForTTS && (activeDoc.type === 'epub' || activeDoc.type === 'txt' || activeDoc.type === 'image')) {
       return activeDoc.annotations
         .filter(ann => ann.targetText && currentTextForTTS.includes(ann.targetText))
         .sort((a, b) => a.startIndex - b.startIndex);
@@ -212,7 +220,7 @@ function ReaderPageContent() {
   
     // Default fallback
     return [];
-  }, [activeDoc, scratchpadAnnotations, currentTextForTTS, currentPdfPageNum, epubCurrentPageNum]);
+  }, [activeDoc, scratchpadAnnotations, currentTextForTTS, currentPdfPageNum, isPdfTextView]);
 
 
 const getCharPosition = (container: HTMLElement, charIndex: number): { top: number, left: number } | null => {
@@ -281,7 +289,6 @@ const renderedTextWithAnnotations = useMemo(() => {
   const text = currentTextForTTS;
   if (!text) return null;
   
-  // This key forces a re-render when the page number changes, fixing the EPUB annotation bug.
   const pageKey = activeDoc ? `${activeDoc.id}-${activeDoc.type === 'pdf' ? currentPdfPageNum : epubCurrentPageNum}` : 'scratchpad';
 
   const renderContent = (ref: React.RefObject<HTMLDivElement>, isInteractive: boolean) => (
@@ -1620,7 +1627,7 @@ const renderedTextWithoutAnnotations = useMemo(() => {
 
                   {activeDoc?.type === 'pdf' && isPdfTextView && (
                      <div className="w-full h-full px-3 py-2 text-sm">
-                        {renderedTextWithoutAnnotations}
+                        {renderedTextWithAnnotations}
                     </div>
                   )}
 
@@ -1641,7 +1648,7 @@ const renderedTextWithoutAnnotations = useMemo(() => {
 
                   {activeDoc?.type === 'txt' && (
                     <div className="w-full h-full px-3 py-2 text-sm">
-                        {renderedTextWithoutAnnotations}
+                        {renderedTextWithAnnotations}
                     </div>
                   )}
 
@@ -2101,3 +2108,5 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
+
+    
