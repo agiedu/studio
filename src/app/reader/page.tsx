@@ -294,7 +294,7 @@ const speakingViewContent = useMemo(() => {
             content = (
                 <>
                     {preText}
-                    <span className="text-primary">{highlightedText}</span>
+                    <span className="text-green-600">{highlightedText}</span>
                     {postText}
                 </>
             );
