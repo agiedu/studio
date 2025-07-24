@@ -189,20 +189,30 @@ function ReaderPageContent() {
   
   
   const sortedAnnotations = useMemo(() => {
-    let allAnnotations: Annotation[] = [];
-    if (activeDoc && activeDoc.annotations) {
-        // New logic: Filter annotations based on whether their target text exists
-        // in the currently displayed text, regardless of page number.
-        allAnnotations = activeDoc.annotations.filter(ann => {
-            if (!currentTextForTTS || !ann.targetText) return false;
-            return currentTextForTTS.includes(ann.targetText);
-        });
-    } else if (!activeDoc) {
-        // Scratchpad logic remains the same (no pages).
-        allAnnotations = scratchpadAnnotations;
+    if (!activeDoc || !activeDoc.annotations) {
+      // Handle scratchpad annotations
+      return scratchpadAnnotations.sort((a, b) => a.startIndex - b.startIndex);
     }
-    return allAnnotations.sort((a, b) => a.startIndex - b.startIndex);
-  }, [activeDoc, scratchpadAnnotations, currentTextForTTS]);
+  
+    // PDF LOGIC: Strictly filter by page number. This is reliable for PDFs.
+    if (activeDoc.type === 'pdf') {
+      return activeDoc.annotations
+        .filter(ann => ann.pageNumber === currentPdfPageNum)
+        .sort((a, b) => a.startIndex - b.startIndex);
+    }
+  
+    // EPUB & OTHERS LOGIC: Filter by checking if the current text includes the annotation's target text.
+    // This is more reliable for reflowing content like EPUB.
+    if (activeDoc.type === 'epub' || activeDoc.type === 'txt' || activeDoc.type === 'image') {
+      if (!currentTextForTTS) return [];
+      return activeDoc.annotations
+        .filter(ann => ann.targetText && currentTextForTTS.includes(ann.targetText))
+        .sort((a, b) => a.startIndex - b.startIndex);
+    }
+  
+    // Default fallback
+    return [];
+  }, [activeDoc, scratchpadAnnotations, currentTextForTTS, currentPdfPageNum, epubCurrentPageNum]);
 
 
 const getCharPosition = (container: HTMLElement, charIndex: number): { top: number, left: number } | null => {
