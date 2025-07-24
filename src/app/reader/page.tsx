@@ -311,7 +311,7 @@ const renderedTextWithoutAnnotations = useMemo(() => {
     return (
       <div className="whitespace-pre-wrap">
         {preText}
-        <span className="text-green-600 dark:text-green-500">{highlightedText}</span>
+        <span className="text-primary">{highlightedText}</span>
         {postText}
       </div>
     );
@@ -2088,5 +2088,6 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
+
 
 
