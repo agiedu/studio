@@ -256,11 +256,9 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (typeof window !== 'undefined') {
         window.speechSynthesis.cancel();
     }
-    if (audioPlayerRef.current) {
-        audioPlayerRef.current.pause();
-        if (audioPlayerRef.current.src) {
-            audioPlayerRef.current.src = "";
-        }
+    // A safer way to stop previous audio without causing a race condition
+    if (audioPlayerRef.current && audioPlayerRef.current.src) {
+        audioPlayerRef.current.src = "";
     }
     utteranceRef.current = null;
     
@@ -319,6 +317,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           stop();
         });
       } else if (!utteranceRef.current && !audioPlayerRef.current?.src) {
+        // This case handles when speech ended while paused, then resumed.
         speakNextSegment();
       }
     } else {
@@ -381,13 +380,16 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const handleAudioPlaying = () => {
       if (isMountedRef.current && isPlaying) setIsLoading(false);
     };
-    const handleAudioError = (e: ErrorEvent) => {
-      // The "interrupted" error is benign and can be ignored.
-      if (e.message && e.message.includes('interrupted')) return;
-      if (isMountedRef.current) {
-          toast({variant: "destructive", title: "Audio Error", description: "Failed to play audio."});
-          stop();
-      }
+    const handleAudioError = (e: any) => {
+        // The "interrupted" error is benign in many cases and can be ignored.
+        // It happens when we programmatically stop audio to play something new.
+        if (e?.target?.error?.message?.includes('interrupted')) {
+            return;
+        }
+        if (isMountedRef.current) {
+            toast({variant: "destructive", title: "Audio Error", description: "Failed to play audio."});
+            stop();
+        }
     };
 
     player.addEventListener('ended', handleAudioEnded);
