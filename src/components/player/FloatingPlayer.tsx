@@ -24,6 +24,7 @@ export default function FloatingPlayer() {
     stop,
     hasNext,
     hasPrevious,
+    videoPlayerRef, // Get the video player ref from the provider
   } = usePlayback();
 
   const handlePlayPause = () => {
@@ -61,6 +62,7 @@ export default function FloatingPlayer() {
     ? `Note for: "${truncateText(currentItem.item.annotation.targetText, 50)}"`
     : currentItem?.item.sourceDocumentName || 'Favorite Item';
 
+  const isVideo = currentItem?.type === 'media_favorite' && currentItem.item.type === 'video';
 
   return (
     <AnimatePresence>
@@ -73,49 +75,61 @@ export default function FloatingPlayer() {
           className="fixed bottom-0 left-0 right-0 z-50 p-2 md:p-4 flex justify-center"
         >
           <Card className="w-full max-w-lg shadow-2xl bg-background/80 backdrop-blur-sm">
-            <CardContent className="p-4 flex items-center gap-4 relative">
+            <CardContent className="p-4 flex flex-col gap-2 relative">
+                {/* Video Player - Rendered on top of the controls */}
+                <div className={cn("w-full aspect-video bg-black rounded-md flex-shrink-0", isVideo ? "block" : "hidden")}>
+                    <video
+                      ref={videoPlayerRef}
+                      className="w-full h-full object-contain"
+                      playsInline
+                    />
+                </div>
+
+                <div className="flex items-center gap-4 w-full">
+                    <div className="flex-grow min-w-0">
+                        <p className="text-sm font-medium truncate text-primary" title={currentText}>
+                            {currentText ? `“${truncateText(currentText)}”` : 'Loading...'}
+                        </p>
+                        <p className="text-xs text-muted-foreground truncate" title={sourceText}>
+                        {sourceText}
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                        <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={previous}
+                        disabled={!hasPrevious() || isLoading}
+                        aria-label="Previous"
+                        >
+                        <SkipBack className="h-5 w-5" />
+                        </Button>
+                        <Button
+                        variant="default"
+                        size="icon"
+                        className="h-12 w-12 rounded-full"
+                        onClick={handlePlayPause}
+                        disabled={isLoading}
+                        aria-label={getPlayButtonText()}
+                        >
+                        {getPlayButtonIcon()}
+                        </Button>
+                        <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={next}
+                        disabled={!hasNext() || isLoading}
+                        aria-label="Next"
+                        >
+                        <SkipForward className="h-5 w-5" />
+                        </Button>
+                    </div>
+                </div>
+
                 <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-6 w-6" onClick={stop}>
                     <X className="h-4 w-4"/>
                     <span className="sr-only">Close Player</span>
                 </Button>
-              <div className="flex-grow min-w-0">
-                <p className="text-sm font-medium truncate text-primary" title={currentText}>
-                    {currentText ? `“${truncateText(currentText)}”` : 'Loading...'}
-                </p>
-                <p className="text-xs text-muted-foreground truncate" title={sourceText}>
-                  {sourceText}
-                </p>
-              </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={previous}
-                  disabled={!hasPrevious() || isLoading}
-                  aria-label="Previous"
-                >
-                  <SkipBack className="h-5 w-5" />
-                </Button>
-                <Button
-                  variant="default"
-                  size="icon"
-                  className="h-12 w-12 rounded-full"
-                  onClick={handlePlayPause}
-                  disabled={isLoading}
-                  aria-label={getPlayButtonText()}
-                >
-                  {getPlayButtonIcon()}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={next}
-                  disabled={!hasNext() || isLoading}
-                  aria-label="Next"
-                >
-                  <SkipForward className="h-5 w-5" />
-                </Button>
-              </div>
             </CardContent>
           </Card>
         </motion.div>

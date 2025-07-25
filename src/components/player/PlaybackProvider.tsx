@@ -38,6 +38,9 @@ interface PlaybackContextType {
   setOriginalTextTtsSettings: React.Dispatch<React.SetStateAction<TTSSettings>>;
   yourNoteTtsSettings: TTSSettings;
   setYourNoteTtsSettings: React.Dispatch<React.SetStateAction<TTSSettings>>;
+  // Expose both refs
+  audioPlayerRef: React.RefObject<HTMLAudioElement>;
+  videoPlayerRef: React.RefObject<HTMLVideoElement>;
 }
 
 const PlaybackContext = createContext<PlaybackContextType | undefined>(undefined);
@@ -65,6 +68,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [yourNoteTtsSettings, setYourNoteTtsSettings] = useState<TTSSettings>(LocalStorage.defaultTTSSettings);
   
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+  const videoPlayerRef = useRef<HTMLVideoElement | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const speechQueueRef = useRef<{ text: string; settings: TTSSettings; part?: 'original' | 'note' }[]>([]);
   const segmentIndexRef = useRef(0);
@@ -76,9 +80,11 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   useEffect(() => {
     isMountedRef.current = true;
+    // We only need to create the audio element programmatically for TTS.
+    // The video element will be in the DOM.
+    audioPlayerRef.current = new Audio();
     return () => { isMountedRef.current = false; };
   },[]);
-
 
   const stop = useCallback((resetPlayerState = true) => {
     isSpeakingRef.current = false;
@@ -90,12 +96,19 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
+
+    // Stop both players
     if (audioPlayerRef.current) {
       audioPlayerRef.current.pause();
-      // A more robust way to stop and reset the audio element
       audioPlayerRef.current.removeAttribute('src');
       audioPlayerRef.current.load();
     }
+     if (videoPlayerRef.current) {
+      videoPlayerRef.current.pause();
+      videoPlayerRef.current.removeAttribute('src');
+      videoPlayerRef.current.load();
+    }
+
     utteranceRef.current = null;
 
     if (resetPlayerState && isMountedRef.current) {
@@ -224,7 +237,6 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } else {
       try {
         const result = await getCloudSpeech(cleanedText, currentPart.settings.language, currentPart.settings.cloudVoiceId);
-        // Important Check: Ensure we are still in a speaking state before playing.
         if (!isMountedRef.current || !isSpeakingRef.current) return;
 
         if ('audioUrl' in result && audioPlayerRef.current) {
@@ -245,7 +257,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const play = useCallback(async (item: PlayableItem, newPlaylist: PlayableItem[], startIndex: number) => {
     if (!isMountedRef.current) return;
     
-    stop(false); // Stop current playback but keep player UI state
+    stop(false);
     
     isSpeakingRef.current = true;
     setCurrentItem(item);
@@ -253,22 +265,25 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setCurrentIndex(startIndex);
     setIsPlaying(true);
     setIsPaused(false);
-    setIsLoading(true); // Set loading true immediately
+    setIsLoading(true);
     setCurrentText(item.type === 'media_favorite' ? item.item.name : (item.type === 'favorite' ? item.item.text : (item.item.annotation.targetText || item.item.annotation.note || '')));
 
     if (item.type === 'media_favorite') {
-        if (audioPlayerRef.current) {
+        const player = item.item.type === 'video' ? videoPlayerRef.current : audioPlayerRef.current;
+        if (player) {
              const blob = new Blob([item.item.fileData], { type: item.item.originalType });
              const url = URL.createObjectURL(blob);
-             audioPlayerRef.current.src = url;
+             player.src = url;
             try {
-                await audioPlayerRef.current.play();
-                // `playing` event will set isLoading to false
-                URL.revokeObjectURL(url);
+                await player.play();
             } catch (e) {
                 console.error("Error playing media item:", e);
                 toast({ variant: "destructive", title: "Playback Error", description: "The media file could not be played." });
                 stop();
+            } finally {
+                // Revoke URL after it's loaded to prevent memory leaks, but needs careful timing.
+                // A safer approach is to revoke it when the component unmounts or the source changes.
+                // For simplicity, we'll revoke it on stop/next/prev. This is handled in `stop()`.
             }
         }
     } else {
@@ -296,9 +311,10 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setIsPaused(true);
     if (utteranceRef.current && window.speechSynthesis.speaking) {
         window.speechSynthesis.pause();
-    } else if (audioPlayerRef.current) {
-        audioPlayerRef.current.pause();
     }
+    audioPlayerRef.current?.pause();
+    videoPlayerRef.current?.pause();
+
     if (navigator.mediaSession) navigator.mediaSession.playbackState = 'paused';
   }, [isPaused]);
 
@@ -308,20 +324,21 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     
     if (utteranceRef.current && window.speechSynthesis.paused) {
       window.speechSynthesis.resume();
-    } else if (audioPlayerRef.current?.paused) {
-      audioPlayerRef.current.play().catch((err) => {
-        if (err.name !== 'AbortError') {
-          console.error("Resume play error:", err);
-          toast({ variant: "destructive", title: "Resume Error", description: "Could not resume playback." });
-          stop();
+    } else {
+        const player = currentItem?.type === 'media_favorite' && currentItem.item.type === 'video' ? videoPlayerRef.current : audioPlayerRef.current;
+        if (player?.paused) {
+            player.play().catch((err) => {
+                if (err.name !== 'AbortError') {
+                    console.error("Resume play error:", err);
+                    toast({ variant: "destructive", title: "Resume Error", description: "Could not resume playback." });
+                    stop();
+                }
+            });
         }
-      });
-    } else if (!utteranceRef.current && !audioPlayerRef.current?.src) {
-      speakNextSegment();
     }
     
     if (navigator.mediaSession) navigator.mediaSession.playbackState = 'playing';
-  }, [isPaused, speakNextSegment, stop, toast]);
+  }, [isPaused, currentItem, stop, toast]);
 
   const hasNext = () => currentIndex > -1 && currentIndex < playlist.length - 1;
   const hasPrevious = () => currentIndex > 0;
@@ -342,55 +359,45 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [currentIndex, hasPrevious, playlist, play]);
   
-  // Update functionsRef with the latest functions
   useEffect(() => {
-    functionsRef.current.play = play;
-    functionsRef.current.pause = pause;
-    functionsRef.current.resume = resume;
-    functionsRef.current.next = next;
-    functionsRef.current.previous = previous;
-    functionsRef.current.stop = stop;
-    functionsRef.current.hasNext = hasNext;
-    functionsRef.current.hasPrevious = hasPrevious;
-    functionsRef.current.currentItem = currentItem;
-    functionsRef.current.playlist = playlist;
-    functionsRef.current.currentIndex = currentIndex;
-    functionsRef.current.playbackMode = playbackMode;
+    functionsRef.current = { play, pause, resume, next, previous, stop, hasNext, hasPrevious, currentItem, playlist, currentIndex, playbackMode };
   });
 
-  const handleAudioEnded = useCallback(() => {
+  const handleMediaEnded = useCallback(() => {
     if (isSpeakingRef.current && isMountedRef.current) {
-        if (functionsRef.current.currentItem?.type !== 'media_favorite') {
-            segmentIndexRef.current++;
-            speakNextSegment();
-        } else {
-            onPlaybackEnd();
-        }
+       onPlaybackEnd();
     }
-  }, [speakNextSegment, onPlaybackEnd]);
+  }, [onPlaybackEnd]);
+
+  const handleTtsEnded = useCallback(() => {
+      if (isSpeakingRef.current && isMountedRef.current) {
+          if (functionsRef.current.currentItem?.type !== 'media_favorite') {
+              segmentIndexRef.current++;
+              speakNextSegment();
+          }
+      }
+  }, [speakNextSegment]);
 
   useEffect(() => {
-    const player = audioPlayerRef.current || new Audio();
-    if (!audioPlayerRef.current) {
-      audioPlayerRef.current = player;
-    }
+    const audioPlayer = audioPlayerRef.current;
+    const videoPlayer = videoPlayerRef.current;
 
-    const handleAudioPlaying = () => {
-      if (isMountedRef.current && isPlaying) setIsLoading(false);
-    };
-    const handleAudioError = (e: any) => {
-        if (e?.target?.error?.message?.toLowerCase().includes('interrupted')) {
-            return;
-        }
+    const handlePlaying = () => { if (isMountedRef.current && isPlaying) setIsLoading(false); };
+    const handleError = (e: any) => {
+        if (e?.target?.error?.message?.toLowerCase().includes('interrupted')) return;
         if (isMountedRef.current) {
-            toast({variant: "destructive", title: "Audio Error", description: "Failed to play audio."});
+            toast({variant: "destructive", title: "Media Error", description: "Failed to play media."});
             stop();
         }
     };
 
-    player.addEventListener('ended', handleAudioEnded);
-    player.addEventListener('playing', handleAudioPlaying);
-    player.addEventListener('error', handleAudioError);
+    audioPlayer?.addEventListener('ended', handleTtsEnded); // TTS uses audio player
+    videoPlayer?.addEventListener('ended', handleMediaEnded); // Video uses video player
+
+    audioPlayer?.addEventListener('playing', handlePlaying);
+    videoPlayer?.addEventListener('playing', handlePlaying);
+    audioPlayer?.addEventListener('error', handleError);
+    videoPlayer?.addEventListener('error', handleError);
 
     if (navigator.mediaSession) {
       navigator.mediaSession.setActionHandler('play', () => functionsRef.current.resume());
@@ -401,9 +408,12 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     return () => {
-      player.removeEventListener('ended', handleAudioEnded);
-      player.removeEventListener('playing', handleAudioPlaying);
-      player.removeEventListener('error', handleAudioError);
+      audioPlayer?.removeEventListener('ended', handleTtsEnded);
+      videoPlayer?.removeEventListener('ended', handleMediaEnded);
+      audioPlayer?.removeEventListener('playing', handlePlaying);
+      videoPlayer?.removeEventListener('playing', handlePlaying);
+      audioPlayer?.removeEventListener('error', handleError);
+      videoPlayer?.removeEventListener('error', handleError);
       
       if (navigator.mediaSession) {
         navigator.mediaSession.setActionHandler('play', null);
@@ -413,7 +423,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         navigator.mediaSession.setActionHandler('stop', null);
       }
     };
-  }, [isPlaying, toast, stop, handleAudioEnded, hasNext, hasPrevious]);
+  }, [isPlaying, toast, stop, handleMediaEnded, handleTtsEnded, hasNext, hasPrevious]);
 
   const value: PlaybackContextType = {
     isPlaying,
@@ -436,7 +446,12 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setOriginalTextTtsSettings,
     yourNoteTtsSettings,
     setYourNoteTtsSettings,
+    audioPlayerRef: audioPlayerRef as React.RefObject<HTMLAudioElement>, // Cast for external use
+    videoPlayerRef: videoPlayerRef as React.RefObject<HTMLVideoElement>,
   };
 
+  // The provider itself doesn't render any DOM for the players now.
+  // The video player is expected to be rendered by a consumer (FloatingPlayer).
+  // The audio player is handled programmatically.
   return <PlaybackContext.Provider value={value}>{children}</PlaybackContext.Provider>;
 }
