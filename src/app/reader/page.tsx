@@ -190,33 +190,34 @@ function ReaderPageContent() {
   
 const sortedAnnotations = useMemo(() => {
     let allAnnotations: Annotation[];
-    let isPaginatedView = false;
     let pageNum: number | undefined = undefined;
 
     if (activeDoc) {
         allAnnotations = activeDoc.annotations || [];
-        isPaginatedView = (activeDoc.type === 'pdf' && !isPdfTextView) || activeDoc.type === 'epub';
         if (activeDoc.type === 'pdf') pageNum = currentPdfPageNum;
-        if (activeDoc.type === 'epub') pageNum = epubCurrentPageNum;
+        // EPUB page number is not reliable for filtering, so we don't set it here for that purpose.
     } else {
-        // Scratchpad is a continuous text view
         allAnnotations = scratchpadAnnotations;
     }
+    
+    // Only PDF Image view is strictly paginated. EPUB, PDF Text, TXT, and Scratchpad are continuous text flows.
+    const isStrictlyPaginatedView = activeDoc?.type === 'pdf' && !isPdfTextView;
 
-    if (isPaginatedView && pageNum !== undefined) {
-        // For paginated views (PDF image view, EPUB), filter by page number.
+    if (isStrictlyPaginatedView && pageNum !== undefined) {
+        // For PDF image view, filter by the exact page number.
         return allAnnotations
             .filter(ann => ann.pageNumber === pageNum)
             .sort((a, b) => a.startIndex - b.startIndex);
     } else {
-        // For continuous text views (PDF text view, TXT, Image OCR, Scratchpad),
-        // filter annotations that are actually present in the current text block.
+        // For all other views (EPUB, PDF text, TXT, Scratchpad), filter annotations
+        // based on whether their target text actually exists in the current text block.
+        // This is the most reliable way to anchor annotations to text, not pages.
         return allAnnotations
             .filter(ann => ann.targetText && currentTextForTTS && currentTextForTTS.includes(ann.targetText))
             .sort((a, b) => a.startIndex - b.startIndex);
     }
 
-}, [activeDoc, scratchpadAnnotations, currentTextForTTS, currentPdfPageNum, epubCurrentPageNum, isPdfTextView]);
+}, [activeDoc, scratchpadAnnotations, currentTextForTTS, currentPdfPageNum, isPdfTextView]);
 
 
 const getCharPosition = (container: HTMLElement, charIndex: number): { top: number, left: number } | null => {
