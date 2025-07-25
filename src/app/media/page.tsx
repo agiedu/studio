@@ -46,10 +46,9 @@ function MediaFavoritesPageContent() {
   const [itemToDelete, setItemToDelete] = useState<MediaFavoriteItem | null>(null);
   
   const [uploadDialog, setUploadDialog] = useState<{
-    open: boolean;
     file: File | null;
     note: string;
-  }>({ open: false, file: null, note: '' });
+  }>({ file: null, note: '' });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const objectUrlRefs = useRef<Record<string, string>>({});
@@ -131,7 +130,7 @@ function MediaFavoritesPageContent() {
     const file = event.target.files?.[0];
     if (file) {
       if (file.type.startsWith('audio/') || file.type.startsWith('video/')) {
-        setUploadDialog({ open: true, file, note: '' });
+        setUploadDialog({ file, note: '' });
       } else {
         toast({
           variant: 'destructive',
@@ -167,7 +166,7 @@ function MediaFavoritesPageContent() {
       toast({ variant: 'destructive', title: 'Upload Failed', description: error.message });
     } finally {
       // Reset dialog and input
-      setUploadDialog({ open: false, file: null, note: '' });
+      setUploadDialog({ file: null, note: '' });
       if (fileInputRef.current) fileInputRef.current.value = "";
       setIsUploading(false);
     }
@@ -335,7 +334,7 @@ function MediaFavoritesPageContent() {
         )}
       </div>
 
-      <Dialog open={uploadDialog.open} onOpenChange={(isOpen) => !isOpen && setUploadDialog({ open: false, file: null, note: '' })}>
+      <Dialog open={!!uploadDialog.file} onOpenChange={(isOpen) => !isOpen && setUploadDialog({ file: null, note: '' })}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add Note to Media</DialogTitle>
@@ -353,7 +352,7 @@ function MediaFavoritesPageContent() {
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setUploadDialog({ open: false, file: null, note: '' })}>Cancel</Button>
+            <Button variant="outline" onClick={() => setUploadDialog({ file: null, note: '' })}>Cancel</Button>
             <Button onClick={handleUploadConfirm} disabled={isUploading}>
               {isUploading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Save to Library
