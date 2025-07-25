@@ -86,7 +86,7 @@ export default function FloatingPlayer() {
             
             <CardContent className="p-4 flex flex-col gap-4 relative flex-grow min-h-0">
                 {/* Video Player - will be visible if 'isVideo' is true */}
-                <div className={cn("w-full bg-black rounded-md flex-shrink-0 aspect-video min-h-0", isVideo ? "block" : "hidden")}>
+                <div className={cn("w-full bg-black rounded-md flex-shrink-0 flex-grow min-h-0", isVideo ? "block" : "hidden")}>
                     <video
                       ref={videoPlayerRef}
                       className="w-full h-full object-contain"
@@ -94,7 +94,7 @@ export default function FloatingPlayer() {
                     />
                 </div>
 
-                <div className="flex items-center gap-4 w-full mt-auto">
+                <div className="flex items-center gap-4 w-full mt-auto flex-shrink-0">
                     <div className="flex-grow min-w-0">
                         <p className="text-sm font-medium truncate text-primary" title={currentText}>
                             {currentText ? `“${truncateText(currentText)}”` : 'Loading...'}
