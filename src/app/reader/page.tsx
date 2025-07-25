@@ -189,14 +189,37 @@ function ReaderPageContent() {
   
   
 const sortedAnnotations = useMemo(() => {
-    const allAnnotations = activeDoc ? activeDoc.annotations || [] : scratchpadAnnotations;
     if (!currentTextForTTS) return [];
+    
+    let allAnnotations: Annotation[];
+    let isContinuousTextView = false;
 
-    return allAnnotations
-        .filter(ann => ann.targetText && currentTextForTTS.includes(ann.targetText))
-        .sort((a, b) => a.startIndex - b.startIndex);
+    if (activeDoc) {
+        allAnnotations = activeDoc.annotations || [];
+        // Continuous views are PDF text view, TXT, or Image (where OCR result is one block)
+        isContinuousTextView = activeDoc.type === 'txt' || 
+                               (activeDoc.type === 'pdf' && isPdfTextView) || 
+                               activeDoc.type === 'image';
+    } else {
+        // Scratchpad is always a continuous view
+        allAnnotations = scratchpadAnnotations;
+        isContinuousTextView = true;
+    }
 
-}, [activeDoc, scratchpadAnnotations, currentTextForTTS]);
+    if (isContinuousTextView) {
+        // For continuous text, filter annotations that are present in the current text block.
+        return allAnnotations
+            .filter(ann => ann.targetText && currentTextForTTS.includes(ann.targetText))
+            .sort((a, b) => a.startIndex - b.startIndex);
+    } else {
+        // For paginated views (PDF image view, EPUB), filter by page number.
+        const pageNum = activeDoc?.type === 'pdf' ? currentPdfPageNum : epubCurrentPageNum;
+        return allAnnotations
+            .filter(ann => ann.pageNumber === pageNum)
+            .sort((a, b) => a.startIndex - b.startIndex);
+    }
+
+}, [activeDoc, scratchpadAnnotations, currentTextForTTS, currentPdfPageNum, epubCurrentPageNum, isPdfTextView]);
 
 
 const getCharPosition = (container: HTMLElement, charIndex: number): { top: number, left: number } | null => {
