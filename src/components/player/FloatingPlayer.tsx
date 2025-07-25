@@ -4,10 +4,9 @@
 import { usePlayback } from '@/components/player/PlaybackProvider';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Play, Pause, SkipBack, SkipForward, Loader2, X, Maximize, Minimize } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Loader2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useState } from 'react';
 
 export default function FloatingPlayer() {
   const {
@@ -25,12 +24,8 @@ export default function FloatingPlayer() {
     stop,
     hasNext,
     hasPrevious,
-    videoPlayerRef, // Get the video player ref from the provider
+    videoPlayerRef,
   } = usePlayback();
-
-  const [size, setSize] = useState({ width: 512, height: 'auto' });
-  const [isMaximized, setIsMaximized] = useState(false);
-
 
   const handlePlayPause = () => {
     if (isPlaying) {
@@ -40,7 +35,6 @@ export default function FloatingPlayer() {
         pause();
       }
     } else if (playlist.length > 0) {
-      // If stopped, play from the beginning of the current playlist
       play(playlist[0], playlist, 0);
     }
   };
@@ -69,44 +63,30 @@ export default function FloatingPlayer() {
 
   const isVideo = currentItem?.type === 'media_favorite' && currentItem.item.type === 'video';
 
-  const toggleMaximize = () => {
-      if (isMaximized) {
-        setSize({ width: 512, height: 'auto' });
-      } else {
-        setSize({ width: window.innerWidth * 0.9, height: window.innerHeight * 0.9 });
-      }
-      setIsMaximized(!isMaximized);
-  };
-
   return (
     <AnimatePresence>
       {isPlaying && currentItem && (
         <motion.div
           drag
           dragMomentum={false}
-          className="fixed bottom-4 right-4 z-50"
-          style={{ width: size.width, height: size.height }}
+          className="fixed bottom-4 right-4 z-50 w-[512px] min-w-[300px] max-w-[80vw] min-h-[120px] max-h-[80vh] flex"
           initial={{ y: '110%' }}
           animate={{ y: 0 }}
           exit={{ y: '110%' }}
           transition={{ type: 'spring', stiffness: 300, damping: 30 }}
         >
-          <Card className="w-full h-full shadow-2xl bg-background/80 backdrop-blur-sm flex flex-col overflow-hidden resize-x" >
+          <Card className="w-full h-full shadow-2xl bg-background/80 backdrop-blur-sm flex flex-col overflow-hidden resize" >
             
             <div className="p-1 flex items-center justify-end bg-background/50 cursor-move" onPointerDown={(e) => e.stopPropagation()}>
-               <Button variant="ghost" size="icon" className="h-6 w-6" onClick={toggleMaximize}>
-                  {isMaximized ? <Minimize className="h-4 w-4"/> : <Maximize className="h-4 w-4"/>}
-                  <span className="sr-only">{isMaximized ? 'Minimize' : 'Maximize'}</span>
-               </Button>
                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={stop}>
                     <X className="h-4 w-4"/>
                     <span className="sr-only">Close Player</span>
                 </Button>
             </div>
             
-            <CardContent className="p-4 flex flex-col gap-2 relative flex-grow">
-                {/* Video Player - Rendered on top of the controls */}
-                <div className={cn("w-full aspect-video bg-black rounded-md flex-shrink-0", isVideo ? "block" : "hidden")}>
+            <CardContent className="p-4 flex flex-col gap-4 relative flex-grow">
+                {/* Video Player - will be visible if 'isVideo' is true */}
+                <div className={cn("w-full bg-black rounded-md flex-shrink-0 aspect-video", isVideo ? "block" : "hidden")}>
                     <video
                       ref={videoPlayerRef}
                       className="w-full h-full object-contain"
