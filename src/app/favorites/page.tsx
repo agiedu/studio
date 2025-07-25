@@ -267,7 +267,6 @@ function FavoritesPageContent() {
                           setPlaybackMode(v as 'default' | 'loop-single' | 'sequential');
                         }}
                         className="flex items-center gap-4 mt-2"
-                        disabled={isPlaying}
                       >
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="default" id="mode-default" />
