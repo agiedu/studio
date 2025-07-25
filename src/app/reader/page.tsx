@@ -189,33 +189,30 @@ function ReaderPageContent() {
   
   
 const sortedAnnotations = useMemo(() => {
-    if (!currentTextForTTS) return [];
-    
     let allAnnotations: Annotation[];
-    let isContinuousTextView = false;
+    let isPaginatedView = false;
+    let pageNum: number | undefined = undefined;
 
     if (activeDoc) {
         allAnnotations = activeDoc.annotations || [];
-        // Continuous views are PDF text view, TXT, or Image (where OCR result is one block)
-        isContinuousTextView = activeDoc.type === 'txt' || 
-                               (activeDoc.type === 'pdf' && isPdfTextView) || 
-                               activeDoc.type === 'image';
+        isPaginatedView = (activeDoc.type === 'pdf' && !isPdfTextView) || activeDoc.type === 'epub';
+        if (activeDoc.type === 'pdf') pageNum = currentPdfPageNum;
+        if (activeDoc.type === 'epub') pageNum = epubCurrentPageNum;
     } else {
-        // Scratchpad is always a continuous view
+        // Scratchpad is a continuous text view
         allAnnotations = scratchpadAnnotations;
-        isContinuousTextView = true;
     }
 
-    if (isContinuousTextView) {
-        // For continuous text, filter annotations that are present in the current text block.
-        return allAnnotations
-            .filter(ann => ann.targetText && currentTextForTTS.includes(ann.targetText))
-            .sort((a, b) => a.startIndex - b.startIndex);
-    } else {
+    if (isPaginatedView && pageNum !== undefined) {
         // For paginated views (PDF image view, EPUB), filter by page number.
-        const pageNum = activeDoc?.type === 'pdf' ? currentPdfPageNum : epubCurrentPageNum;
         return allAnnotations
             .filter(ann => ann.pageNumber === pageNum)
+            .sort((a, b) => a.startIndex - b.startIndex);
+    } else {
+        // For continuous text views (PDF text view, TXT, Image OCR, Scratchpad),
+        // filter annotations that are actually present in the current text block.
+        return allAnnotations
+            .filter(ann => ann.targetText && currentTextForTTS && currentTextForTTS.includes(ann.targetText))
             .sort((a, b) => a.startIndex - b.startIndex);
     }
 
@@ -250,12 +247,20 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
     const [positions, setPositions] = useState<Record<string, { top: number, left: number }>>({});
 
     useEffect(() => {
-        if (containerRef.current && annotations.length > 0) {
+        if (containerRef.current && annotations.length > 0 && text) {
             const newPositions: Record<string, { top: number, left: number }> = {};
             annotations.forEach(ann => {
-                const pos = getCharPosition(containerRef.current!, ann.startIndex + ann.targetText.length -1);
-                if (pos) {
-                    newPositions[ann.id] = pos;
+                // Ensure the annotation's target text is actually in the current text before calculating position
+                if (text.includes(ann.targetText)) {
+                    // Use the annotation's own startIndex, which should be relative to the *full* document text.
+                    // Let's find its position within the *current* text view.
+                    const posInCurrentText = text.indexOf(ann.targetText, ann.startIndex);
+                    const finalCharIndex = (posInCurrentText !== -1 ? posInCurrentText : ann.startIndex) + ann.targetText.length - 1;
+
+                    const pos = getCharPosition(containerRef.current!, finalCharIndex);
+                    if (pos) {
+                        newPositions[ann.id] = pos;
+                    }
                 }
             });
             setPositions(newPositions);
