@@ -4,9 +4,10 @@
 import { usePlayback } from '@/components/player/PlaybackProvider';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Play, Pause, SkipBack, SkipForward, Loader2, X } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Loader2, X, Maximize, Minimize } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useState } from 'react';
 
 export default function FloatingPlayer() {
   const {
@@ -26,6 +27,10 @@ export default function FloatingPlayer() {
     hasPrevious,
     videoPlayerRef, // Get the video player ref from the provider
   } = usePlayback();
+
+  const [size, setSize] = useState({ width: 512, height: 'auto' });
+  const [isMaximized, setIsMaximized] = useState(false);
+
 
   const handlePlayPause = () => {
     if (isPlaying) {
@@ -64,18 +69,42 @@ export default function FloatingPlayer() {
 
   const isVideo = currentItem?.type === 'media_favorite' && currentItem.item.type === 'video';
 
+  const toggleMaximize = () => {
+      if (isMaximized) {
+        setSize({ width: 512, height: 'auto' });
+      } else {
+        setSize({ width: window.innerWidth * 0.9, height: window.innerHeight * 0.9 });
+      }
+      setIsMaximized(!isMaximized);
+  };
+
   return (
     <AnimatePresence>
       {isPlaying && currentItem && (
         <motion.div
-          initial={{ y: '100%' }}
+          drag
+          dragMomentum={false}
+          className="fixed bottom-4 right-4 z-50"
+          style={{ width: size.width, height: size.height }}
+          initial={{ y: '110%' }}
           animate={{ y: 0 }}
-          exit={{ y: '100%' }}
+          exit={{ y: '110%' }}
           transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-          className="fixed bottom-0 left-0 right-0 z-50 p-2 md:p-4 flex justify-center"
         >
-          <Card className="w-full max-w-lg shadow-2xl bg-background/80 backdrop-blur-sm">
-            <CardContent className="p-4 flex flex-col gap-2 relative">
+          <Card className="w-full h-full shadow-2xl bg-background/80 backdrop-blur-sm flex flex-col overflow-hidden resize-x" >
+            
+            <div className="p-1 flex items-center justify-end bg-background/50 cursor-move" onPointerDown={(e) => e.stopPropagation()}>
+               <Button variant="ghost" size="icon" className="h-6 w-6" onClick={toggleMaximize}>
+                  {isMaximized ? <Minimize className="h-4 w-4"/> : <Maximize className="h-4 w-4"/>}
+                  <span className="sr-only">{isMaximized ? 'Minimize' : 'Maximize'}</span>
+               </Button>
+               <Button variant="ghost" size="icon" className="h-6 w-6" onClick={stop}>
+                    <X className="h-4 w-4"/>
+                    <span className="sr-only">Close Player</span>
+                </Button>
+            </div>
+            
+            <CardContent className="p-4 flex flex-col gap-2 relative flex-grow">
                 {/* Video Player - Rendered on top of the controls */}
                 <div className={cn("w-full aspect-video bg-black rounded-md flex-shrink-0", isVideo ? "block" : "hidden")}>
                     <video
@@ -85,7 +114,7 @@ export default function FloatingPlayer() {
                     />
                 </div>
 
-                <div className="flex items-center gap-4 w-full">
+                <div className="flex items-center gap-4 w-full mt-auto">
                     <div className="flex-grow min-w-0">
                         <p className="text-sm font-medium truncate text-primary" title={currentText}>
                             {currentText ? `“${truncateText(currentText)}”` : 'Loading...'}
@@ -125,11 +154,6 @@ export default function FloatingPlayer() {
                         </Button>
                     </div>
                 </div>
-
-                <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-6 w-6" onClick={stop}>
-                    <X className="h-4 w-4"/>
-                    <span className="sr-only">Close Player</span>
-                </Button>
             </CardContent>
           </Card>
         </motion.div>

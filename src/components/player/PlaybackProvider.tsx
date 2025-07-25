@@ -133,13 +133,17 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const { currentItem, playlist, currentIndex } = functionsRef.current;
         setTimeout(() => functionsRef.current.play(currentItem, playlist, currentIndex), 100);
     } else if (functionsRef.current.playbackMode === 'sequential') {
-      const { playlist, currentIndex } = functionsRef.current;
-      const nextIndex = currentIndex + 1;
-      if (nextIndex < playlist.length) {
-        setTimeout(() => functionsRef.current.play(playlist[nextIndex], playlist, nextIndex), 100);
-      } else {
-        functionsRef.current.stop();
-      }
+        const { playlist, currentIndex } = functionsRef.current;
+        let nextIndex = currentIndex + 1;
+        if (nextIndex >= playlist.length) {
+            nextIndex = 0; // Loop back to the beginning
+        }
+        // Only proceed if the playlist is not empty
+        if (playlist.length > 0) {
+            setTimeout(() => functionsRef.current.play(playlist[nextIndex], playlist, nextIndex), 100);
+        } else {
+            functionsRef.current.stop();
+        }
     } else {
       functionsRef.current.stop();
     }
@@ -340,16 +344,22 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (navigator.mediaSession) navigator.mediaSession.playbackState = 'playing';
   }, [isPaused, currentItem, stop, toast]);
 
-  const hasNext = () => currentIndex > -1 && currentIndex < playlist.length - 1;
+  const hasNext = () => currentIndex > -1 && playlist.length > 0;
   const hasPrevious = () => currentIndex > 0;
 
   const next = useCallback(() => {
     if (hasNext()) {
-        const nextIndex = currentIndex + 1;
-        const nextItem = playlist[nextIndex];
-        play(nextItem, playlist, nextIndex);
+        let nextIndex = currentIndex + 1;
+        if (playbackMode === 'sequential' && nextIndex >= playlist.length) {
+          nextIndex = 0; // Loop for sequential
+        }
+
+        if (nextIndex < playlist.length) {
+            const nextItem = playlist[nextIndex];
+            play(nextItem, playlist, nextIndex);
+        }
     }
-  }, [currentIndex, hasNext, playlist, play]);
+  }, [currentIndex, hasNext, playlist, play, playbackMode]);
 
   const previous = useCallback(() => {
     if (hasPrevious()) {
