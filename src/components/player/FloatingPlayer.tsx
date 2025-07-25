@@ -69,10 +69,7 @@ export default function FloatingPlayer() {
         <motion.div
           drag
           dragMomentum={false}
-          className={cn(
-            "fixed bottom-4 right-4 z-50 w-[512px] min-w-[300px] max-w-[80vw] flex resize overflow-hidden",
-            isVideo && "aspect-video"
-          )}
+          className="fixed bottom-4 right-4 z-50 w-[512px] min-w-[300px] max-w-[80vw] min-h-[140px] resize overflow-hidden"
           initial={{ y: '110%' }}
           animate={{ y: 0 }}
           exit={{ y: '110%' }}
@@ -89,7 +86,7 @@ export default function FloatingPlayer() {
             
             <CardContent className="p-4 flex flex-col gap-4 relative flex-grow min-h-0">
                 {/* Video Player - will be visible if 'isVideo' is true */}
-                <div className={cn("w-full bg-black rounded-md flex-shrink-0 flex-grow", isVideo ? "block" : "hidden")}>
+                <div className={cn("w-full bg-black rounded-md flex-shrink-0 flex-grow min-h-0", isVideo ? "block" : "hidden")}>
                     <video
                       ref={videoPlayerRef}
                       className="w-full h-full object-contain"
