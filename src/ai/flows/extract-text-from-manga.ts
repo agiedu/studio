@@ -17,11 +17,17 @@ const ExtractTextFromMangaInputSchema = z.object({
   photoDataUri: z
     .string()
     .describe(
-      'A photo of a manga page, as a data URI that must include a MIME type and use Base64 encoding. Expected format: \'data:<mimetype>;base64,<encoded_data>\'.' // Corrected typo here
+      'A photo of a manga page, as a data URI that must include a MIME type and use Base64 encoding. Expected format: \'data:<mimetype>;base64,<encoded_data>\'.'
     ),
 });
 
 export type ExtractTextFromMangaInput = z.infer<typeof ExtractTextFromMangaInputSchema>;
+
+// Extended schema for the prompt, which needs the contentType separately.
+const PromptInputSchema = ExtractTextFromMangaInputSchema.extend({
+  contentType: z.string().describe("The MIME type of the photo, e.g., 'image/png'."),
+});
+
 
 const ExtractTextFromMangaOutputSchema = z.object({
   extractedText: z
@@ -39,13 +45,14 @@ export async function extractTextFromManga(
 
 const extractTextPrompt = ai.definePrompt({
   name: 'extractTextPrompt',
-  input: {schema: ExtractTextFromMangaInputSchema},
+  input: {schema: PromptInputSchema}, // Use the extended schema
   output: {schema: ExtractTextFromMangaOutputSchema},
   prompt: [
     {text: 'You are an expert OCR reader, skilled at extracting text from images of manga pages. Extract the text from the following manga page image:'},
-    {media: {url: '{{{photoDataUri}}}'}},
+    {media: {url: '{{{photoDataUri}}}', contentType: '{{{contentType}}}'}},
   ],
 });
+
 
 const extractTextFromMangaFlow = ai.defineFlow(
   {
@@ -54,7 +61,19 @@ const extractTextFromMangaFlow = ai.defineFlow(
     outputSchema: ExtractTextFromMangaOutputSchema,
   },
   async input => {
-    const {output} = await extractTextPrompt(input);
+    // Extract the MIME type from the data URI.
+    const mimeTypeMatch = input.photoDataUri.match(/^data:(.*?);base64,/);
+    if (!mimeTypeMatch) {
+      throw new Error('Invalid data URI format. Could not extract MIME type.');
+    }
+    const contentType = mimeTypeMatch[1];
+    
+    // Call the prompt with the separated photoDataUri and contentType.
+    const {output} = await extractTextPrompt({
+        photoDataUri: input.photoDataUri,
+        contentType: contentType,
+    });
+    
     return output!;
   }
 );
