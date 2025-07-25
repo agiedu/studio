@@ -325,24 +325,25 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!isSpeakingRef.current || !isMountedRef.current || !isPaused) return;
     setIsPaused(false);
     if (navigator.mediaSession) navigator.mediaSession.playbackState = 'playing';
-  
+
     const item = functionsRef.current.currentItem;
+
     if (item?.type === 'media_favorite') {
-      const player = item.item.type === 'video' ? videoPlayerRef.current : audioPlayerRef.current;
-      if (player?.paused) {
-        player.play().catch(stop);
-      }
+        const player = item.item.type === 'video' ? videoPlayerRef.current : audioPlayerRef.current;
+        if (player?.paused) {
+            player.play().catch(stop);
+        }
     } else { // Handle all TTS types
-      const currentSettings = speechQueueRef.current[0]?.settings;
-      if (currentSettings?.engine === 'local') {
-        if (window.speechSynthesis.paused) {
-          window.speechSynthesis.resume();
+        const currentSettings = speechQueueRef.current[0]?.settings;
+        if (currentSettings?.engine === 'local') {
+            if (window.speechSynthesis.paused) {
+                window.speechSynthesis.resume();
+            }
+        } else if (currentSettings?.engine === 'cloud') {
+            if (audioPlayerRef.current?.paused) {
+                audioPlayerRef.current.play().catch(stop);
+            }
         }
-      } else if (currentSettings?.engine === 'cloud') {
-        if (audioPlayerRef.current?.paused) {
-          audioPlayerRef.current.play().catch(stop);
-        }
-      }
     }
   }, [isPaused, stop]);
 
@@ -497,5 +498,3 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   return <PlaybackContext.Provider value={value}>{children}</PlaybackContext.Provider>;
 }
-
-    
