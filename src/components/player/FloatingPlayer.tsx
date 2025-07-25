@@ -29,6 +29,7 @@ export default function FloatingPlayer() {
     progress,
     duration,
     handleSeek,
+    videoAspectRatio,
   } = usePlayback();
 
   const handlePlayPause = () => {
@@ -74,6 +75,9 @@ export default function FloatingPlayer() {
           drag
           dragMomentum={false}
           className="fixed bottom-4 right-4 z-50 w-[512px] min-w-[300px] max-w-[80vw] min-h-[140px] resize overflow-hidden"
+          style={{
+            aspectRatio: isVideo && videoAspectRatio ? videoAspectRatio : undefined,
+          }}
           initial={{ y: '110%' }}
           animate={{ y: 0 }}
           exit={{ y: '110%' }}
@@ -90,7 +94,7 @@ export default function FloatingPlayer() {
             
             <CardContent className="p-4 flex flex-col gap-4 relative flex-grow min-h-0">
                 {/* Video Player - will be visible if 'isVideo' is true */}
-                <div className={cn("w-full bg-black rounded-md flex-shrink-0 flex-grow min-h-0", isVideo ? "block" : "hidden")}>
+                <div className={cn("w-full bg-black rounded-md flex-grow min-h-0", isVideo ? "block" : "hidden")}>
                     <video
                       ref={videoPlayerRef}
                       className="w-full h-full object-contain"
@@ -98,7 +102,7 @@ export default function FloatingPlayer() {
                     />
                 </div>
 
-                {currentItem.type === 'media_favorite' && (
+                {(currentItem.type === 'media_favorite' || (currentItem.type !== 'media_favorite' && duration > 0)) && (
                     <Slider
                       value={[progress]}
                       max={100}

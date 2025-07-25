@@ -43,6 +43,7 @@ interface PlaybackContextType {
   progress: number;
   duration: number;
   handleSeek: (value: number) => void;
+  videoAspectRatio: number | null;
 }
 
 const PlaybackContext = createContext<PlaybackContextType | undefined>(undefined);
@@ -67,6 +68,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [playbackMode, setPlaybackMode] = useState<PlaybackMode>('default');
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [videoAspectRatio, setVideoAspectRatio] = useState<number | null>(null);
 
   const [originalTextTtsSettings, setOriginalTextTtsSettings] = useState<TTSSettings>(LocalStorage.defaultTTSSettings);
   const [yourNoteTtsSettings, setYourNoteTtsSettings] = useState<TTSSettings>(LocalStorage.defaultTTSSettings);
@@ -122,6 +124,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setPlaylist([]);
         setProgress(0);
         setDuration(0);
+        setVideoAspectRatio(null);
     }
     if (navigator.mediaSession) {
         navigator.mediaSession.playbackState = 'none';
@@ -341,8 +344,10 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [isPaused, currentItem, stop, toast]);
 
   const handleSeek = (value: number) => {
-    if (currentItem?.type !== 'media_favorite') return;
-    const player = currentItem.item.type === 'video' ? videoPlayerRef.current : audioPlayerRef.current;
+    const player = currentItem?.type === 'media_favorite' 
+      ? (currentItem.item.type === 'video' ? videoPlayerRef.current : audioPlayerRef.current)
+      : audioPlayerRef.current;
+
     if (player && player.duration) {
       player.currentTime = (value / 100) * player.duration;
       setProgress(value);
@@ -396,9 +401,18 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const videoPlayer = videoPlayerRef.current;
 
     const handlePlaying = (e: any) => { 
-        if (isMountedRef.current && isPlaying) setIsLoading(false); 
-        setDuration(e.target.duration);
+        if (isMountedRef.current && isPlaying) setIsLoading(false);
     };
+
+    const handleLoadedMetadata = (e: any) => {
+        if (!isMountedRef.current) return;
+        setDuration(e.target.duration);
+        if (e.target.tagName === 'VIDEO') {
+            const aspectRatio = e.target.videoWidth / e.target.videoHeight;
+            setVideoAspectRatio(aspectRatio);
+        }
+    };
+    
     const handleError = (e: any) => {
         if (e?.target?.error?.message?.toLowerCase().includes('interrupted')) return;
         if (isMountedRef.current) {
@@ -413,12 +427,14 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
     }
 
-    // Use handleMediaEnded for both audio and video HTML elements
+    audioPlayer?.addEventListener('playing', handlePlaying);
+    videoPlayer?.addEventListener('playing', handlePlaying);
+    
     audioPlayer?.addEventListener('ended', handleMediaEnded);
     videoPlayer?.addEventListener('ended', handleMediaEnded);
 
-    audioPlayer?.addEventListener('loadedmetadata', handlePlaying);
-    videoPlayer?.addEventListener('loadedmetadata', handlePlaying);
+    audioPlayer?.addEventListener('loadedmetadata', handleLoadedMetadata);
+    videoPlayer?.addEventListener('loadedmetadata', handleLoadedMetadata);
     
     audioPlayer?.addEventListener('timeupdate', handleTimeUpdate);
     videoPlayer?.addEventListener('timeupdate', handleTimeUpdate);
@@ -435,10 +451,12 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     return () => {
+      audioPlayer?.removeEventListener('playing', handlePlaying);
+      videoPlayer?.removeEventListener('playing', handlePlaying);
       audioPlayer?.removeEventListener('ended', handleMediaEnded);
       videoPlayer?.removeEventListener('ended', handleMediaEnded);
-      audioPlayer?.removeEventListener('loadedmetadata', handlePlaying);
-      videoPlayer?.removeEventListener('loadedmetadata', handlePlaying);
+      audioPlayer?.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      videoPlayer?.removeEventListener('loadedmetadata', handleLoadedMetadata);
       audioPlayer?.removeEventListener('timeupdate', handleTimeUpdate);
       videoPlayer?.removeEventListener('timeupdate', handleTimeUpdate);
       audioPlayer?.removeEventListener('error', handleError);
@@ -480,6 +498,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     progress,
     duration,
     handleSeek,
+    videoAspectRatio,
   };
 
   return <PlaybackContext.Provider value={value}>{children}</PlaybackContext.Provider>;
