@@ -376,7 +376,7 @@ function NotesFavoritesPageContent() {
                         </div>
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="sequential" id="mode-sequential" />
-                          <Label htmlFor="mode-sequential" className="flex items-center gap-1 cursor-pointer"><ListOrdered className="h-4 w-4"/>列表循环播放模式</Label>
+                          <Label htmlFor="mode-sequential" className="flex items-center gap-1 cursor-pointer"><ListOrdered className="h-4 w-4"/>List loop mode</Label>
                         </div>
                       </RadioGroup>
                   </div>
