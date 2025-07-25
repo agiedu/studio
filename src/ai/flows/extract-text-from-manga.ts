@@ -41,11 +41,10 @@ const extractTextPrompt = ai.definePrompt({
   name: 'extractTextPrompt',
   input: {schema: ExtractTextFromMangaInputSchema},
   output: {schema: ExtractTextFromMangaOutputSchema},
-  prompt: `You are an expert OCR reader, skilled at extracting text from images of manga pages.
-
-  Extract the text from the following manga page image:
-
-  {{media url=photoDataUri}}`,
+  prompt: [
+    {text: 'You are an expert OCR reader, skilled at extracting text from images of manga pages. Extract the text from the following manga page image:'},
+    {media: {url: '{{{photoDataUri}}}'}},
+  ],
 });
 
 const extractTextFromMangaFlow = ai.defineFlow(
