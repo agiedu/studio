@@ -312,7 +312,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const pause = useCallback(() => {
     if (!isSpeakingRef.current || !isMountedRef.current || isPaused) return;
     setIsPaused(true);
-    if (utteranceRef.current && window.speechSynthesis.speaking) {
+    if (window.speechSynthesis.speaking) {
         window.speechSynthesis.pause();
     }
     audioPlayerRef.current?.pause();
@@ -327,23 +327,17 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (navigator.mediaSession) navigator.mediaSession.playbackState = 'playing';
 
     const item = functionsRef.current.currentItem;
+    const isLocalTts = speechQueueRef.current[0]?.settings.engine === 'local';
 
     if (item?.type === 'media_favorite') {
-        const player = item.item.type === 'video' ? videoPlayerRef.current : audioPlayerRef.current;
-        if (player?.paused) {
-            player.play().catch(stop);
-        }
-    } else { // Handle all TTS types
-        const currentSettings = speechQueueRef.current[0]?.settings;
-        if (currentSettings?.engine === 'local') {
-            if (window.speechSynthesis.paused) {
-                window.speechSynthesis.resume();
-            }
-        } else if (currentSettings?.engine === 'cloud') {
-            if (audioPlayerRef.current?.paused) {
-                audioPlayerRef.current.play().catch(stop);
-            }
-        }
+      const player = item.item.type === 'video' ? videoPlayerRef.current : audioPlayerRef.current;
+      player?.play().catch(stop);
+    } else if (isLocalTts) {
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+      }
+    } else { // Cloud TTS
+      audioPlayerRef.current?.play().catch(stop);
     }
   }, [isPaused, stop]);
 
