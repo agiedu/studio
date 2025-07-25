@@ -325,23 +325,27 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!isSpeakingRef.current || !isMountedRef.current || !isPaused) return;
     setIsPaused(false);
   
-    const currentSettings = speechQueueRef.current[0]?.settings;
-    const isLocalTts = currentSettings?.engine === 'local';
-    const isCloudTts = currentSettings?.engine === 'cloud';
-    const isMedia = currentItem?.type === 'media_favorite';
-  
-    if (isLocalTts && window.speechSynthesis.paused) {
-      window.speechSynthesis.resume();
-    } else if (isCloudTts && audioPlayerRef.current?.paused) {
-      audioPlayerRef.current.play().catch(stop);
-    } else if (isMedia) {
-      const player = currentItem?.item.type === 'video' ? videoPlayerRef.current : audioPlayerRef.current;
+    if (navigator.mediaSession) navigator.mediaSession.playbackState = 'playing';
+
+    if (currentItem?.type === 'media_favorite') {
+      const player = currentItem.item.type === 'video' ? videoPlayerRef.current : audioPlayerRef.current;
       if (player?.paused) {
         player.play().catch(stop);
       }
+      return;
     }
     
-    if (navigator.mediaSession) navigator.mediaSession.playbackState = 'playing';
+    // Handle TTS
+    const currentSettings = speechQueueRef.current[0]?.settings;
+    if (currentSettings?.engine === 'local') {
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+      }
+    } else if (currentSettings?.engine === 'cloud') {
+      if (audioPlayerRef.current?.paused) {
+        audioPlayerRef.current.play().catch(stop);
+      }
+    }
   }, [isPaused, currentItem, stop]);
 
   const handleSeek = (value: number) => {
