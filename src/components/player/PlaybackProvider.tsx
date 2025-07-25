@@ -92,10 +92,9 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
     if (audioPlayerRef.current) {
       audioPlayerRef.current.pause();
-      // Only reset src if it's currently set to something.
-      if (audioPlayerRef.current.src) {
-        audioPlayerRef.current.src = "";
-      }
+      // A more robust way to stop and reset the audio element
+      audioPlayerRef.current.removeAttribute('src');
+      audioPlayerRef.current.load();
     }
     utteranceRef.current = null;
 
@@ -254,6 +253,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setCurrentIndex(startIndex);
     setIsPlaying(true);
     setIsPaused(false);
+    setIsLoading(true); // Set loading true immediately
     setCurrentText(item.type === 'media_favorite' ? item.item.name : (item.type === 'favorite' ? item.item.text : (item.item.annotation.targetText || item.item.annotation.note || '')));
 
     if (item.type === 'media_favorite') {
@@ -263,9 +263,11 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
              audioPlayerRef.current.src = url;
             try {
                 await audioPlayerRef.current.play();
+                // `playing` event will set isLoading to false
                 URL.revokeObjectURL(url);
             } catch (e) {
                 console.error("Error playing media item:", e);
+                toast({ variant: "destructive", title: "Playback Error", description: "The media file could not be played." });
                 stop();
             }
         }
@@ -286,7 +288,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         
         await speakNextSegment();
     }
-  }, [stop, originalTextTtsSettings, yourNoteTtsSettings, speakNextSegment]);
+  }, [stop, originalTextTtsSettings, yourNoteTtsSettings, speakNextSegment, toast]);
 
 
   const pause = useCallback(() => {
@@ -310,6 +312,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       audioPlayerRef.current.play().catch((err) => {
         if (err.name !== 'AbortError') {
           console.error("Resume play error:", err);
+          toast({ variant: "destructive", title: "Resume Error", description: "Could not resume playback." });
           stop();
         }
       });
@@ -318,7 +321,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
     
     if (navigator.mediaSession) navigator.mediaSession.playbackState = 'playing';
-  }, [isPaused, speakNextSegment, stop]);
+  }, [isPaused, speakNextSegment, stop, toast]);
 
   const hasNext = () => currentIndex > -1 && currentIndex < playlist.length - 1;
   const hasPrevious = () => currentIndex > 0;

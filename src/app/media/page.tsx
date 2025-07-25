@@ -270,6 +270,15 @@ function MediaFavoritesPageContent() {
             {mediaItems.map((item) => {
               const isCurrentlyPlaying = currentItem?.item.id === item.id;
               
+              let playButtonIcon;
+              if (isPlaybackLoading && isCurrentlyPlaying) {
+                  playButtonIcon = <Loader2 className="h-5 w-5 animate-spin" />;
+              } else if (isPlaying && !isPaused && isCurrentlyPlaying) {
+                  playButtonIcon = <Pause className="h-5 w-5" />;
+              } else {
+                  playButtonIcon = <Play className="h-5 w-5" />;
+              }
+
               return (
               <Card key={item.id} className={cn("flex flex-col", isCurrentlyPlaying && "border-primary ring-2 ring-primary")}>
                 <CardContent className="p-4 flex flex-col gap-3 flex-grow">
@@ -288,23 +297,30 @@ function MediaFavoritesPageContent() {
                     </div>
                   </div>
                   
-                  {item.type === 'audio' ? (
-                     <audio 
-                        src={getObjectUrl(item)} 
-                        controls 
-                        className="w-full"
-                        onPlay={() => handlePlayPause(item)}
-                        onPause={pause}
-                    ></audio>
-                  ) : (
-                     <video 
-                        src={getObjectUrl(item)}
-                        controls 
-                        className="w-full rounded-md bg-black"
-                        onPlay={() => handlePlayPause(item)}
-                        onPause={pause}
-                    ></video>
-                  )}
+                  <div className="w-full aspect-video bg-black rounded-md flex items-center justify-center relative">
+                      {item.type === 'video' && (
+                        <video 
+                            src={getObjectUrl(item)}
+                            className="w-full h-full object-contain"
+                            // The video element is just for show; controls are handled globally
+                        ></video>
+                      )}
+                      {item.type === 'audio' && (
+                          <Music className="h-16 w-16 text-muted" />
+                      )}
+                      {/* Overlay Play Button */}
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                          <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-16 w-16 text-white hover:bg-white/20 hover:text-white"
+                              onClick={() => handlePlayPause(item)}
+                              disabled={isPlaybackLoading && isCurrentlyPlaying}
+                          >
+                              {playButtonIcon}
+                          </Button>
+                      </div>
+                  </div>
                   
                   {item.note && (
                     <div className="text-sm text-muted-foreground p-3 bg-muted/50 rounded-md flex items-start gap-2 mt-auto">
