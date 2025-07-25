@@ -69,13 +69,13 @@ export default function FloatingPlayer() {
         <motion.div
           drag
           dragMomentum={false}
-          className="fixed bottom-4 right-4 z-50 w-[512px] min-w-[300px] max-w-[80vw] min-h-[120px] max-h-[80vh] flex"
+          className="fixed bottom-4 right-4 z-50 w-[512px] min-w-[300px] max-w-[80vw] min-h-[120px] max-h-[80vh] flex resize overflow-hidden"
           initial={{ y: '110%' }}
           animate={{ y: 0 }}
           exit={{ y: '110%' }}
           transition={{ type: 'spring', stiffness: 300, damping: 30 }}
         >
-          <Card className="w-full h-full shadow-2xl bg-background/80 backdrop-blur-sm flex flex-col overflow-hidden resize" >
+          <Card className="w-full h-full shadow-2xl bg-background/80 backdrop-blur-sm flex flex-col" >
             
             <div className="p-1 flex items-center justify-end bg-background/50 cursor-move" onPointerDown={(e) => e.stopPropagation()}>
                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={stop}>
