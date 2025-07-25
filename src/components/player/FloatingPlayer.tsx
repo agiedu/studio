@@ -84,9 +84,9 @@ export default function FloatingPlayer() {
                 </Button>
             </div>
             
-            <CardContent className="p-4 flex flex-col gap-4 relative flex-grow">
+            <CardContent className="p-4 flex flex-col gap-4 relative flex-grow min-h-0">
                 {/* Video Player - will be visible if 'isVideo' is true */}
-                <div className={cn("w-full bg-black rounded-md flex-shrink-0 aspect-video", isVideo ? "block" : "hidden")}>
+                <div className={cn("w-full bg-black rounded-md flex-shrink-0 aspect-video min-h-0", isVideo ? "block" : "hidden")}>
                     <video
                       ref={videoPlayerRef}
                       className="w-full h-full object-contain"
