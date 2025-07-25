@@ -103,7 +103,7 @@ function MediaFavoritesPageContent() {
   
   const handlePlayPause = (item: MediaFavoriteItem) => {
     const isCurrentlyPlayingThis = currentItem?.item.id === item.id;
-    if (isCurrentlyPlayingThis) {
+    if (isCurrentlyPlayingThis && isPlaying) {
         if (isPaused) {
             resume();
         } else {
@@ -268,12 +268,12 @@ function MediaFavoritesPageContent() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {mediaItems.map((item) => {
-              const isCurrentlyPlaying = currentItem?.item.id === item.id;
+              const isCurrentlyPlaying = currentItem?.item.id === item.id && isPlaying;
               
               let playButtonIcon;
-              if (isPlaybackLoading && isCurrentlyPlaying) {
+              if (isPlaybackLoading && currentItem?.item.id === item.id) {
                   playButtonIcon = <Loader2 className="h-5 w-5 animate-spin" />;
-              } else if (isPlaying && !isPaused && isCurrentlyPlaying) {
+              } else if (isCurrentlyPlaying && !isPaused) {
                   playButtonIcon = <Pause className="h-5 w-5" />;
               } else {
                   playButtonIcon = <Play className="h-5 w-5" />;
@@ -315,7 +315,7 @@ function MediaFavoritesPageContent() {
                               size="icon"
                               className="h-16 w-16 text-white hover:bg-white/20 hover:text-white"
                               onClick={() => handlePlayPause(item)}
-                              disabled={isPlaybackLoading && isCurrentlyPlaying}
+                              disabled={isPlaybackLoading && currentItem?.item.id !== item.id}
                           >
                               {playButtonIcon}
                           </Button>
