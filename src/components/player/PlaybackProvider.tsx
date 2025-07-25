@@ -38,7 +38,6 @@ interface PlaybackContextType {
   setOriginalTextTtsSettings: React.Dispatch<React.SetStateAction<TTSSettings>>;
   yourNoteTtsSettings: TTSSettings;
   setYourNoteTtsSettings: React.Dispatch<React.SetStateAction<TTSSettings>>;
-  // Expose both refs
   audioPlayerRef: React.RefObject<HTMLAudioElement>;
   videoPlayerRef: React.RefObject<HTMLVideoElement>;
 }
@@ -80,8 +79,6 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   useEffect(() => {
     isMountedRef.current = true;
-    // We only need to create the audio element programmatically for TTS.
-    // The video element will be in the DOM.
     audioPlayerRef.current = new Audio();
     return () => { isMountedRef.current = false; };
   },[]);
@@ -97,7 +94,6 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       window.speechSynthesis.cancel();
     }
 
-    // Stop both players
     if (audioPlayerRef.current) {
       audioPlayerRef.current.pause();
       audioPlayerRef.current.removeAttribute('src');
@@ -127,23 +123,18 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, []);
 
   const onPlaybackEnd = useCallback(() => {
-    if (!isSpeakingRef.current) return;
+    if (!isSpeakingRef.current || !isMountedRef.current) return;
   
-    if (functionsRef.current.playbackMode === 'loop-single' && functionsRef.current.currentItem) {
-        const { currentItem, playlist, currentIndex } = functionsRef.current;
-        setTimeout(() => functionsRef.current.play(currentItem, playlist, currentIndex), 100);
-    } else if (functionsRef.current.playbackMode === 'sequential') {
-        const { playlist, currentIndex } = functionsRef.current;
-        let nextIndex = currentIndex + 1;
-        if (nextIndex >= playlist.length) {
+    const { playbackMode: currentMode, currentItem: item, playlist: pl, currentIndex: idx } = functionsRef.current;
+
+    if (currentMode === 'loop-single' && item) {
+        setTimeout(() => functionsRef.current.play(item, pl, idx), 100);
+    } else if (currentMode === 'sequential' && pl.length > 0) {
+        let nextIndex = idx + 1;
+        if (nextIndex >= pl.length) {
             nextIndex = 0; // Loop back to the beginning
         }
-        // Only proceed if the playlist is not empty
-        if (playlist.length > 0) {
-            setTimeout(() => functionsRef.current.play(playlist[nextIndex], playlist, nextIndex), 100);
-        } else {
-            functionsRef.current.stop();
-        }
+        setTimeout(() => functionsRef.current.play(pl[nextIndex], pl, nextIndex), 100);
     } else {
       functionsRef.current.stop();
     }
@@ -284,10 +275,6 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 console.error("Error playing media item:", e);
                 toast({ variant: "destructive", title: "Playback Error", description: "The media file could not be played." });
                 stop();
-            } finally {
-                // Revoke URL after it's loaded to prevent memory leaks, but needs careful timing.
-                // A safer approach is to revoke it when the component unmounts or the source changes.
-                // For simplicity, we'll revoke it on stop/next/prev. This is handled in `stop()`.
             }
         }
     } else {
@@ -344,20 +331,17 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (navigator.mediaSession) navigator.mediaSession.playbackState = 'playing';
   }, [isPaused, currentItem, stop, toast]);
 
-  const hasNext = () => currentIndex > -1 && playlist.length > 0;
+  const hasNext = () => currentIndex > -1 && currentIndex < playlist.length - 1;
   const hasPrevious = () => currentIndex > 0;
 
   const next = useCallback(() => {
     if (hasNext()) {
-        let nextIndex = currentIndex + 1;
-        if (playbackMode === 'sequential' && nextIndex >= playlist.length) {
-          nextIndex = 0; // Loop for sequential
-        }
-
-        if (nextIndex < playlist.length) {
-            const nextItem = playlist[nextIndex];
-            play(nextItem, playlist, nextIndex);
-        }
+        const nextIndex = currentIndex + 1;
+        const nextItem = playlist[nextIndex];
+        play(nextItem, playlist, nextIndex);
+    } else if (playbackMode === 'sequential' && playlist.length > 0) {
+        // Loop to start if it's the end and mode is sequential
+        play(playlist[0], playlist, 0);
     }
   }, [currentIndex, hasNext, playlist, play, playbackMode]);
 
@@ -401,8 +385,9 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
     };
 
-    audioPlayer?.addEventListener('ended', handleTtsEnded); // TTS uses audio player
-    videoPlayer?.addEventListener('ended', handleMediaEnded); // Video uses video player
+    // Use handleMediaEnded for both audio and video HTML elements
+    audioPlayer?.addEventListener('ended', handleMediaEnded);
+    videoPlayer?.addEventListener('ended', handleMediaEnded);
 
     audioPlayer?.addEventListener('playing', handlePlaying);
     videoPlayer?.addEventListener('playing', handlePlaying);
@@ -418,7 +403,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     return () => {
-      audioPlayer?.removeEventListener('ended', handleTtsEnded);
+      audioPlayer?.removeEventListener('ended', handleMediaEnded);
       videoPlayer?.removeEventListener('ended', handleMediaEnded);
       audioPlayer?.removeEventListener('playing', handlePlaying);
       videoPlayer?.removeEventListener('playing', handlePlaying);
@@ -433,7 +418,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         navigator.mediaSession.setActionHandler('stop', null);
       }
     };
-  }, [isPlaying, toast, stop, handleMediaEnded, handleTtsEnded, hasNext, hasPrevious]);
+  }, [isPlaying, toast, stop, handleMediaEnded, hasNext, hasPrevious]);
 
   const value: PlaybackContextType = {
     isPlaying,
@@ -456,12 +441,9 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setOriginalTextTtsSettings,
     yourNoteTtsSettings,
     setYourNoteTtsSettings,
-    audioPlayerRef: audioPlayerRef as React.RefObject<HTMLAudioElement>, // Cast for external use
+    audioPlayerRef: audioPlayerRef as React.RefObject<HTMLAudioElement>,
     videoPlayerRef: videoPlayerRef as React.RefObject<HTMLVideoElement>,
   };
 
-  // The provider itself doesn't render any DOM for the players now.
-  // The video player is expected to be rendered by a consumer (FloatingPlayer).
-  // The audio player is handled programmatically.
   return <PlaybackContext.Provider value={value}>{children}</PlaybackContext.Provider>;
 }
