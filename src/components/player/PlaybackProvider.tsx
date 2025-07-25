@@ -324,24 +324,25 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const resume = useCallback(() => {
     if (!isSpeakingRef.current || !isMountedRef.current || !isPaused) return;
     setIsPaused(false);
-    
-    if (utteranceRef.current && window.speechSynthesis.paused) {
+  
+    const currentSettings = speechQueueRef.current[0]?.settings;
+    const isLocalTts = currentSettings?.engine === 'local';
+    const isCloudTts = currentSettings?.engine === 'cloud';
+    const isMedia = currentItem?.type === 'media_favorite';
+  
+    if (isLocalTts && window.speechSynthesis.paused) {
       window.speechSynthesis.resume();
-    } else {
-        const player = currentItem?.type === 'media_favorite' && currentItem.item.type === 'video' ? videoPlayerRef.current : audioPlayerRef.current;
-        if (player?.paused) {
-            player.play().catch((err) => {
-                if (err.name !== 'AbortError') {
-                    console.error("Resume play error:", err);
-                    toast({ variant: "destructive", title: "Resume Error", description: "Could not resume playback." });
-                    stop();
-                }
-            });
-        }
+    } else if (isCloudTts && audioPlayerRef.current?.paused) {
+      audioPlayerRef.current.play().catch(stop);
+    } else if (isMedia) {
+      const player = currentItem?.item.type === 'video' ? videoPlayerRef.current : audioPlayerRef.current;
+      if (player?.paused) {
+        player.play().catch(stop);
+      }
     }
     
     if (navigator.mediaSession) navigator.mediaSession.playbackState = 'playing';
-  }, [isPaused, currentItem, stop, toast]);
+  }, [isPaused, currentItem, stop]);
 
   const handleSeek = (value: number) => {
     const player = currentItem?.type === 'media_favorite' 
