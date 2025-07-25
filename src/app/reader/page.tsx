@@ -188,7 +188,7 @@ function ReaderPageContent() {
   }, [currentTextForTTS]);
   
   
-  const sortedAnnotations = useMemo(() => {
+const sortedAnnotations = useMemo(() => {
     const allAnnotations = activeDoc ? activeDoc.annotations || [] : scratchpadAnnotations;
     if (!currentTextForTTS) return [];
 
