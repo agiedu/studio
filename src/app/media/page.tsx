@@ -102,16 +102,17 @@ function MediaFavoritesPageContent() {
   
   const handlePlayPause = (item: MediaFavoriteItem) => {
     const isCurrentlyPlayingThis = currentItem?.item.id === item.id;
-    if (isCurrentlyPlayingThis && isPlaying) {
-        if (isPaused) {
-            resume();
-        } else {
-            pause();
-        }
+  
+    if (isCurrentlyPlayingThis) {
+      if (isPaused) {
+        resume();
+      } else {
+        pause();
+      }
     } else {
-        const fullPlaylist = mediaItems.map(media => ({ type: 'media_favorite' as const, item: media }));
-        const startIndex = mediaItems.findIndex(media => media.id === item.id);
-        play({ type: 'media_favorite', item }, fullPlaylist, startIndex);
+      const fullPlaylist = mediaItems.map(media => ({ type: 'media_favorite' as const, item: media }));
+      const startIndex = mediaItems.findIndex(media => media.id === item.id);
+      play({ type: 'media_favorite', item }, fullPlaylist, startIndex);
     }
   };
   
@@ -267,19 +268,19 @@ function MediaFavoritesPageContent() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {mediaItems.map((item) => {
-              const isCurrentlyPlaying = currentItem?.item.id === item.id && isPlaying;
+              const isCurrentlyPlayingThis = currentItem?.item.id === item.id;
               
               let playButtonIcon;
               if (isPlaybackLoading && currentItem?.item.id === item.id) {
                   playButtonIcon = <Loader2 className="h-5 w-5 animate-spin" />;
-              } else if (isCurrentlyPlaying && !isPaused) {
+              } else if (isCurrentlyPlayingThis && !isPaused) {
                   playButtonIcon = <Pause className="h-5 w-5" />;
               } else {
                   playButtonIcon = <Play className="h-5 w-5" />;
               }
 
               return (
-              <Card key={item.id} className={cn("flex flex-col", isCurrentlyPlaying && "border-primary ring-2 ring-primary")}>
+              <Card key={item.id} className={cn("flex flex-col", isCurrentlyPlayingThis && "border-primary ring-2 ring-primary")}>
                 <CardContent className="p-4 flex flex-col gap-3 flex-grow">
                   <div className="flex justify-between items-start">
                     <div className="flex items-center gap-3 min-w-0">
@@ -314,7 +315,7 @@ function MediaFavoritesPageContent() {
                               size="icon"
                               className="h-16 w-16 text-white hover:bg-white/20 hover:text-white"
                               onClick={() => handlePlayPause(item)}
-                              disabled={isPlaybackLoading && currentItem?.item.id !== item.id}
+                              disabled={isPlaybackLoading && !isCurrentlyPlayingThis}
                           >
                               {playButtonIcon}
                           </Button>

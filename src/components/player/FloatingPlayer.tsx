@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Play, Pause, SkipBack, SkipForward, Loader2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AnimatePresence, motion } from 'framer-motion';
+import { Slider } from '@/components/ui/slider';
 
 export default function FloatingPlayer() {
   const {
@@ -25,6 +26,9 @@ export default function FloatingPlayer() {
     hasNext,
     hasPrevious,
     videoPlayerRef,
+    progress,
+    duration,
+    handleSeek,
   } = usePlayback();
 
   const handlePlayPause = () => {
@@ -93,6 +97,17 @@ export default function FloatingPlayer() {
                       playsInline
                     />
                 </div>
+
+                {currentItem.type === 'media_favorite' && (
+                    <Slider
+                      value={[progress]}
+                      max={100}
+                      step={1}
+                      onValueChange={([value]) => handleSeek(value)}
+                      disabled={isLoading || duration === 0}
+                      className="w-full"
+                    />
+                )}
 
                 <div className="flex items-center gap-4 w-full mt-auto flex-shrink-0 min-w-[280px]">
                     <div className="flex-grow min-w-0">

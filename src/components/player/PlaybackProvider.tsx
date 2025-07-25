@@ -40,6 +40,9 @@ interface PlaybackContextType {
   setYourNoteTtsSettings: React.Dispatch<React.SetStateAction<TTSSettings>>;
   audioPlayerRef: React.RefObject<HTMLAudioElement>;
   videoPlayerRef: React.RefObject<HTMLVideoElement>;
+  progress: number;
+  duration: number;
+  handleSeek: (value: number) => void;
 }
 
 const PlaybackContext = createContext<PlaybackContextType | undefined>(undefined);
@@ -62,6 +65,8 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [currentText, setCurrentText] = useState('');
   const [playbackMode, setPlaybackMode] = useState<PlaybackMode>('default');
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
 
   const [originalTextTtsSettings, setOriginalTextTtsSettings] = useState<TTSSettings>(LocalStorage.defaultTTSSettings);
   const [yourNoteTtsSettings, setYourNoteTtsSettings] = useState<TTSSettings>(LocalStorage.defaultTTSSettings);
@@ -115,6 +120,8 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setCurrentText('');
         setCurrentIndex(-1);
         setPlaylist([]);
+        setProgress(0);
+        setDuration(0);
     }
     if (navigator.mediaSession) {
         navigator.mediaSession.playbackState = 'none';
@@ -261,6 +268,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setIsPlaying(true);
     setIsPaused(false);
     setIsLoading(true);
+    setProgress(0);
     setCurrentText(item.type === 'media_favorite' ? item.item.name : (item.type === 'favorite' ? item.item.text : (item.item.annotation.targetText || item.item.annotation.note || '')));
 
     if (item.type === 'media_favorite') {
@@ -278,6 +286,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             }
         }
     } else {
+        setDuration(0);
         speechQueueRef.current = [];
         segmentIndexRef.current = 0;
         
@@ -331,6 +340,16 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (navigator.mediaSession) navigator.mediaSession.playbackState = 'playing';
   }, [isPaused, currentItem, stop, toast]);
 
+  const handleSeek = (value: number) => {
+    if (currentItem?.type !== 'media_favorite') return;
+    const player = currentItem.item.type === 'video' ? videoPlayerRef.current : audioPlayerRef.current;
+    if (player && player.duration) {
+      player.currentTime = (value / 100) * player.duration;
+      setProgress(value);
+    }
+  };
+
+
   const hasNext = () => currentIndex > -1 && currentIndex < playlist.length - 1;
   const hasPrevious = () => currentIndex > 0;
 
@@ -376,7 +395,10 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const audioPlayer = audioPlayerRef.current;
     const videoPlayer = videoPlayerRef.current;
 
-    const handlePlaying = () => { if (isMountedRef.current && isPlaying) setIsLoading(false); };
+    const handlePlaying = (e: any) => { 
+        if (isMountedRef.current && isPlaying) setIsLoading(false); 
+        setDuration(e.target.duration);
+    };
     const handleError = (e: any) => {
         if (e?.target?.error?.message?.toLowerCase().includes('interrupted')) return;
         if (isMountedRef.current) {
@@ -384,13 +406,23 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             stop();
         }
     };
+    
+    const handleTimeUpdate = (e: any) => {
+        if(isMountedRef.current && e.target.duration > 0) {
+            setProgress((e.target.currentTime / e.target.duration) * 100);
+        }
+    }
 
     // Use handleMediaEnded for both audio and video HTML elements
     audioPlayer?.addEventListener('ended', handleMediaEnded);
     videoPlayer?.addEventListener('ended', handleMediaEnded);
 
-    audioPlayer?.addEventListener('playing', handlePlaying);
-    videoPlayer?.addEventListener('playing', handlePlaying);
+    audioPlayer?.addEventListener('loadedmetadata', handlePlaying);
+    videoPlayer?.addEventListener('loadedmetadata', handlePlaying);
+    
+    audioPlayer?.addEventListener('timeupdate', handleTimeUpdate);
+    videoPlayer?.addEventListener('timeupdate', handleTimeUpdate);
+
     audioPlayer?.addEventListener('error', handleError);
     videoPlayer?.addEventListener('error', handleError);
 
@@ -405,8 +437,10 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return () => {
       audioPlayer?.removeEventListener('ended', handleMediaEnded);
       videoPlayer?.removeEventListener('ended', handleMediaEnded);
-      audioPlayer?.removeEventListener('playing', handlePlaying);
-      videoPlayer?.removeEventListener('playing', handlePlaying);
+      audioPlayer?.removeEventListener('loadedmetadata', handlePlaying);
+      videoPlayer?.removeEventListener('loadedmetadata', handlePlaying);
+      audioPlayer?.removeEventListener('timeupdate', handleTimeUpdate);
+      videoPlayer?.removeEventListener('timeupdate', handleTimeUpdate);
       audioPlayer?.removeEventListener('error', handleError);
       videoPlayer?.removeEventListener('error', handleError);
       
@@ -443,6 +477,9 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setYourNoteTtsSettings,
     audioPlayerRef: audioPlayerRef as React.RefObject<HTMLAudioElement>,
     videoPlayerRef: videoPlayerRef as React.RefObject<HTMLVideoElement>,
+    progress,
+    duration,
+    handleSeek,
   };
 
   return <PlaybackContext.Provider value={value}>{children}</PlaybackContext.Provider>;
