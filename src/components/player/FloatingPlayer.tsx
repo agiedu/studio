@@ -94,7 +94,7 @@ export default function FloatingPlayer() {
                     />
                 </div>
 
-                <div className="flex items-center gap-4 w-full mt-auto flex-shrink-0">
+                <div className="flex items-center gap-4 w-full mt-auto flex-shrink-0 min-w-[280px]">
                     <div className="flex-grow min-w-0">
                         <p className="text-sm font-medium truncate text-primary" title={currentText}>
                             {currentText ? `“${truncateText(currentText)}”` : 'Loading...'}
