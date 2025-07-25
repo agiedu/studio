@@ -38,7 +38,6 @@ interface PlaybackContextType {
   setOriginalTextTtsSettings: React.Dispatch<React.SetStateAction<TTSSettings>>;
   yourNoteTtsSettings: TTSSettings;
   setYourNoteTtsSettings: React.Dispatch<React.SetStateAction<TTSSettings>>;
-  audioPlayerRef: React.RefObject<HTMLAudioElement | null>;
 }
 
 const PlaybackContext = createContext<PlaybackContextType | undefined>(undefined);
@@ -247,12 +246,6 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const play = useCallback(async (item: PlayableItem, newPlaylist: PlayableItem[], startIndex: number) => {
     if (!isMountedRef.current) return;
     
-    const isSameItem = currentItem?.item.id === item.item.id;
-    if (isSameItem && isPlaying && !isPaused) {
-      // If the same item is already playing, do nothing.
-      return;
-    }
-    
     stop(false); // Stop current playback but keep player UI state
     
     isSpeakingRef.current = true;
@@ -265,11 +258,12 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     if (item.type === 'media_favorite') {
         if (audioPlayerRef.current) {
-            // The src is set by the media page, just need to play
+             const blob = new Blob([item.item.fileData], { type: item.item.originalType });
+             const url = URL.createObjectURL(blob);
+             audioPlayerRef.current.src = url;
             try {
-                if (audioPlayerRef.current.src) {
-                    await audioPlayerRef.current.play();
-                }
+                await audioPlayerRef.current.play();
+                URL.revokeObjectURL(url);
             } catch (e) {
                 console.error("Error playing media item:", e);
                 stop();
@@ -292,7 +286,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         
         await speakNextSegment();
     }
-  }, [currentItem, isPlaying, isPaused, stop, originalTextTtsSettings, yourNoteTtsSettings, speakNextSegment]);
+  }, [stop, originalTextTtsSettings, yourNoteTtsSettings, speakNextSegment]);
 
 
   const pause = useCallback(() => {
@@ -314,8 +308,10 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       window.speechSynthesis.resume();
     } else if (audioPlayerRef.current?.paused) {
       audioPlayerRef.current.play().catch((err) => {
-        console.error("Resume play error:", err);
-        stop();
+        if (err.name !== 'AbortError') {
+          console.error("Resume play error:", err);
+          stop();
+        }
       });
     } else if (!utteranceRef.current && !audioPlayerRef.current?.src) {
       speakNextSegment();
@@ -380,7 +376,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (isMountedRef.current && isPlaying) setIsLoading(false);
     };
     const handleAudioError = (e: any) => {
-        if (e?.target?.error?.message?.includes('interrupted')) {
+        if (e?.target?.error?.message?.toLowerCase().includes('interrupted')) {
             return;
         }
         if (isMountedRef.current) {
@@ -437,7 +433,6 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setOriginalTextTtsSettings,
     yourNoteTtsSettings,
     setYourNoteTtsSettings,
-    audioPlayerRef,
   };
 
   return <PlaybackContext.Provider value={value}>{children}</PlaybackContext.Provider>;

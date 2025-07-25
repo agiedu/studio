@@ -71,7 +71,6 @@ function MediaFavoritesPageContent() {
     setPlaybackMode,
     hasNext,
     hasPrevious,
-    audioPlayerRef,
   } = usePlayback();
 
 
@@ -102,10 +101,19 @@ function MediaFavoritesPageContent() {
     }
   };
   
-  const handlePlay = (item: MediaFavoriteItem) => {
-      const fullPlaylist = mediaItems.map(media => ({ type: 'media_favorite' as const, item: media }));
-      const startIndex = mediaItems.findIndex(media => media.id === item.id);
-      play({ type: 'media_favorite', item }, fullPlaylist, startIndex);
+  const handlePlayPause = (item: MediaFavoriteItem) => {
+    const isCurrentlyPlayingThis = currentItem?.item.id === item.id;
+    if (isCurrentlyPlayingThis) {
+        if (isPaused) {
+            resume();
+        } else {
+            pause();
+        }
+    } else {
+        const fullPlaylist = mediaItems.map(media => ({ type: 'media_favorite' as const, item: media }));
+        const startIndex = mediaItems.findIndex(media => media.id === item.id);
+        play({ type: 'media_favorite', item }, fullPlaylist, startIndex);
+    }
   };
   
   const handleGlobalPlayPause = () => {
@@ -114,7 +122,7 @@ function MediaFavoritesPageContent() {
     } else if (isPlaying && isPaused) {
       resume();
     } else if (mediaItems.length > 0) {
-      handlePlay(mediaItems[0]);
+      handlePlayPause(mediaItems[0]);
     }
   };
 
@@ -190,17 +198,6 @@ function MediaFavoritesPageContent() {
     objectUrlRefs.current[item.id] = url;
     return url;
   };
-
-  // Effect to sync audio player src when currentItem changes
-  useEffect(() => {
-    if (audioPlayerRef.current && currentItem?.type === 'media_favorite') {
-        const url = getObjectUrl(currentItem.item);
-        if (audioPlayerRef.current.src !== url) {
-            audioPlayerRef.current.src = url;
-        }
-    }
-  }, [currentItem, audioPlayerRef]);
-
 
   return (
     <>
@@ -296,7 +293,7 @@ function MediaFavoritesPageContent() {
                         src={getObjectUrl(item)} 
                         controls 
                         className="w-full"
-                        onPlay={() => handlePlay(item)}
+                        onPlay={() => handlePlayPause(item)}
                         onPause={pause}
                     ></audio>
                   ) : (
@@ -304,7 +301,7 @@ function MediaFavoritesPageContent() {
                         src={getObjectUrl(item)}
                         controls 
                         className="w-full rounded-md bg-black"
-                        onPlay={() => handlePlay(item)}
+                        onPlay={() => handlePlayPause(item)}
                         onPause={pause}
                     ></video>
                   )}
