@@ -390,15 +390,6 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [onPlaybackEnd]);
 
-  const handleTtsEnded = useCallback(() => {
-      if (isSpeakingRef.current && isMountedRef.current) {
-          if (functionsRef.current.currentItem?.type !== 'media_favorite') {
-              segmentIndexRef.current++;
-              speakNextSegment();
-          }
-      }
-  }, [speakNextSegment]);
-
   useEffect(() => {
     const audioPlayer = audioPlayerRef.current;
     const videoPlayer = videoPlayerRef.current;
@@ -506,3 +497,5 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   return <PlaybackContext.Provider value={value}>{children}</PlaybackContext.Provider>;
 }
+
+    
