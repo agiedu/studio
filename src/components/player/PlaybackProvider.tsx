@@ -327,17 +327,24 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (navigator.mediaSession) navigator.mediaSession.playbackState = 'playing';
 
     const item = functionsRef.current.currentItem;
-    const isLocalTts = speechQueueRef.current[0]?.settings.engine === 'local';
+    if (!item) return;
 
-    if (item?.type === 'media_favorite') {
-      const player = item.item.type === 'video' ? videoPlayerRef.current : audioPlayerRef.current;
-      player?.play().catch(stop);
-    } else if (isLocalTts) {
-      if (window.speechSynthesis.paused) {
-        window.speechSynthesis.resume();
-      }
-    } else { // Cloud TTS
-      audioPlayerRef.current?.play().catch(stop);
+    if (item.type === 'media_favorite') {
+        const player = item.item.type === 'video' ? videoPlayerRef.current : audioPlayerRef.current;
+        player?.play().catch(stop);
+        return;
+    }
+    
+    // Logic for TTS
+    const ttsEngine = speechQueueRef.current[0]?.settings.engine;
+    if (ttsEngine === 'local') {
+        if (window.speechSynthesis.paused) {
+            window.speechSynthesis.resume();
+        }
+    } else if (ttsEngine === 'cloud') {
+        if (audioPlayerRef.current?.paused) {
+            audioPlayerRef.current.play().catch(stop);
+        }
     }
   }, [isPaused, stop]);
 
