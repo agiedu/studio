@@ -194,8 +194,11 @@ const sortedAnnotations = useMemo(() => {
 
     if (activeDoc) {
         allAnnotations = activeDoc.annotations || [];
-        if (activeDoc.type === 'pdf') pageNum = currentPdfPageNum;
-        // EPUB page number is not reliable for filtering, so we don't set it here for that purpose.
+        if (activeDoc.type === 'pdf') {
+          pageNum = currentPdfPageNum;
+        } else if (activeDoc.type === 'epub') {
+          pageNum = epubCurrentPageNum;
+        }
     } else {
         allAnnotations = scratchpadAnnotations;
     }
@@ -217,7 +220,7 @@ const sortedAnnotations = useMemo(() => {
             .sort((a, b) => a.startIndex - b.startIndex);
     }
 
-}, [activeDoc, scratchpadAnnotations, currentTextForTTS, currentPdfPageNum, isPdfTextView]);
+}, [activeDoc, scratchpadAnnotations, currentTextForTTS, currentPdfPageNum, isPdfTextView, epubCurrentPageNum]);
 
 
 const getCharPosition = (container: HTMLElement, charIndex: number): { top: number, left: number } | null => {
