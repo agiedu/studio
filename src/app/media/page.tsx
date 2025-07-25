@@ -52,7 +52,6 @@ function MediaFavoritesPageContent() {
   }>({ open: false, file: null, note: '' });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const mediaElementRefs = useRef<Record<string, HTMLAudioElement | HTMLVideoElement>>({});
   const objectUrlRefs = useRef<Record<string, string>>({});
 
 
@@ -72,6 +71,7 @@ function MediaFavoritesPageContent() {
     setPlaybackMode,
     hasNext,
     hasPrevious,
+    audioPlayerRef,
   } = usePlayback();
 
 
@@ -102,7 +102,7 @@ function MediaFavoritesPageContent() {
     }
   };
   
-  const handlePlayPauseMedia = (item: MediaFavoriteItem) => {
+  const handlePlay = (item: MediaFavoriteItem) => {
       const fullPlaylist = mediaItems.map(media => ({ type: 'media_favorite' as const, item: media }));
       const startIndex = mediaItems.findIndex(media => media.id === item.id);
       play({ type: 'media_favorite', item }, fullPlaylist, startIndex);
@@ -114,12 +114,7 @@ function MediaFavoritesPageContent() {
     } else if (isPlaying && isPaused) {
       resume();
     } else if (mediaItems.length > 0) {
-      // If stopped, find the first item and trigger its play button
-      const firstItemId = mediaItems[0].id;
-      const firstItemElement = mediaElementRefs.current[firstItemId];
-      if (firstItemElement) {
-        firstItemElement.play().catch(e => console.error("Error playing first item:", e));
-      }
+      handlePlay(mediaItems[0]);
     }
   };
 
@@ -196,26 +191,16 @@ function MediaFavoritesPageContent() {
     return url;
   };
 
-  const onMediaEnded = () => {
-    if (playbackMode === 'loop-single' && currentItem) {
-        const currentElement = mediaElementRefs.current[currentItem.item.id];
-        if (currentElement) {
-            currentElement.currentTime = 0;
-            currentElement.play();
-        }
-    } else if (playbackMode === 'sequential') {
-        next();
-    }
-  };
-
+  // Effect to sync audio player src when currentItem changes
   useEffect(() => {
-    if (playbackMode === 'sequential' && isPlaying && !isPaused && currentItem?.type === 'media_favorite') {
-        const nextElement = mediaElementRefs.current[currentItem.item.id];
-        if (nextElement && nextElement.paused) {
-            nextElement.play().catch(e => console.error("Sequential play error:", e));
+    if (audioPlayerRef.current && currentItem?.type === 'media_favorite') {
+        const url = getObjectUrl(currentItem.item);
+        if (audioPlayerRef.current.src !== url) {
+            audioPlayerRef.current.src = url;
         }
     }
-  }, [currentItem, isPlaying, isPaused, playbackMode]);
+  }, [currentItem, audioPlayerRef]);
+
 
   return (
     <>
@@ -311,20 +296,16 @@ function MediaFavoritesPageContent() {
                         src={getObjectUrl(item)} 
                         controls 
                         className="w-full"
-                        ref={el => { if (el) mediaElementRefs.current[item.id] = el; }}
-                        onPlay={() => handlePlayPauseMedia(item)}
+                        onPlay={() => handlePlay(item)}
                         onPause={pause}
-                        onEnded={onMediaEnded}
                     ></audio>
                   ) : (
                      <video 
                         src={getObjectUrl(item)}
                         controls 
                         className="w-full rounded-md bg-black"
-                        ref={el => { if (el) mediaElementRefs.current[item.id] = el; }}
-                        onPlay={() => handlePlayPauseMedia(item)}
+                        onPlay={() => handlePlay(item)}
                         onPause={pause}
-                        onEnded={onMediaEnded}
                     ></video>
                   )}
                   
