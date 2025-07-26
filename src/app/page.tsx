@@ -1,13 +1,15 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useContext } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { MangaTalkLogo } from '@/components/icons/MangaTalkLogo';
-import { BookOpenText, Library, Star, NotebookText, ArrowRight, Film } from 'lucide-react';
+import { BookOpenText, Library, Star, NotebookText, ArrowRight, Film, Languages } from 'lucide-react';
 import { getCurrentUser } from '@/lib/authService';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { LanguageContext, languages } from '@/context/LanguageContext';
 
 interface ModuleCardProps {
   title: string;
@@ -44,6 +46,7 @@ function ModuleCard({ title, description, icon, href, isLoggedIn }: ModuleCardPr
 export default function HomePage() {
     const [isLoggedIn, setIsLoggedIn] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const { locale, setLocale } = useContext(LanguageContext);
 
     useEffect(() => {
         // This check runs only on the client-side
@@ -97,6 +100,21 @@ export default function HomePage() {
                         <h1 className="text-xl md:text-2xl font-bold font-headline text-primary">MangaTalk</h1>
                     </Link>
                     <div className="flex items-center gap-2">
+                         <Select value={locale} onValueChange={(value) => setLocale(value as any)}>
+                            <SelectTrigger className="w-auto h-9 border-none focus:ring-0">
+                                <SelectValue asChild>
+                                     <div className="flex items-center gap-2">
+                                        <Languages className="h-4 w-4" />
+                                        <span className="hidden md:inline">{languages.find(l => l.code === locale)?.name}</span>
+                                     </div>
+                                </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent align="end">
+                                {languages.map(lang => (
+                                    <SelectItem key={lang.code} value={lang.code}>{lang.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                         {isLoggedIn ? (
                              <Button asChild>
                                 <Link href="/library">Go to App</Link>

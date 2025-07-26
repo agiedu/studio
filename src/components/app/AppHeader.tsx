@@ -4,13 +4,12 @@
 import { useState, useEffect, useContext } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { BookOpenText, Library, Star, User, LogOut, ShieldCheck, NotebookText, Home, Film, Languages } from 'lucide-react';
+import { BookOpenText, Library, Star, User, LogOut, ShieldCheck, NotebookText, Home, Film } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { MangaTalkLogo } from '@/components/icons/MangaTalkLogo';
 import { cn } from '@/lib/utils';
 import { getCurrentUser, logout, isAdminSessionActive } from '@/lib/authService';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { LanguageContext, languages } from '@/context/LanguageContext';
+import { LanguageContext } from '@/context/LanguageContext';
 import { getDictionary } from '@/lib/i18n';
 
 const PROTECTED_ROUTES = ['/library', '/reader', '/favorites', '/notes-favorites', '/profile', '/admin', '/media'];
@@ -20,7 +19,7 @@ export function AppHeader() {
   const router = useRouter();
   const [user, setUser] = useState<{ email: string } | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const { locale, setLocale } = useContext(LanguageContext);
+  const { locale } = useContext(LanguageContext);
   const dictionary = getDictionary(locale);
 
   useEffect(() => {
@@ -112,22 +111,6 @@ export function AppHeader() {
           </nav>
         </div>
         <div className="flex items-center gap-2">
-            <Select value={locale} onValueChange={(value) => setLocale(value as any)}>
-                <SelectTrigger className="w-auto h-9 border-none focus:ring-0">
-                    <SelectValue asChild>
-                         <div className="flex items-center gap-2">
-                            <Languages className="h-4 w-4" />
-                            <span className="hidden md:inline">{languages.find(l => l.code === locale)?.name}</span>
-                         </div>
-                    </SelectValue>
-                </SelectTrigger>
-                <SelectContent align="end">
-                    {languages.map(lang => (
-                        <SelectItem key={lang.code} value={lang.code}>{lang.name}</SelectItem>
-                    ))}
-                </SelectContent>
-            </Select>
-
             {user ? (
                 <Button variant="ghost" size="sm" onClick={handleLogout}>
                     <LogOut className="mr-1 h-4 w-4" /> {dictionary.nav.logout}
