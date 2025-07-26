@@ -10,6 +10,7 @@ import { BookOpenText, Library, Star, NotebookText, ArrowRight, Film, Languages 
 import { getCurrentUser } from '@/lib/authService';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { LanguageContext, languages } from '@/context/LanguageContext';
+import { getDictionary } from '@/lib/i18n';
 
 interface ModuleCardProps {
   title: string;
@@ -47,6 +48,7 @@ export default function HomePage() {
     const [isLoggedIn, setIsLoggedIn] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const { locale, setLocale } = useContext(LanguageContext);
+    const dictionary = getDictionary(locale);
 
     useEffect(() => {
         // This check runs only on the client-side
@@ -54,34 +56,34 @@ export default function HomePage() {
         setIsLoading(false);
     }, []);
 
-    const modules: Omit<ModuleCardProps, 'isLoggedIn'>[] = [
+    const modules = [
         {
-            title: "Library",
-            description: "Upload and manage your documents.",
+            title: dictionary.home.libraryTitle,
+            description: dictionary.home.libraryDescription,
             icon: <Library className="h-6 w-6 text-primary" />,
             href: "/library"
         },
         {
-            title: "Reader",
-            description: "View documents and use TTS.",
+            title: dictionary.home.readerTitle,
+            description: dictionary.home.readerDescription,
             icon: <BookOpenText className="h-6 w-6 text-primary" />,
             href: "/reader"
         },
         {
-            title: "Media",
-            description: "Upload and play audio/video files.",
+            title: dictionary.home.mediaTitle,
+            description: dictionary.home.mediaDescription,
             icon: <Film className="h-6 w-6 text-primary" />,
             href: "/media"
         },
         {
-            title: "Text Favorites",
-            description: "Review your saved text snippets.",
+            title: dictionary.home.favoritesTitle,
+            description: dictionary.home.favoritesDescription,
             icon: <Star className="h-6 w-6 text-primary" />,
             href: "/favorites"
         },
         {
-            title: "Note Favorites",
-            description: "Access your annotated notes.",
+            title: dictionary.home.notesTitle,
+            description: dictionary.home.notesDescription,
             icon: <NotebookText className="h-6 w-6 text-primary" />,
             href: "/notes-favorites"
         }
@@ -122,7 +124,7 @@ export default function HomePage() {
                         ) : (
                             <>
                                 <Button variant="ghost" asChild>
-                                    <Link href="/login">Login</Link>
+                                    <Link href="/login">{dictionary.nav.login}</Link>
                                 </Button>
                                 <Button asChild>
                                     <Link href="/register">Register</Link>
@@ -135,9 +137,9 @@ export default function HomePage() {
 
             <main className="flex-grow">
                 <section className="container mx-auto px-4 md:px-6 py-12 md:py-24 text-center">
-                    <h2 className="text-4xl md:text-5xl font-bold tracking-tight">Read Aloud, Understand Deeper</h2>
+                    <h2 className="text-4xl md:text-5xl font-bold tracking-tight">{dictionary.home.title}</h2>
                     <p className="mt-4 max-w-2xl mx-auto text-lg text-muted-foreground">
-                        MangaTalk brings your documents to life. Use advanced OCR and Text-to-Speech to listen to your mangas, PDFs, and text files.
+                        {dictionary.home.description}
                     </p>
                 </section>
 
@@ -151,7 +153,7 @@ export default function HomePage() {
             </main>
              <footer className="py-6 border-t bg-background">
                 <div className="container mx-auto text-center text-sm text-muted-foreground">
-                    © {new Date().getFullYear()} MangaTalk. All Rights Reserved.
+                    {dictionary.home.footer}
                 </div>
             </footer>
         </div>
