@@ -3,7 +3,7 @@
 
 import React, { createContext, useState, useEffect } from 'react';
 
-export type Locale = 'en' | 'zh-CN' | 'vi' | 'ja' | 'ko' | 'es' | 'fr' | 'de' | 'ru' | 'pt' | 'it' | 'ar' | 'hi' | 'th' | 'km' | 'my' | 'lo';
+export type Locale = 'en' | 'zh-CN' | 'vi' | 'ja' | 'ko' | 'es' | 'fr' | 'de' | 'ru' | 'pt' | 'it' | 'ar' | 'hi' | 'th' | 'km' | 'my' | 'lo' | 'ms' | 'ur' | 'fil' | 'ne' | 'bn';
 
 export const languages: { code: Locale; name: string }[] = [
     { code: 'en', name: 'English' },
@@ -23,6 +23,11 @@ export const languages: { code: Locale; name: string }[] = [
     { code: 'km', name: 'ភាសាខ្មែរ' },
     { code: 'my', name: 'မြန်မာဘာသာ' },
     { code: 'lo', name: 'ພາສາລາວ' },
+    { code: 'ms', name: 'Bahasa Melayu' }, // Malay
+    { code: 'ur', name: 'اردو' }, // Urdu (Pakistan)
+    { code: 'fil', name: 'Filipino' }, // Filipino
+    { code: 'ne', name: 'नेपाली' }, // Nepali
+    { code: 'bn', name: 'বাংলা' }, // Bengali
 ];
 
 const LANGUAGE_KEY = 'mangaTalk_language';
