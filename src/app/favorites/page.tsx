@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useContext } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
@@ -27,6 +27,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { LanguageContext } from '@/context/LanguageContext';
+import { getDictionary } from '@/lib/i18n';
 
 
 // Helper to group voices by language
@@ -46,6 +48,11 @@ function FavoritesPageContent() {
   const [favoriteItems, setFavoriteItems] = useState<FavoriteItem[]>([]);
   const [itemToDelete, setItemToDelete] = useState<FavoriteItem | null>(null);
   const [availableVoices, setAvailableVoices] = useState<TTSVoice[]>([]);
+
+  const { locale } = useContext(LanguageContext);
+  const dictionary = getDictionary(locale);
+  const commonDict = dictionary.common;
+  const favDict = dictionary.favorites;
 
   const {
     play,
@@ -179,7 +186,7 @@ function FavoritesPageContent() {
     if (currentItem?.item.id === itemToDelete.id) stop();
     LocalStorage.deleteFavoriteItem(itemToDelete.id);
     setFavoriteItems(prev => prev.filter(item => item.id !== itemToDelete.id));
-    toast({ title: "Favorite Removed" });
+    toast({ title: favDict.favoriteRemoved });
     setItemToDelete(null);
   };
   
@@ -253,14 +260,14 @@ function FavoritesPageContent() {
       <div className="container mx-auto p-4 md:p-6 space-y-6">
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Star className="text-primary" /> My Favorites</CardTitle>
-            <CardDescription>Your saved text snippets. Click to play or delete.</CardDescription>
+            <CardTitle className="flex items-center gap-2"><Star className="text-primary" />{favDict.title}</CardTitle>
+            <CardDescription>{favDict.description}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="mb-6 p-4 border rounded-md bg-muted/20">
-                  <h3 className="text-lg font-medium mb-3">Global TTS Settings for Favorites</h3>
+                  <h3 className="text-lg font-medium mb-3">{favDict.globalSettingsTitle}</h3>
                   <div className="mb-4">
-                      <Label className="font-medium text-sm">Playback Mode</Label>
+                      <Label className="font-medium text-sm">{favDict.playbackMode}</Label>
                       <RadioGroup
                         value={playbackMode}
                         onValueChange={(v) => {
@@ -270,15 +277,15 @@ function FavoritesPageContent() {
                       >
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="default" id="mode-default" />
-                          <Label htmlFor="mode-default" className="flex items-center gap-1 cursor-pointer"><Play className="h-4 w-4"/>Default</Label>
+                          <Label htmlFor="mode-default" className="flex items-center gap-1 cursor-pointer"><Play className="h-4 w-4"/>{commonDict.default}</Label>
                         </div>
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="loop-single" id="mode-loop" />
-                          <Label htmlFor="mode-loop" className="flex items-center gap-1 cursor-pointer"><Repeat1 className="h-4 w-4"/>Loop Single</Label>
+                          <Label htmlFor="mode-loop" className="flex items-center gap-1 cursor-pointer"><Repeat1 className="h-4 w-4"/>{favDict.loopSingle}</Label>
                         </div>
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="sequential" id="mode-sequential" />
-                          <Label htmlFor="mode-sequential" className="flex items-center gap-1 cursor-pointer"><ListOrdered className="h-4 w-4"/>List loop mode</Label>
+                          <Label htmlFor="mode-sequential" className="flex items-center gap-1 cursor-pointer"><ListOrdered className="h-4 w-4"/>{favDict.listLoopMode}</Label>
                         </div>
                       </RadioGroup>
                   </div>
@@ -292,12 +299,12 @@ function FavoritesPageContent() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
                       <div>
-                          <Label htmlFor="fav-tts-engine">TTS Engine</Label>
+                          <Label htmlFor="fav-tts-engine">{favDict.ttsEngine}</Label>
                           <Select value={ttsSettings.engine} onValueChange={(v) => handleSettingChange('engine', v as 'local' | 'cloud')} disabled={isPlaying}>
                               <SelectTrigger id="fav-tts-engine"><SelectValue /></SelectTrigger>
                               <SelectContent>
-                              <SelectItem value="local"><div className="flex items-center gap-1"><Smartphone className="h-4 w-4" /> Local</div></SelectItem>
-                              <SelectItem value="cloud"><div className="flex items-center gap-1"><CloudIcon className="h-4 w-4"/> Cloud</div></SelectItem>
+                              <SelectItem value="local"><div className="flex items-center gap-1"><Smartphone className="h-4 w-4" />{favDict.localEngine}</div></SelectItem>
+                              <SelectItem value="cloud"><div className="flex items-center gap-1"><CloudIcon className="h-4 w-4"/>{favDict.cloudEngine}</div></SelectItem>
                               </SelectContent>
                           </Select>
                       </div>
@@ -305,16 +312,16 @@ function FavoritesPageContent() {
 
                   {ttsSettings.engine === 'local' && (
                       <div className="mb-3">
-                          <Label htmlFor="fav-tts-voice">Voice (Local)</Label>
+                          <Label htmlFor="fav-tts-voice">{favDict.voiceLocal}</Label>
                           <Select
                               value={ttsSettings.voiceURI || ""}
                               onValueChange={(v) => handleSettingChange('voiceURI', v)}
                               disabled={isPlaying || availableVoices.length === 0}
                           >
-                              <SelectTrigger id="fav-tts-voice"><SelectValue placeholder={availableVoices.length > 0 ? "Select voice" : "No local voices found"} /></SelectTrigger>
+                              <SelectTrigger id="fav-tts-voice"><SelectValue placeholder={availableVoices.length > 0 ? favDict.selectVoice : favDict.noLocalVoices} /></SelectTrigger>
                               <SelectContent className="max-h-60">
                                   {availableVoices.length === 0 ? (
-                                      <SelectItem value="no-voices" disabled>No local voices found on this device</SelectItem>
+                                      <SelectItem value="no-voices" disabled>{favDict.noLocalVoices}</SelectItem>
                                   ) : (
                                       Object.entries(groupedLocalVoices).map(([lang, voices]) => (
                                           <SelectGroup key={lang}>
@@ -333,9 +340,9 @@ function FavoritesPageContent() {
                   {ttsSettings.engine === 'cloud' && (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
                           <div>
-                              <Label htmlFor="fav-cloud-tts-language">Language (Cloud)</Label>
+                              <Label htmlFor="fav-cloud-tts-language">{favDict.languageCloud}</Label>
                               <Select value={ttsSettings.language} onValueChange={(v) => handleSettingChange('language', v as string)} disabled={isPlaying}>
-                                  <SelectTrigger id="fav-cloud-tts-language"><SelectValue placeholder="Select a language" /></SelectTrigger>
+                                  <SelectTrigger id="fav-cloud-tts-language"><SelectValue placeholder={favDict.selectLanguage} /></SelectTrigger>
                                   <SelectContent className="max-h-60">
                                       {Object.entries(edgeTTSLanguageVoices).map(([locale, { language }]) => (
                                           <SelectItem key={locale} value={locale}>{language} ({locale})</SelectItem>
@@ -344,9 +351,9 @@ function FavoritesPageContent() {
                               </Select>
                           </div>
                           <div>
-                              <Label htmlFor="fav-cloud-tts-voice">Voice (Cloud)</Label>
+                              <Label htmlFor="fav-cloud-tts-voice">{favDict.voiceCloud}</Label>
                               <Select value={ttsSettings.cloudVoiceId || ""} onValueChange={(v) => handleSettingChange('cloudVoiceId', v)} disabled={isPlaying || !ttsSettings.language}>
-                                  <SelectTrigger id="fav-cloud-tts-voice"><SelectValue placeholder="Select a voice" /></SelectTrigger>
+                                  <SelectTrigger id="fav-cloud-tts-voice"><SelectValue placeholder={favDict.selectVoice} /></SelectTrigger>
                                   <SelectContent className="max-h-60">
                                       {(edgeTTSLanguageVoices[ttsSettings.language]?.voices || []).map(voice => (
                                           <SelectItem key={voice.id} value={voice.id}>{voice.name}</SelectItem>
@@ -358,33 +365,33 @@ function FavoritesPageContent() {
                   )}
 
                   <div className="space-y-2 mb-3">
-                      <Label htmlFor="fav-tts-rate">Rate: {ttsSettings.rate.toFixed(1)}</Label>
+                      <Label htmlFor="fav-tts-rate">{commonDict.rate}: {ttsSettings.rate.toFixed(1)}</Label>
                       <Slider id="fav-tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isPlaying}/>
                   </div>
                   <div className="space-y-2">
-                      <Label htmlFor="fav-tts-pitch">Pitch: {ttsSettings.pitch.toFixed(1)}</Label>
+                      <Label htmlFor="fav-tts-pitch">{commonDict.pitch}: {ttsSettings.pitch.toFixed(1)}</Label>
                       <Slider id="fav-tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isPlaying}/>
                   </div>
             </div>
 
             {favoriteItems.length === 0 ? (
-              <p className="text-muted-foreground flex items-center gap-2"><Info className="h-5 w-5" /> Your favorites list is empty. Select text in the reader and click "Favorite Selected Text" to add items.</p>
+              <p className="text-muted-foreground flex items-center gap-2"><Info className="h-5 w-5" />{favDict.emptyList}</p>
             ) : (
               <ul className="space-y-3">
                 {favoriteItems.map(item => {
                   const isCurrentlyPlaying = currentItem?.item.id === item.id && currentItem?.type === 'favorite';
                   let buttonIcon = <Play className="mr-1.5 h-4 w-4" />;
-                  let buttonText = "Play";
+                  let buttonText = commonDict.play;
                   if (isCurrentlyPlaying) {
                     if (isLoading) {
                          buttonIcon = <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />;
-                         buttonText = "Loading...";
+                         buttonText = commonDict.loading;
                     } else if (isPaused) {
                       buttonIcon = <Play className="mr-1.5 h-4 w-4" />;
-                      buttonText = "Resume";
+                      buttonText = commonDict.resume;
                     } else {
                       buttonIcon = <Pause className="mr-1.5 h-4 w-4" />;
-                      buttonText = "Pause";
+                      buttonText = commonDict.pause;
                     }
                   }
 
@@ -399,8 +406,8 @@ function FavoritesPageContent() {
                           }
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {item.sourceDocumentName && `From: ${item.sourceDocumentName} | `}
-                          Added: {format(new Date(item.createdAt), "MMM d, yyyy HH:mm")}
+                          {item.sourceDocumentName && `${favDict.from}: ${item.sourceDocumentName} | `}
+                          {favDict.added}: {format(new Date(item.createdAt), "MMM d, yyyy HH:mm")}
                         </p>
                       </div>
                       <div className="flex gap-2 mt-2 sm:mt-0 sm:items-center flex-shrink-0">
@@ -425,7 +432,7 @@ function FavoritesPageContent() {
           </CardContent>
           {favoriteItems.length > 0 && (
             <CardFooter>
-              <p className="text-xs text-muted-foreground">Your favorites are stored in your browser's local storage.</p>
+              <p className="text-xs text-muted-foreground">{favDict.storageNote}</p>
             </CardFooter>
           )}
         </Card>
@@ -433,14 +440,14 @@ function FavoritesPageContent() {
       <AlertDialog open={!!itemToDelete} onOpenChange={(isOpen) => !isOpen && setItemToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogTitle>{commonDict.areYouSure}</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete this favorite.
+              {commonDict.actionCannotBeUndone} {favDict.deleteConfirmation}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={performDelete}>Continue</AlertDialogAction>
+            <AlertDialogCancel>{commonDict.cancel}</AlertDialogCancel>
+            <AlertDialogAction onClick={performDelete}>{commonDict.continue}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

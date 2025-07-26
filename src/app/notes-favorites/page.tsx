@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useContext } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
@@ -30,6 +30,8 @@ import { edgeTTSLanguageVoices } from '@/lib/edge-tts-voices';
 import { Separator } from '@/components/ui/separator';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { usePlayback } from '@/components/player/PlaybackProvider';
+import { LanguageContext } from '@/context/LanguageContext';
+import { getDictionary } from '@/lib/i18n';
 
 
 const groupVoicesByLanguage = (voices: TTSVoice[]) => {
@@ -47,9 +49,13 @@ const HighlightableText: React.FC<{
   text: string;
   isSpeaking: boolean;
   highlightedText: string;
-}> = ({ text, isSpeaking, highlightedText }) => {
-    if (!isSpeaking || !text || !highlightedText || !text.includes(highlightedText)) {
-        return <>{text ? `"${text}"` : "No text available."}</>;
+  noTextContent: string;
+}> = ({ text, isSpeaking, highlightedText, noTextContent }) => {
+    if (!text) {
+        return <>{noTextContent}</>;
+    }
+    if (!isSpeaking || !highlightedText || !text.includes(highlightedText)) {
+        return <>{`"${text}"`}</>;
     }
 
     const index = text.indexOf(highlightedText);
@@ -71,6 +77,12 @@ function NotesFavoritesPageContent() {
   const [favoriteNotes, setFavoriteNotes] = useState<NoteFavoriteItem[]>([]);
   const [noteToDelete, setNoteToDelete] = useState<NoteFavoriteItem | null>(null);
   const [availableVoices, setAvailableVoices] = useState<TTSVoice[]>([]);
+
+  const { locale } = useContext(LanguageContext);
+  const dictionary = getDictionary(locale);
+  const commonDict = dictionary.common;
+  const notesFavDict = dictionary.notesFavorites;
+  const favDict = dictionary.favorites;
 
   const {
     play,
@@ -178,7 +190,7 @@ function NotesFavoritesPageContent() {
     if (currentItem?.item.id === noteToDelete.id) stop();
     LocalStorage.deleteNoteFavorite(noteToDelete.id);
     setFavoriteNotes(prev => prev.filter(item => item.id !== noteToDelete.id));
-    toast({ title: "Note Favorite Removed" });
+    toast({ title: notesFavDict.noteFavoriteRemoved });
     setNoteToDelete(null);
   };
   
@@ -268,12 +280,12 @@ function NotesFavoritesPageContent() {
         <h3 className="text-lg font-medium mb-3">{title}</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
             <div>
-                <Label htmlFor={`${panelType}-tts-engine`}>TTS Engine</Label>
+                <Label htmlFor={`${panelType}-tts-engine`}>{favDict.ttsEngine}</Label>
                 <Select value={settings.engine} onValueChange={(v) => handlePanelChange('engine', v as 'local' | 'cloud')} disabled={isPlaying}>
                     <SelectTrigger id={`${panelType}-tts-engine`}><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="local"><div className="flex items-center gap-1"><Smartphone className="h-4 w-4" /> Local</div></SelectItem>
-                      <SelectItem value="cloud"><div className="flex items-center gap-1"><CloudIcon className="h-4 w-4"/> Cloud</div></SelectItem>
+                      <SelectItem value="local"><div className="flex items-center gap-1"><Smartphone className="h-4 w-4" />{favDict.localEngine}</div></SelectItem>
+                      <SelectItem value="cloud"><div className="flex items-center gap-1"><CloudIcon className="h-4 w-4"/>{favDict.cloudEngine}</div></SelectItem>
                     </SelectContent>
                 </Select>
             </div>
@@ -281,16 +293,16 @@ function NotesFavoritesPageContent() {
 
         {settings.engine === 'local' && (
             <div className="mb-3">
-                <Label htmlFor={`${panelType}-tts-voice`}>Voice (Local)</Label>
+                <Label htmlFor={`${panelType}-tts-voice`}>{favDict.voiceLocal}</Label>
                 <Select
                     value={settings.voiceURI || ""}
                     onValueChange={(v) => handlePanelChange('voiceURI', v)}
                     disabled={isPlaying || availableVoices.length === 0}
                 >
-                    <SelectTrigger id={`${panelType}-tts-voice`}><SelectValue placeholder={availableVoices.length > 0 ? "Select voice" : "No local voices found"} /></SelectTrigger>
+                    <SelectTrigger id={`${panelType}-tts-voice`}><SelectValue placeholder={availableVoices.length > 0 ? favDict.selectVoice : favDict.noLocalVoices} /></SelectTrigger>
                     <SelectContent className="max-h-60">
                         {availableVoices.length === 0 ? (
-                            <SelectItem value="no-voices" disabled>No local voices found on this device</SelectItem>
+                            <SelectItem value="no-voices" disabled>{favDict.noLocalVoices}</SelectItem>
                         ) : (
                             Object.entries(groupedLocalVoices).map(([lang, voices]) => (
                                 <SelectGroup key={lang}>
@@ -309,9 +321,9 @@ function NotesFavoritesPageContent() {
         {settings.engine === 'cloud' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
                 <div>
-                    <Label htmlFor={`${panelType}-cloud-tts-language`}>Language (Cloud)</Label>
+                    <Label htmlFor={`${panelType}-cloud-tts-language`}>{favDict.languageCloud}</Label>
                     <Select value={settings.language} onValueChange={(v) => handlePanelChange('language', v as string)} disabled={isPlaying}>
-                        <SelectTrigger id={`${panelType}-cloud-tts-language`}><SelectValue placeholder="Select a language" /></SelectTrigger>
+                        <SelectTrigger id={`${panelType}-cloud-tts-language`}><SelectValue placeholder={favDict.selectLanguage} /></SelectTrigger>
                         <SelectContent className="max-h-60">
                             {Object.entries(edgeTTSLanguageVoices).map(([locale, { language }]) => (
                                 <SelectItem key={locale} value={locale}>{language} ({locale})</SelectItem>
@@ -320,9 +332,9 @@ function NotesFavoritesPageContent() {
                     </Select>
                 </div>
                 <div>
-                    <Label htmlFor={`${panelType}-cloud-tts-voice`}>Voice (Cloud)</Label>
+                    <Label htmlFor={`${panelType}-cloud-tts-voice`}>{favDict.voiceCloud}</Label>
                     <Select value={settings.cloudVoiceId || ""} onValueChange={(v) => handlePanelChange('cloudVoiceId', v)} disabled={isPlaying || !settings.language}>
-                        <SelectTrigger id={`${panelType}-cloud-tts-voice`}><SelectValue placeholder="Select a voice" /></SelectTrigger>
+                        <SelectTrigger id={`${panelType}-cloud-tts-voice`}><SelectValue placeholder={favDict.selectVoice} /></SelectTrigger>
                         <SelectContent className="max-h-60">
                             {(edgeTTSLanguageVoices[settings.language]?.voices || []).map(voice => (
                                 <SelectItem key={voice.id} value={voice.id}>{voice.name}</SelectItem>
@@ -334,11 +346,11 @@ function NotesFavoritesPageContent() {
         )}
 
         <div className="space-y-2 mb-3">
-            <Label htmlFor={`${panelType}-tts-rate`}>Rate: {settings.rate.toFixed(1)}</Label>
+            <Label htmlFor={`${panelType}-tts-rate`}>{commonDict.rate}: {settings.rate.toFixed(1)}</Label>
             <Slider id={`${panelType}-tts-rate`} min={0.5} max={2} step={0.1} value={[settings.rate]} onValueChange={([v]) => handlePanelChange('rate', v)} disabled={isPlaying}/>
         </div>
         <div className="space-y-2">
-            <Label htmlFor={`${panelType}-tts-pitch`}>Pitch: {settings.pitch.toFixed(1)}</Label>
+            <Label htmlFor={`${panelType}-tts-pitch`}>{commonDict.pitch}: {settings.pitch.toFixed(1)}</Label>
             <Slider id={`${panelType}-tts-pitch`} min={0} max={2} step={0.1} value={[settings.pitch]} onValueChange={([v]) => handlePanelChange('pitch', v)} disabled={isPlaying}/>
         </div>
       </div>
@@ -351,13 +363,13 @@ function NotesFavoritesPageContent() {
       <div className="container mx-auto p-4 md:p-6 space-y-6">
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><NotebookText className="text-primary" /> My Note Favorites</CardTitle>
-            <CardDescription>Your saved annotations. Click to review, play or delete.</CardDescription>
+            <CardTitle className="flex items-center gap-2"><NotebookText className="text-primary" />{notesFavDict.title}</CardTitle>
+            <CardDescription>{notesFavDict.description}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="mb-6 p-4 border rounded-md bg-muted/20">
                 <div className="mb-4">
-                      <Label className="font-medium text-sm">Playback Mode</Label>
+                      <Label className="font-medium text-sm">{notesFavDict.playbackMode}</Label>
                       <RadioGroup
                         value={playbackMode}
                         onValueChange={(v) => {
@@ -367,15 +379,15 @@ function NotesFavoritesPageContent() {
                       >
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="default" id="mode-default" />
-                          <Label htmlFor="mode-default" className="flex items-center gap-1 cursor-pointer"><Play className="h-4 w-4"/>Default</Label>
+                          <Label htmlFor="mode-default" className="flex items-center gap-1 cursor-pointer"><Play className="h-4 w-4"/>{commonDict.default}</Label>
                         </div>
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="loop-single" id="mode-loop" />
-                          <Label htmlFor="mode-loop" className="flex items-center gap-1 cursor-pointer"><Repeat1 className="h-4 w-4"/>Loop Single</Label>
+                          <Label htmlFor="mode-loop" className="flex items-center gap-1 cursor-pointer"><Repeat1 className="h-4 w-4"/>{notesFavDict.loopSingle}</Label>
                         </div>
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="sequential" id="mode-sequential" />
-                          <Label htmlFor="mode-sequential" className="flex items-center gap-1 cursor-pointer"><ListOrdered className="h-4 w-4"/>List loop mode</Label>
+                          <Label htmlFor="mode-sequential" className="flex items-center gap-1 cursor-pointer"><ListOrdered className="h-4 w-4"/>{notesFavDict.listLoopMode}</Label>
                         </div>
                       </RadioGroup>
                   </div>
@@ -387,29 +399,29 @@ function NotesFavoritesPageContent() {
                       <Button variant="ghost" size="icon" onClick={next} disabled={!hasNext() || isLoading}><SkipForward className="h-5 w-5"/></Button>
                   </div>
                 <Separator className="my-6" />
-                {renderTtsPanel('original', 'Original Text TTS Settings', originalTextTtsSettings)}
+                {renderTtsPanel('original', notesFavDict.originalTextSettings, originalTextTtsSettings)}
                 <Separator className="my-6" />
-                {renderTtsPanel('note', 'Your Note TTS Settings', yourNoteTtsSettings)}
+                {renderTtsPanel('note', notesFavDict.yourNoteSettings, yourNoteTtsSettings)}
             </div>
 
             {favoriteNotes.length === 0 ? (
-              <p className="text-muted-foreground flex items-center gap-2"><Info className="h-5 w-5" /> Your note favorites list is empty. In the reader, select text, add a note, and then save it to favorites.</p>
+              <p className="text-muted-foreground flex items-center gap-2"><Info className="h-5 w-5" />{notesFavDict.emptyList}</p>
             ) : (
               <ul className="space-y-4">
                 {favoriteNotes.map(item => {
                   const isCurrentlyPlayingThisItem = currentItem?.item.id === item.id;
                   let buttonIcon = <Play className="mr-1.5 h-4 w-4" />;
-                  let buttonText = "Play";
+                  let buttonText = commonDict.play;
                   if (isCurrentlyPlayingThisItem) {
                       if (isLoading) {
                           buttonIcon = <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />;
-                          buttonText = "Loading...";
+                          buttonText = commonDict.loading;
                       } else if (isPaused) {
                           buttonIcon = <Play className="mr-1.5 h-4 w-4" />;
-                          buttonText = "Resume";
+                          buttonText = commonDict.resume;
                       } else {
                           buttonIcon = <Pause className="mr-1.5 h-4 w-4" />;
-                          buttonText = "Pause";
+                          buttonText = commonDict.pause;
                       }
                   }
                   const hasContentToPlay = item.annotation.targetText || item.annotation.note;
@@ -421,30 +433,32 @@ function NotesFavoritesPageContent() {
                     <li key={item.id} className="p-4 border rounded-md flex flex-col justify-between gap-4 bg-card hover:shadow-md transition-shadow">
                       <div className="flex-grow space-y-3 w-full">
                           <div className="p-3 bg-muted/50 rounded-md">
-                              <p className="text-xs text-muted-foreground mb-1">Original Text:</p>
+                              <p className="text-xs text-muted-foreground mb-1">{notesFavDict.originalText}</p>
                               <p className={cn("text-sm italic", !item.annotation.targetText && "text-muted-foreground")}>
                                 <HighlightableText
                                   text={item.annotation.targetText || ''}
                                   isSpeaking={isHighlightingTarget}
                                   highlightedText={currentText}
+                                  noTextContent={notesFavDict.noTextAvailable}
                                 />
                               </p>
                           </div>
 
                           <div className="p-3 bg-background rounded-md border">
-                               <p className="text-xs text-muted-foreground mb-1">Your Note:</p>
+                               <p className="text-xs text-muted-foreground mb-1">{notesFavDict.yourNote}</p>
                               <p className={cn("text-sm whitespace-pre-wrap", !item.annotation.note && "italic text-muted-foreground")}>
                                 <HighlightableText
                                     text={item.annotation.note || ''}
                                     isSpeaking={isHighlightingNote}
                                     highlightedText={currentText}
+                                    noTextContent={notesFavDict.noTextAvailable}
                                   />
                               </p>
                           </div>
                         
                           {item.annotation.imageDataUrl && (
                               <div className="p-2 border rounded-md">
-                                  <p className="text-xs text-muted-foreground mb-2">Attached Image:</p>
+                                  <p className="text-xs text-muted-foreground mb-2">{notesFavDict.attachedImage}</p>
                                   <div className="relative w-full max-w-xs">
                                        <NextImage src={item.annotation.imageDataUrl} alt="Annotation attachment" width={300} height={200} className="rounded-md object-contain" />
                                   </div>
@@ -453,8 +467,8 @@ function NotesFavoritesPageContent() {
                       </div>
                       <div className="flex flex-col sm:flex-row gap-2 sm:items-center justify-between pt-3 border-t">
                            <p className="text-xs text-muted-foreground">
-                            {item.sourceDocumentName && <span className="flex items-center gap-1"><FileText className="h-3 w-3"/> From: {item.sourceDocumentName} | </span>}
-                            Favorited: {format(new Date(item.favoritedAt), "MMM d, yyyy HH:mm")}
+                            {item.sourceDocumentName && <span className="flex items-center gap-1"><FileText className="h-3 w-3"/>{notesFavDict.from}: {item.sourceDocumentName} | </span>}
+                            {notesFavDict.favorited}: {format(new Date(item.favoritedAt), "MMM d, yyyy HH:mm")}
                           </p>
                           <div className="flex gap-2 self-end sm:self-center">
                             <Button 
@@ -463,7 +477,7 @@ function NotesFavoritesPageContent() {
                               onClick={() => handlePlayPauseNote(item)} 
                               disabled={(isLoading && !isCurrentlyPlayingThisItem) || !hasContentToPlay}
                               className="w-[100px]"
-                              title={hasContentToPlay ? "Play/Pause Note" : "No text in note to play"}
+                              title={hasContentToPlay ? notesFavDict.playPauseNote : notesFavDict.noTextToPlay}
                               >
                               {buttonIcon} {buttonText}
                             </Button>
@@ -480,7 +494,7 @@ function NotesFavoritesPageContent() {
           </CardContent>
           {favoriteNotes.length > 0 && (
             <CardFooter>
-              <p className="text-xs text-muted-foreground">Your note favorites are stored in your browser's local storage.</p>
+              <p className="text-xs text-muted-foreground">{notesFavDict.storageNote}</p>
             </CardFooter>
           )}
         </Card>
@@ -489,14 +503,14 @@ function NotesFavoritesPageContent() {
       <AlertDialog open={!!noteToDelete} onOpenChange={(isOpen) => !isOpen && setNoteToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogTitle>{commonDict.areYouSure}</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete this note favorite. The original annotation in the document will not be affected.
+                {commonDict.actionCannotBeUndone} {notesFavDict.deleteConfirmation}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={performDelete}>Continue</AlertDialogAction>
+            <AlertDialogCancel>{commonDict.cancel}</AlertDialogCancel>
+            <AlertDialogAction onClick={performDelete}>{commonDict.continue}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

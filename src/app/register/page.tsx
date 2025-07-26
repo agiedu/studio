@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useContext } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,8 @@ import { useToast } from '@/hooks/use-toast';
 import { registerUser } from '@/lib/authService';
 import { MangaTalkLogo } from '@/components/icons/MangaTalkLogo';
 import { AlertCircle } from 'lucide-react';
+import { LanguageContext } from '@/context/LanguageContext';
+import { getDictionary } from '@/lib/i18n';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -19,6 +21,12 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
+
+  const { locale } = useContext(LanguageContext);
+  const dictionary = getDictionary(locale);
+  const commonDict = dictionary.common;
+  const loginDict = dictionary.login;
+  const registerDict = dictionary.register;
 
   // Captcha state
   const [num1, setNum1] = useState(0);
@@ -39,25 +47,25 @@ export default function RegisterPage() {
     setError('');
 
     if (parseInt(captchaAnswer, 10) !== num1 + num2) {
-        setError('Incorrect verification answer. Please try again.');
+        setError(loginDict.incorrectAnswer);
         generateCaptcha();
         return;
     }
 
     if (password !== confirmPassword) {
-      setError('Passwords do not match.');
+      setError(registerDict.passwordsDoNotMatch);
       generateCaptcha();
       return;
     }
     if (password.length < 4) {
-        setError('Password must be at least 4 characters long.');
+        setError(registerDict.passwordLengthError);
         generateCaptcha();
         return;
     }
 
     const result = registerUser(email, password);
     if (result.success) {
-      toast({ title: 'Registration Successful', description: 'Please log in with your new account.' });
+      toast({ title: registerDict.registrationSuccessful, description: registerDict.pleaseLogin });
       router.push('/login');
     } else {
       setError(result.message);
@@ -73,12 +81,12 @@ export default function RegisterPage() {
         </div>
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>Register</CardTitle>
-          <CardDescription>Create an account to save your library.</CardDescription>
+          <CardTitle>{registerDict.title}</CardTitle>
+          <CardDescription>{registerDict.description}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">{commonDict.email}</Label>
             <Input
               id="email"
               type="email"
@@ -89,7 +97,7 @@ export default function RegisterPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password">{commonDict.password}</Label>
             <Input
               id="password"
               type="password"
@@ -99,7 +107,7 @@ export default function RegisterPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="confirm-password">Confirm Password</Label>
+            <Label htmlFor="confirm-password">{commonDict.confirmNewPassword}</Label>
             <Input
               id="confirm-password"
               type="password"
@@ -110,11 +118,11 @@ export default function RegisterPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="captcha">Verification: What is {num1} + {num2}?</Label>
+            <Label htmlFor="captcha">{loginDict.verification.replace('{num1}', String(num1)).replace('{num2}', String(num2))}</Label>
             <Input
               id="captcha"
               type="number"
-              placeholder="Your answer"
+              placeholder={loginDict.answerPlaceholder}
               value={captchaAnswer}
               onChange={(e) => setCaptchaAnswer(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleRegister()}
@@ -123,14 +131,14 @@ export default function RegisterPage() {
           </div>
           {error && <p className="text-sm text-destructive flex items-center gap-2"><AlertCircle className="h-4 w-4" />{error}</p>}
           <Button onClick={handleRegister} className="w-full">
-            Create Account
+            {registerDict.createAccount}
           </Button>
         </CardContent>
         <CardFooter className="flex justify-center">
           <p className="text-sm text-muted-foreground">
-            Already have an account?{' '}
+            {registerDict.alreadyHaveAccount}{' '}
             <Link href="/login" className="text-primary hover:underline">
-              Login
+              {registerDict.loginLink}
             </Link>
           </p>
         </CardFooter>

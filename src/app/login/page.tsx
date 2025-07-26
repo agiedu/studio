@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useContext } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,8 @@ import { loginUser } from '@/lib/authService';
 import * as LocalStorageService from '@/lib/localStorageService';
 import { MangaTalkLogo } from '@/components/icons/MangaTalkLogo';
 import { AlertCircle } from 'lucide-react';
+import { LanguageContext } from '@/context/LanguageContext';
+import { getDictionary } from '@/lib/i18n';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -21,6 +23,11 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
+
+  const { locale } = useContext(LanguageContext);
+  const dictionary = getDictionary(locale);
+  const commonDict = dictionary.common;
+  const loginDict = dictionary.login;
 
   // Captcha state
   const [num1, setNum1] = useState(0);
@@ -46,7 +53,7 @@ export default function LoginPage() {
     setError('');
 
     if (parseInt(captchaAnswer, 10) !== num1 + num2) {
-        setError('Incorrect verification answer. Please try again.');
+        setError(loginDict.incorrectAnswer);
         generateCaptcha();
         return;
     }
@@ -58,7 +65,7 @@ export default function LoginPage() {
       } else {
         LocalStorageService.clearRememberedEmail();
       }
-      toast({ title: 'Login Successful' });
+      toast({ title: loginDict.loginSuccessful });
       router.push('/library');
     } else {
       setError(result.message);
@@ -74,23 +81,23 @@ export default function LoginPage() {
       </div>
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>Login</CardTitle>
-          <CardDescription>Enter your credentials to access your library.</CardDescription>
+          <CardTitle>{loginDict.title}</CardTitle>
+          <CardDescription>{loginDict.description}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">{commonDict.email}</Label>
             <Input
               id="email"
               type="email"
-              placeholder="me@example.com"
+              placeholder={loginDict.emailPlaceholder}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password">{commonDict.password}</Label>
             <Input
               id="password"
               type="password"
@@ -101,11 +108,11 @@ export default function LoginPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="captcha">Verification: What is {num1} + {num2}?</Label>
+            <Label htmlFor="captcha">{loginDict.verification.replace('{num1}', String(num1)).replace('{num2}', String(num2))}</Label>
             <Input
               id="captcha"
               type="number"
-              placeholder="Your answer"
+              placeholder={loginDict.answerPlaceholder}
               value={captchaAnswer}
               onChange={(e) => setCaptchaAnswer(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
@@ -114,18 +121,18 @@ export default function LoginPage() {
           </div>
            <div className="flex items-center space-x-2">
             <Checkbox id="remember-me" checked={rememberMe} onCheckedChange={(checked) => setRememberMe(Boolean(checked))} />
-            <Label htmlFor="remember-me" className="text-sm font-normal cursor-pointer">Remember my email</Label>
+            <Label htmlFor="remember-me" className="text-sm font-normal cursor-pointer">{loginDict.rememberEmail}</Label>
           </div>
            {error && <p className="text-sm text-destructive flex items-center gap-2"><AlertCircle className="h-4 w-4" />{error}</p>}
           <Button onClick={handleLogin} className="w-full">
-            Login
+            {dictionary.nav.login}
           </Button>
         </CardContent>
         <CardFooter className="flex justify-center">
           <p className="text-sm text-muted-foreground">
-            Don&apos;t have an account?{' '}
+            {loginDict.dontHaveAccount}{' '}
             <Link href="/register" className="text-primary hover:underline">
-              Register
+              {loginDict.registerLink}
             </Link>
           </p>
         </CardFooter>

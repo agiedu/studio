@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useContext } from 'react';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -24,6 +24,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { AuthGuard } from '@/components/auth/AuthGuard';
+import { LanguageContext } from '@/context/LanguageContext';
+import { getDictionary } from '@/lib/i18n';
 
 function arrayBufferToBlob(buffer: ArrayBuffer, type: string): Blob {
   return new Blob([buffer], { type });
@@ -39,6 +41,11 @@ function LibraryPageContent() {
   const [docToDelete, setDocToDelete] = useState<StoredMangaDocument | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const { locale } = useContext(LanguageContext);
+  const dictionary = getDictionary(locale);
+  const commonDict = dictionary.common;
+  const libraryDict = dictionary.library;
+
   const fetchDocuments = async (forceRefresh: boolean = false, operationLabel: string = "Fetching documents") => {
     // Only show the full-page loader on a hard refresh, not on the initial background sync
     if (forceRefresh) {
@@ -48,7 +55,7 @@ function LibraryPageContent() {
       const docs = await IndexedDBService.getAllDocuments(forceRefresh);
       setStoredDocuments(docs);
     } catch (error: any) {
-      toast({ variant: "destructive", title: "Error Loading Documents", description: `Could not load documents. ${error.message}` });
+      toast({ variant: "destructive", title: libraryDict.errorLoadingDocuments, description: libraryDict.errorLoadingDocumentsMessage.replace('{message}', error.message) });
     } finally {
       // After any fetch, loading should be false.
       setIsLoading(false);
@@ -102,7 +109,7 @@ function LibraryPageContent() {
             const pdfInstance = await pdfLoadingTask.promise;
             newDocument = { ...commonDocProps, type: 'pdf', numPages: pdfInstance.numPages, ocrTextPerPage: {} };
           } catch (pdfError: any) {
-            toast({ variant: "default", title: "PDF Info", description: `Uploaded PDF "${file.name}". Page count issue: ${pdfError.message}. Document still saved.` });
+            toast({ variant: "default", title: "PDF Info", description: libraryDict.pdfPageCountIssue.replace('{name}', file.name).replace('{message}', pdfError.message) });
             newDocument = { ...commonDocProps, type: 'pdf', numPages: undefined, ocrTextPerPage: {} }; // Save even if page count fails
           }
       } else if (file.type === 'application/epub+zip' || file.name.toLowerCase().endsWith('.epub')) {
@@ -112,7 +119,7 @@ function LibraryPageContent() {
       } else if (file.type === 'text/plain' || file.name.toLowerCase().endsWith('.txt')) {
         newDocument = { ...commonDocProps, type: 'txt', originalType: 'text/plain' };
       } else {
-        toast({ variant: "destructive", title: "Unsupported File Type", description: `Type "${file.type || 'unknown'}" (${file.name}) not supported. Please upload Image, PDF, EPUB, MOBI, or TXT.` });
+        toast({ variant: "destructive", title: libraryDict.unsupportedFileType, description: libraryDict.unsupportedFileTypeError.replace('{type}', file.type || 'unknown').replace('{name}', file.name) });
         setIsUploading(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
         return;
@@ -120,11 +127,11 @@ function LibraryPageContent() {
 
       if (newDocument) {
         await IndexedDBService.saveDocument(newDocument);
-        toast({ title: "Document Saved in Browser", description: `"${newDocument.title}" saved.` });
+        toast({ title: libraryDict.documentSaved, description: libraryDict.documentSavedMessage.replace('{title}', newDocument.title) });
         await fetchDocuments(true, "Post-upload document fetch");
       }
     } catch (error: any) {
-      toast({ variant: "destructive", title: "Upload & Save Error", description: `Failed to process/save "${file.name}". ${error.message}` });
+      toast({ variant: "destructive", title: libraryDict.uploadError, description: libraryDict.uploadErrorMessage.replace('{name}', file.name).replace('{message}', error.message) });
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) {
@@ -147,16 +154,16 @@ function LibraryPageContent() {
             await IndexedDBService.saveLastActiveDocId(null);
         }
         await fetchDocuments(true, "Data refresh after deletion");
-        toast({ title: "Success", description: `"${docTitleToDelete}" has been deleted.` });
+        toast({ title: commonDict.success, description: libraryDict.deletionSuccess.replace('{title}', docTitleToDelete) });
     } catch (error: any) {
         console.error("Deletion failed:", error);
-        toast({ variant: "destructive", title: "Deletion Failed", description: error.message || "An unknown error occurred." });
+        toast({ variant: "destructive", title: libraryDict.deletionFailed, description: error.message || "An unknown error occurred." });
     }
   };
 
   const handleSaveToDevice = async (doc: StoredMangaDocument) => {
     if (!doc.fileData || !doc.title || !doc.originalType) {
-        toast({variant: "destructive", title: "Save Error", description: "Document data is incomplete for saving."});
+        toast({variant: "destructive", title: commonDict.error, description: libraryDict.saveErrorIncomplete});
         return;
     }
     setIsSavingToDevice(doc.id);
@@ -164,8 +171,6 @@ function LibraryPageContent() {
     try {
       const blob = arrayBufferToBlob(doc.fileData, doc.originalType);
       
-      // Fallback method: create a temporary URL and trigger a download link.
-      // This is more compatible, especially in iframe environments where showSaveFilePicker is restricted.
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -174,10 +179,10 @@ function LibraryPageContent() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      toast({ title: "Download Started", description: `"${doc.title}" is downloading.` });
+      toast({ title: libraryDict.downloadStarted, description: libraryDict.downloadStartedMessage.replace('{title}', doc.title) });
       
     } catch (error: any) {
-      toast({ variant: "destructive", title: "Save to Device Failed", description: `Could not save "${doc.title}". ${error.message}` });
+      toast({ variant: "destructive", title: commonDict.error, description: libraryDict.saveToDeviceFailed.replace('{title}', doc.title).replace('{message}', error.message) });
     } finally {
         setIsSavingToDevice(null);
     }
@@ -199,11 +204,11 @@ function LibraryPageContent() {
       <div className="container mx-auto p-4 md:p-6 space-y-6">
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><UploadCloud className="text-primary" /> Add Document to Browser Storage</CardTitle>
+            <CardTitle className="flex items-center gap-2"><UploadCloud className="text-primary" />{libraryDict.addDocumentTitle}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid w-full max-w-md items-center gap-1.5">
-              <Label htmlFor="doc-upload-library">Document File (.epub, .pdf, .txt, .png, .jpg)</Label>
+              <Label htmlFor="doc-upload-library">{libraryDict.fileInputLabel}</Label>
               <Input
                 ref={fileInputRef}
                 id="doc-upload-library"
@@ -213,24 +218,24 @@ function LibraryPageContent() {
                 disabled={isUploading || isLoading}
               />
             </div>
-            {isUploading && <p className="mt-2 text-sm text-muted-foreground flex items-center"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Processing and saving to browser...</p>}
+            {isUploading && <p className="mt-2 text-sm text-muted-foreground flex items-center"><Loader2 className="mr-2 h-4 w-4 animate-spin" />{libraryDict.processingAndSaving}</p>}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><BookOpen className="text-primary" /> Documents Stored in This Browser</CardTitle>
+            <CardTitle className="flex items-center gap-2"><BookOpen className="text-primary" />{libraryDict.storedDocumentsTitle}</CardTitle>
             <CardDescription>
-              List of documents in this browser. Click &quot;Open in Reader&quot; to view.
+              {libraryDict.storedDocumentsDescription}
             </CardDescription>
             <Button variant="outline" size="sm" onClick={() => fetchDocuments(true, "Manual refresh of document list")} disabled={isLoading || isUploading} className="mt-2 w-fit">
-              <RefreshCw className={`mr-2 h-4 w-4 ${isLoading && !isUploading ? 'animate-spin' : ''}`} /> Refresh List
+              <RefreshCw className={`mr-2 h-4 w-4 ${isLoading && !isUploading ? 'animate-spin' : ''}`} />{libraryDict.refreshList}
             </Button>
           </CardHeader>
           <CardContent>
-            {isLoading && <p className="text-muted-foreground flex items-center"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading documents...</p>}
+            {isLoading && <p className="text-muted-foreground flex items-center"><Loader2 className="mr-2 h-4 w-4 animate-spin" />{libraryDict.loadingDocuments}</p>}
             {!isLoading && storedDocuments.length === 0 && (
-              <p className="text-muted-foreground">No documents found. Upload one to get started.</p>
+              <p className="text-muted-foreground">{libraryDict.noDocumentsFound}</p>
             )}
             {storedDocuments.length > 0 && (
               <ul className="space-y-3">
@@ -241,15 +246,15 @@ function LibraryPageContent() {
                         <div className="min-w-0">
                           <p className="text-base font-medium truncate" title={doc.title}>{doc.title || 'Untitled Document'}</p>
                           <p className="text-xs text-muted-foreground">
-                            Type: {doc.originalType || doc.type} | Stored: {new Date(doc.createdAt || 0).toLocaleDateString()}
-                            {doc.type === 'pdf' && doc.numPages !== undefined && ` | Pages: ${doc.numPages}`}
+                            {libraryDict.documentType}: {doc.originalType || doc.type} | {libraryDict.storedDate}: {new Date(doc.createdAt || 0).toLocaleDateString()}
+                            {doc.type === 'pdf' && doc.numPages !== undefined && ` | ${commonDict.pages}: ${doc.numPages}`}
                           </p>
                         </div>
                       </div>
                       <div className="flex gap-2 mt-2 sm:mt-0 sm:items-center flex-shrink-0">
                         <Button size="sm" variant="outline" asChild disabled={isUploading || isLoading}>
                           <Link href={`/reader?docId=${doc.id}`}>
-                            <BookOpen className="mr-1.5 h-4 w-4" /> Open in Reader
+                            <BookOpen className="mr-1.5 h-4 w-4" />{libraryDict.openInReader}
                           </Link>
                         </Button>
                         <Button
@@ -258,9 +263,9 @@ function LibraryPageContent() {
                             onClick={() => handleSaveToDevice(doc)}
                             disabled={isSavingToDevice === doc.id || isUploading || isLoading}
                             className="w-[150px]"
-                            title="Save a copy to your computer's file system."
+                            title={libraryDict.saveToDeviceTooltip}
                         >
-                            {isSavingToDevice === doc.id ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />} Save to Device
+                            {isSavingToDevice === doc.id ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />}{libraryDict.saveToDevice}
                         </Button>
                         <Button
                           size="sm"
@@ -279,21 +284,21 @@ function LibraryPageContent() {
           </CardContent>
           {storedDocuments.length > 0 && (
             <CardFooter>
-              <p className="text-xs text-muted-foreground">Documents are stored in your browser's IndexedDB. Clearing site data will remove them.</p>
+              <p className="text-xs text-muted-foreground">{libraryDict.indexedDBNote}</p>
             </CardFooter>
           )}
         </Card>
 
         <Card className="border-blue-500 bg-blue-500/5">
           <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-blue-700 dark:text-blue-300"><Info className="h-6 w-6" /> Understanding &quot;Save to Device&quot;</CardTitle>
+              <CardTitle className="flex items-center gap-2 text-blue-700 dark:text-blue-300"><Info className="h-6 w-6" />{libraryDict.saveToDeviceNoteTitle}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-blue-600 dark:text-blue-400/90">
               <p className="font-semibold text-base">
-                  &quot;Save to Device&quot; saves a copy of your browser-stored document to your computer.
+                  {libraryDict.saveToDeviceNoteDescription}
               </p>
               <p>
-                  This will trigger a standard browser download for the selected file.
+                  {libraryDict.saveToDeviceNoteDetail}
               </p>
           </CardContent>
         </Card>
@@ -301,16 +306,15 @@ function LibraryPageContent() {
         <AlertDialog open={!!docToDelete} onOpenChange={(isOpen) => !isOpen && setDocToDelete(null)}>
           <AlertDialogContent>
               <AlertDialogHeader>
-              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+              <AlertDialogTitle>{commonDict.areYouSure}</AlertDialogTitle>
               <AlertDialogDescription>
-                  This action cannot be undone. This will permanently delete the document
-                  <span className="font-bold"> &quot;{docToDelete?.title}&quot;</span>.
+                  {libraryDict.deleteConfirmation.replace('{title}', docToDelete?.title || '')}
               </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogCancel>{commonDict.cancel}</AlertDialogCancel>
               <AlertDialogAction onClick={performDelete}>
-                  Continue
+                  {commonDict.continue}
               </AlertDialogAction>
               </AlertDialogFooter>
           </AlertDialogContent>
@@ -327,4 +331,3 @@ export default function LibraryPage() {
         </AuthGuard>
     )
 }
-    

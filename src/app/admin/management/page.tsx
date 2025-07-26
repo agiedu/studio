@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useContext } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -27,6 +27,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { LanguageContext } from '@/context/LanguageContext';
+import { getDictionary } from '@/lib/i18n';
 
 function AdminManagementPage() {
   const { toast } = useToast();
@@ -34,6 +36,11 @@ function AdminManagementPage() {
   const [userToDelete, setUserToDelete] = useState<{email: string} | null>(null);
   const [newAdminPassword, setNewAdminPassword] = useState('');
   const [adminLoginUrl, setAdminLoginUrl] = useState('');
+
+  const { locale } = useContext(LanguageContext);
+  const dictionary = getDictionary(locale);
+  const commonDict = dictionary.common;
+  const adminDict = dictionary.admin;
 
   useEffect(() => {
     setUsers(getAllUsersForAdmin());
@@ -46,12 +53,12 @@ function AdminManagementPage() {
     const result = await deleteUserByAdmin(userToDelete.email);
     
     if (result.success) {
-      toast({ title: 'User Deleted', description: `User ${userToDelete.email} has been removed.` });
+      toast({ title: adminDict.userDeleted, description: adminDict.userDeletedMessage.replace('{email}', userToDelete.email) });
       setUsers(getAllUsersForAdmin()); // Refetch the list from the source
     } else {
       toast({ 
         variant: 'destructive', 
-        title: 'Error Deleting User', 
+        title: adminDict.errorDeletingUser, 
         description: result.message || 'An unknown error occurred. Check the console for details.' 
       });
     }
@@ -60,33 +67,33 @@ function AdminManagementPage() {
 
   const handlePasswordChange = () => {
     if (newAdminPassword.length < 4) {
-      toast({ variant: 'destructive', title: 'Error', description: 'Password must be at least 4 characters long.' });
+      toast({ variant: 'destructive', title: commonDict.error, description: dictionary.register.passwordLengthError });
       return;
     }
     const adminUser = getCurrentUser();
     if (!adminUser) {
-        toast({ variant: 'destructive', title: 'Error', description: 'Could not identify admin user.' });
+        toast({ variant: 'destructive', title: commonDict.error, description: 'Could not identify admin user.' });
         return;
     }
 
     const success = changeUserPassword(adminUser.email, newAdminPassword);
     if (success) {
-      toast({ title: 'Success', description: 'Admin password updated successfully.' });
+      toast({ title: commonDict.success, description: adminDict.adminPasswordUpdated });
       setNewAdminPassword('');
     } else {
-      toast({ variant: 'destructive', title: 'Error', description: 'Failed to update password.' });
+      toast({ variant: 'destructive', title: commonDict.error, description: adminDict.failedToUpdateAdminPassword });
     }
   };
 
   return (
     <>
       <div className="container mx-auto p-4 md:p-6 space-y-6">
-        <h1 className="text-2xl font-bold">Admin Management Panel</h1>
+        <h1 className="text-2xl font-bold">{adminDict.title}</h1>
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Users /> User Management</CardTitle>
-            <CardDescription>View and manage all registered users.</CardDescription>
+            <CardTitle className="flex items-center gap-2"><Users />{adminDict.userManagement}</CardTitle>
+            <CardDescription>{adminDict.userManagementDescription}</CardDescription>
           </CardHeader>
           <CardContent>
             {users.length > 0 ? (
@@ -106,29 +113,29 @@ function AdminManagementPage() {
                 ))}
                 </ul>
             ) : (
-                <p className="text-muted-foreground">No other users have registered.</p>
+                <p className="text-muted-foreground">{adminDict.noOtherUsers}</p>
             )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><KeyRound /> Admin Settings</CardTitle>
+            <CardTitle className="flex items-center gap-2"><KeyRound />{adminDict.adminSettings}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <Label htmlFor="admin-password">Change Admin Password</Label>
+              <Label htmlFor="admin-password">{adminDict.changeAdminPassword}</Label>
               <Input
                 id="admin-password"
                 type="password"
                 value={newAdminPassword}
                 onChange={e => setNewAdminPassword(e.target.value)}
-                placeholder="New admin password"
+                placeholder={adminDict.newAdminPasswordPlaceholder}
               />
-              <Button onClick={handlePasswordChange} className="mt-2">Save Password</Button>
+              <Button onClick={handlePasswordChange} className="mt-2">{adminDict.savePassword}</Button>
             </div>
             <div>
-              <Label htmlFor="admin-url">Admin Login URL</Label>
+              <Label htmlFor="admin-url">{adminDict.adminLoginURL}</Label>
               <Input
                 id="admin-url"
                 type="text"
@@ -137,7 +144,7 @@ function AdminManagementPage() {
                 disabled
               />
               <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
-                <AlertTriangle className="h-4 w-4" /> This cannot be changed in a client-only application.
+                <AlertTriangle className="h-4 w-4" /> {adminDict.urlNotChangeable}
               </p>
             </div>
           </CardContent>
@@ -147,16 +154,14 @@ function AdminManagementPage() {
       <AlertDialog open={!!userToDelete} onOpenChange={(isOpen) => !isOpen && setUserToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogTitle>{commonDict.areYouSure}</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the user 
-              <span className="font-semibold"> {userToDelete?.email} </span> 
-              and all of their associated data.
+              {commonDict.actionCannotBeUndone} {adminDict.deleteUserConfirmation.replace('{email}', userToDelete?.email || '')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={performDelete}>Continue</AlertDialogAction>
+            <AlertDialogCancel>{commonDict.cancel}</AlertDialogCancel>
+            <AlertDialogAction onClick={performDelete}>{commonDict.continue}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
