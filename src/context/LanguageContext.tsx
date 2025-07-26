@@ -3,12 +3,12 @@
 
 import React, { createContext, useState, useEffect } from 'react';
 
-export type Locale = 'en' | 'zh-CN' | 'zh-TW' | 'ja' | 'ko' | 'es' | 'fr' | 'de' | 'ru' | 'pt' | 'it' | 'ar' | 'hi';
+export type Locale = 'en' | 'zh-CN' | 'vi' | 'ja' | 'ko' | 'es' | 'fr' | 'de' | 'ru' | 'pt' | 'it' | 'ar' | 'hi' | 'th' | 'km' | 'my' | 'lo';
 
 export const languages: { code: Locale; name: string }[] = [
     { code: 'en', name: 'English' },
     { code: 'zh-CN', name: '简体中文' },
-    { code: 'zh-TW', name: '繁體中文' },
+    { code: 'vi', name: 'Tiếng Việt' },
     { code: 'ja', name: '日本語' },
     { code: 'ko', name: '한국어' },
     { code: 'es', name: 'Español' },
@@ -19,6 +19,10 @@ export const languages: { code: Locale; name: string }[] = [
     { code: 'it', name: 'Italiano' },
     { code: 'ar', name: 'العربية' },
     { code: 'hi', name: 'हिन्दी' },
+    { code: 'th', name: 'ภาษาไทย' },
+    { code: 'km', name: 'ភាសាខ្មែរ' },
+    { code: 'my', name: 'မြန်မာဘာသာ' },
+    { code: 'lo', name: 'ພາສາລາວ' },
 ];
 
 const LANGUAGE_KEY = 'mangaTalk_language';
