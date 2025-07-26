@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo, useContext } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import NextImage from 'next/image';
 import { GlobalWorkerOptions, getDocument, version } from 'pdfjs-dist';
@@ -55,6 +55,8 @@ import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { AuthGuard } from '@/components/auth/AuthGuard';
 import { edgeTTSLanguageVoices } from '@/lib/edge-tts-voices';
+import { LanguageContext } from '@/context/LanguageContext';
+import { getDictionary } from '@/lib/i18n';
 
 const PDF_DEFAULT_SCALE = 1.0;
 const PUNCTUATION_REGEX = /[.,?!,。？！，、\n\r"“„”'‘’`*_{}\[\]()#&@:;~<>/\\|\-—–^%$《》]/g;
@@ -88,6 +90,12 @@ function ReaderPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const docId = searchParams.get('docId');
+
+  const { locale } = useContext(LanguageContext);
+  const dictionary = getDictionary(locale);
+  const commonDict = dictionary.common;
+  const readerDict = dictionary.reader;
+  const favDict = dictionary.favorites;
 
   const [activeDoc, setActiveDoc] = useState<ActiveMangaDocument | null>(null);
   const [isLoadingDoc, setIsLoadingDoc] = useState(true);
@@ -476,7 +484,7 @@ const ttsTextWithAnnotations = useMemo(() => {
         if (ctx) {
             ctx.drawImage(imageElement, 0, 0);
             epubImageForOcrRef.current = canvas.toDataURL('image/png');
-            setCurrentTextForTTS("This page is an image. Use OCR to extract text.");
+            setCurrentTextForTTS(readerDict.ocrImage);
         } else {
             throw new Error("Could not get canvas context.");
         }
@@ -489,7 +497,7 @@ const ttsTextWithAnnotations = useMemo(() => {
             setEpubPageIsImage(true);
         }
     }
-  }, []);
+  }, [readerDict.ocrImage]);
 
   const processEpubView = useCallback(async (view: any) => {
     if (!isMountedRef.current || !view?.document?.body) {
@@ -505,7 +513,7 @@ const ttsTextWithAnnotations = useMemo(() => {
             if (imageElement.complete && imageElement.naturalWidth > 0) {
                 updateOcrSourceFromImage(imageElement);
             } else {
-                setCurrentTextForTTS("Loading image for OCR...");
+                setCurrentTextForTTS(readerDict.loadingContent);
                 setEpubPageIsImage(true); 
                 imageElement.onload = () => updateOcrSourceFromImage(imageElement);
                 imageElement.onerror = () => {
@@ -531,7 +539,7 @@ const ttsTextWithAnnotations = useMemo(() => {
             setEpubPageIsImage(false); 
         }
     }
-  }, [updateOcrSourceFromImage]);
+  }, [updateOcrSourceFromImage, readerDict.loadingContent]);
 
   useEffect(() => {
     let isStale = false;
@@ -700,7 +708,7 @@ const ttsTextWithAnnotations = useMemo(() => {
             break;
 
           case 'mobi':
-            setDocErrorMessage("MOBI files are not directly viewable. Please convert to EPUB or PDF.");
+            setDocErrorMessage(readerDict.mobiNotSupported);
             setIsLoadingDoc(false);
             break;
 
@@ -764,7 +772,7 @@ const ttsTextWithAnnotations = useMemo(() => {
       setEpubPageIsImage(false);
       epubImageForOcrRef.current = null;
     };
-  }, [docId, router, processEpubView, stopSpeech]);
+  }, [docId, router, processEpubView, stopSpeech, readerDict.mobiNotSupported]);
 
 
   useEffect(() => {
@@ -776,7 +784,7 @@ const ttsTextWithAnnotations = useMemo(() => {
         setIsRenderingPdfPage(true); 
         setPdfPageImage(null); 
         setPdfPageIsTextBased(true); 
-        setCurrentTextForTTS(`Loading PDF page ${currentPdfPageNum}...`);
+        setCurrentTextForTTS(`${readerDict.loadingContent} ${currentPdfPageNum}...`);
         LocalStorageService.saveCurrentPdfPageIndexForDoc(activeDoc.id, currentPdfPageNum);
 
         try {
@@ -802,7 +810,7 @@ const ttsTextWithAnnotations = useMemo(() => {
                     setCurrentTextForTTS(pageText); 
                     setPdfPageIsTextBased(true);
                 } else {
-                    setCurrentTextForTTS("This PDF page has no selectable text. Use OCR to extract text."); 
+                    setCurrentTextForTTS(readerDict.ocrPage); 
                     setPdfPageIsTextBased(false);
                 }
             }
@@ -820,18 +828,18 @@ const ttsTextWithAnnotations = useMemo(() => {
 
     renderPage();
     return () => { isStale = true; };
-  }, [pdfDocProxy, currentPdfPageNum, viewScale, activeDoc, isPdfTextView, stopSpeech]);
+  }, [pdfDocProxy, currentPdfPageNum, viewScale, activeDoc, isPdfTextView, stopSpeech, readerDict.loadingContent, readerDict.ocrPage]);
 
 
   const handlePerformOcr = useCallback(async () => {
     if (!activeDoc) {
-      toast({ variant: 'destructive', title: 'OCR Error', description: 'No active document.' });
+      toast({ variant: 'destructive', title: readerDict.ocrError, description: readerDict.noActiveDoc });
       return;
     }
     if (!isMountedRef.current) return;
     stopSpeech(true);
     setIsPerformingOcr(true);
-    setCurrentTextForTTS('Performing OCR...');
+    setCurrentTextForTTS(commonDict.loading);
 
     try {
       let dataUrlToProcess: string | null = null;
@@ -846,21 +854,21 @@ const ttsTextWithAnnotations = useMemo(() => {
       } else if (currentActiveDoc.type === 'epub' && epubPageIsImage) {
         dataUrlToProcess = epubImageForOcrRef.current;
         if (!dataUrlToProcess) {
-          throw new Error('EPUB image source for OCR is missing.');
+          throw new Error(readerDict.epubOcrMissing);
         }
       }
 
       if (!dataUrlToProcess) {
-        throw new Error('No image data available for OCR.');
+        throw new Error(readerDict.noImageData);
       }
 
       const result = await performOCR(dataUrlToProcess);
       if (!isMountedRef.current) return;
 
       if ('extractedText' in result) {
-        const ocrText = result.extractedText || 'OCR completed, no text found.';
+        const ocrText = result.extractedText || readerDict.ocrNoText;
         setCurrentTextForTTS(ocrText);
-        toast({ title: 'OCR Successful', description: 'Text extracted.' });
+        toast({ title: readerDict.ocrSuccess, description: readerDict.ocrSuccessDesc });
 
         if (currentActiveDoc.type === 'pdf' || currentActiveDoc.type === 'image') {
           const docFromDB = await IndexedDBService.getDocumentById(currentActiveDoc.id);
@@ -884,14 +892,14 @@ const ttsTextWithAnnotations = useMemo(() => {
       }
     } catch (e: any) {
       if (isMountedRef.current) {
-        setCurrentTextForTTS('OCR failed. Please try again.');
-        setDocErrorMessage(`OCR failed: ${e.message}`);
-        toast({ variant: 'destructive', title: 'OCR Failed', description: e.message });
+        setCurrentTextForTTS(readerDict.ocrFailed);
+        setDocErrorMessage(readerDict.ocrFailedDesc.replace('{message}', e.message));
+        toast({ variant: 'destructive', title: readerDict.ocrFailed, description: e.message });
       }
     } finally {
       if (isMountedRef.current) setIsPerformingOcr(false);
     }
-  }, [activeDoc, pdfPageImage, pdfPageIsTextBased, currentPdfPageNum, stopSpeech, toast, epubPageIsImage]);
+  }, [activeDoc, pdfPageImage, pdfPageIsTextBased, currentPdfPageNum, stopSpeech, toast, epubPageIsImage, readerDict, commonDict]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -993,14 +1001,14 @@ const ttsTextWithAnnotations = useMemo(() => {
         }
     };
     const handleAudioPlaying = () => { if (audioPlayerRef.current === player && ttsSettings.engine === 'cloud' && isSpeaking && isMountedRef.current) { setIsLoadingTTS(false); } };
-    const handleAudioError = () => { if (audioPlayerRef.current === player && isSpeaking && isMountedRef.current) { toast({variant: "destructive", title: "Audio Error", description: "Failed to play audio."}); stopSpeech(true); } };
+    const handleAudioError = () => { if (audioPlayerRef.current === player && isSpeaking && isMountedRef.current) { toast({variant: "destructive", title: readerDict.audioError, description: readerDict.failedToPlay}); stopSpeech(true); } };
     player.addEventListener('ended', handleAudioEnded); player.addEventListener('playing', handleAudioPlaying); player.addEventListener('error', handleAudioError);
     return () => {
         player.removeEventListener('ended', handleAudioEnded); player.removeEventListener('playing', handleAudioPlaying); player.removeEventListener('error', handleAudioError);
         if (player.src && !player.paused) player.pause(); player.src = "";
         if (audioPlayerRef.current === player) audioPlayerRef.current = null;
     };
-  }, [ttsSettings.engine, isSpeaking, stopSpeech, toast]);
+  }, [ttsSettings.engine, isSpeaking, stopSpeech, toast, readerDict.audioError, readerDict.failedToPlay]);
 
   useEffect(() => {
     if (isSpeaking && !isPaused && highlightedSegmentIndex > -1) {
@@ -1042,14 +1050,14 @@ const ttsTextWithAnnotations = useMemo(() => {
     if (!_isContinuing) {
         const textToPlay = currentTextForTTS?.trim();
         if (!textToPlay) {
-            toast({variant: "destructive", title: "No Text", description: "No text is available to be read aloud."});
+            toast({variant: "destructive", title: readerDict.noText, description: readerDict.noTextToRead});
             stopSpeech(true);
             return;
         }
         
         const invalidMessages = ["loading...", "performing ocr..."];
         if(invalidMessages.some(msg => textToPlay.toLowerCase().includes(msg))) {
-            toast({variant: "destructive", title: "Cannot Play", description: "Please wait for the current action to complete."});
+            toast({variant: "destructive", title: readerDict.cannotPlay, description: readerDict.waitForAction});
             stopSpeech(true);
             return;
         }
@@ -1091,7 +1099,7 @@ const ttsTextWithAnnotations = useMemo(() => {
 
     if (ttsSettings.engine === 'local') {
         if (typeof window === 'undefined' || !window.speechSynthesis) {
-            toast({ variant: "destructive", title: "TTS Error", description: "Browser Speech Synthesis not supported." });
+            toast({ variant: "destructive", title: readerDict.ttsError, description: readerDict.browserNotSupported });
             stopSpeech(true);
             return;
         }
@@ -1110,7 +1118,7 @@ const ttsTextWithAnnotations = useMemo(() => {
         utterance.onerror = (event) => {
             if (isMountedRef.current && event.error !== 'canceled' && event.error !== 'interrupted') {
                 console.error("SpeechSynthesis Error:", event.error);
-                toast({ variant: "destructive", title: "TTS Error", description: event.error || "An unknown error occurred." });
+                toast({ variant: "destructive", title: readerDict.ttsError, description: event.error || "An unknown error occurred." });
                 stopSpeech(true);
             }
         };
@@ -1125,17 +1133,17 @@ const ttsTextWithAnnotations = useMemo(() => {
             audioPlayerRef.current.src = result.audioUrl;
             await audioPlayerRef.current.play(); 
         } else if ('error' in result) {
-            toast({ variant: "destructive", title: "Cloud TTS Error", description: result.error });
+            toast({ variant: "destructive", title: readerDict.cloudTtsError, description: result.error });
             if(isMountedRef.current) stopSpeech(true);
         }
       } catch (e: any) {
         if(isMountedRef.current) {
-            toast({ variant: "destructive", title: "Cloud TTS Failed", description: e.message });
+            toast({ variant: "destructive", title: readerDict.cloudTtsFailed, description: e.message });
             stopSpeech(true);
         }
       }
     }
-  }, [ttsSettings, stopSpeech, toast, textSegments, currentTextForTTS]);
+  }, [ttsSettings, stopSpeech, toast, textSegments, currentTextForTTS, readerDict]);
 
   const speakTextOnce = useCallback(async (text: string) => {
     stopSpeech(true); 
@@ -1150,7 +1158,7 @@ const ttsTextWithAnnotations = useMemo(() => {
 
     if (ttsSettings.engine === 'local') {
         if (typeof window === 'undefined' || !window.speechSynthesis) {
-            toast({ variant: "destructive", title: "TTS Error", description: "Browser Speech Synthesis not supported." });
+            toast({ variant: "destructive", title: readerDict.ttsError, description: readerDict.browserNotSupported });
             setIsLoadingTTS(false); return;
         }
         const utterance = new SpeechSynthesisUtterance(cleanedText);
@@ -1165,7 +1173,7 @@ const ttsTextWithAnnotations = useMemo(() => {
         utterance.onend = () => { if(isMountedRef.current) setIsLoadingTTS(false); };
         utterance.onerror = (event) => {
             if (isMountedRef.current && event.error !== 'canceled' && event.error !== 'interrupted') {
-                toast({ variant: "destructive", title: "TTS Error", description: event.error || "Speech failed." });
+                toast({ variant: "destructive", title: readerDict.ttsError, description: event.error || "Speech failed." });
                 setIsLoadingTTS(false);
             }
         };
@@ -1178,16 +1186,16 @@ const ttsTextWithAnnotations = useMemo(() => {
           audioPlayerRef.current.src = result.audioUrl;
           await audioPlayerRef.current.play();
         } else if ('error' in result) {
-          toast({ variant: "destructive", title: "Cloud TTS Error", description: result.error });
+          toast({ variant: "destructive", title: readerDict.cloudTtsError, description: result.error });
         }
       } catch (error: any) {
         if (!isMountedRef.current) return;
-        toast({ variant: "destructive", title: "Cloud TTS Failed", description: error.message });
+        toast({ variant: "destructive", title: readerDict.cloudTtsFailed, description: error.message });
       } finally {
         if (isMountedRef.current) setIsLoadingTTS(false);
       }
     }
-  }, [ttsSettings, availableVoices, stopSpeech, toast]);
+  }, [ttsSettings, availableVoices, stopSpeech, toast, readerDict.ttsError, readerDict.browserNotSupported, readerDict.cloudTtsError, readerDict.cloudTtsFailed]);
 
   const playPauseSpeech = () => {
     if (!isMountedRef.current) return;
@@ -1270,7 +1278,7 @@ const ttsTextWithAnnotations = useMemo(() => {
     const textToFavorite = selectionInfo.text || currentTextForTTS;
     
     if (textToFavorite) {
-      const sourceName = activeDoc ? activeDoc.title : 'Scratchpad';
+      const sourceName = activeDoc ? activeDoc.title : readerDict.scratchpad;
       const sourceId = activeDoc ? activeDoc.id : 'scratchpad';
       LocalStorageService.addFavoriteItem({
         id: Date.now().toString(),
@@ -1279,7 +1287,7 @@ const ttsTextWithAnnotations = useMemo(() => {
         sourceDocumentName: sourceName,
         createdAt: Date.now()
       });
-      toast({ title: "Favorited!", description: `"${textToFavorite.substring(0, 50)}..." added.` });
+      toast({ title: favDict.title, description: `"${textToFavorite.substring(0, 50)}..." added.` });
     } else {
       toast({ variant: "destructive", title: "No Valid Text to Favorite", description: "Please ensure text is available to be favorited." });
     }
@@ -1341,31 +1349,31 @@ const ttsTextWithAnnotations = useMemo(() => {
     setScratchpadAnnotations([]);
     setCurrentTextForTTS('');
     LocalStorageService.clearScratchpad();
-    toast({ title: "Scratchpad Cleared" });
+    toast({ title: readerDict.scratchpadCleared });
   };
 
   const getMainButtonState = () => {
     const isContentLoading = isLoadingDoc || isEpubLoading || (activeDoc?.type === 'pdf' && !isPdfTextView && isRenderingPdfPage);
 
     if (isContentLoading) {
-      return { text: "Loading...", icon: <Loader2 className="mr-1 h-4 w-4 animate-spin" />, disabled: true, variant: "outline" as const };
+      return { text: readerDict.loading, icon: <Loader2 className="mr-1 h-4 w-4 animate-spin" />, disabled: true, variant: "outline" as const };
     }
     if (isLoadingTTS && speechOrigin === 'main') {
-      return { text: "Loading...", icon: <Loader2 className="mr-1 h-4 w-4 animate-spin" />, disabled: true, variant: "outline" as const };
+      return { text: readerDict.loading, icon: <Loader2 className="mr-1 h-4 w-4 animate-spin" />, disabled: true, variant: "outline" as const };
     }
 
     if (isSpeaking && speechOrigin === 'main') {
       return isPaused 
-        ? { text: "Resume", icon: <Play className="mr-1 h-4 w-4" />, disabled: false, variant: "default" as const } 
-        : { text: "Pause", icon: <Pause className="mr-1 h-4 w-4" />, disabled: false, variant: "outline" as const };
+        ? { text: readerDict.resume, icon: <Play className="mr-1 h-4 w-4" />, disabled: false, variant: "default" as const } 
+        : { text: readerDict.pause, icon: <Pause className="mr-1 h-4 w-4" />, disabled: false, variant: "outline" as const };
     }
     
     // Check if there's a text selection to determine button text
     if (typeof window !== 'undefined' && window.getSelection()?.toString().trim().length) {
-      return { text: "Play from Selection", icon: <Play className="mr-1 h-4 w-4" />, disabled: false, variant: "default" as const }
+      return { text: readerDict.playSelection, icon: <Play className="mr-1 h-4 w-4" />, disabled: false, variant: "default" as const }
     }
     
-    return { text: "Play Text", icon: <Play className="mr-1 h-4 w-4" />, disabled: false, variant: "default" as const };
+    return { text: readerDict.playText, icon: <Play className="mr-1 h-4 w-4" />, disabled: false, variant: "default" as const };
   };
 
   const openJumpDialog = (type: 'pdf' | 'epub', currentPage: number, totalPages: number) => {
@@ -1422,16 +1430,16 @@ const ttsTextWithAnnotations = useMemo(() => {
     if (!selectionInfo.text.trim()) {
       toast({
         variant: 'destructive',
-        title: 'No Text Selected',
-        description: 'Please select text to add a note.',
+        title: readerDict.noTextToAnnotate,
+        description: readerDict.noTextToAnnotateDesc,
       });
       return;
     }
     if (selectionInfo.startIndex === null) {
       toast({
         variant: 'destructive',
-        title: 'Selection Error',
-        description: 'Could not determine the precise location of the selected text. Please try again.',
+        title: readerDict.selectionError,
+        description: readerDict.selectionErrorDesc,
       });
       return;
     }
@@ -1515,9 +1523,9 @@ const ttsTextWithAnnotations = useMemo(() => {
         }
         setScratchpadAnnotations(updatedAnnotations);
       }
-      toast({ title: id ? 'Annotation Updated' : 'Annotation Saved' });
+      toast({ title: id ? readerDict.annotationUpdated : readerDict.annotationSaved });
     } catch (e: any) {
-      toast({ variant: 'destructive', title: 'Failed to Save', description: e.message });
+      toast({ variant: 'destructive', title: readerDict.failedToSave, description: readerDict.failedToSaveDesc.replace('{message}', e.message) });
     } finally {
       setAnnotationDialog({ open: false, id: null, note: '', imageDataUrl: '', isSaving: false });
       setSelectionForAnnotation(null); // Clear the locked selection after saving
@@ -1540,9 +1548,9 @@ const ttsTextWithAnnotations = useMemo(() => {
             setScratchpadAnnotations(updatedAnnotations);
         }
         setViewingAnnotation(null);
-        toast({ title: 'Annotation Deleted' });
+        toast({ title: readerDict.annotationDeleted });
     } catch (e: any) {
-        toast({ variant: 'destructive', title: 'Failed to Delete', description: e.message });
+        toast({ variant: 'destructive', title: readerDict.failedToDelete, description: readerDict.failedToDeleteDesc.replace('{message}', e.message) });
     } finally {
         setAnnotationToDelete(null); // Close the dialog
     }
@@ -1558,11 +1566,11 @@ const ttsTextWithAnnotations = useMemo(() => {
       id: annotation.id,
       annotation: annotation,
       sourceDocumentId: activeDoc?.id || 'scratchpad',
-      sourceDocumentName: activeDoc?.title || 'Scratchpad',
+      sourceDocumentName: activeDoc?.title || readerDict.scratchpad,
       favoritedAt: Date.now(),
     }
     LocalStorageService.saveNoteFavorite(noteFavorite);
-    toast({ title: 'Note Favorited', description: 'Saved to your notes favorites page.' });
+    toast({ title: readerDict.noteFavorited, description: readerDict.noteFavoritedDesc });
   };
   
   const handleEditAnnotation = (annotation: Annotation) => {
@@ -1587,10 +1595,10 @@ const ttsTextWithAnnotations = useMemo(() => {
   const showDocumentError = docErrorMessage && !activeDoc;
   
   if (showInitialLoader) { 
-    return <div className="flex items-center justify-center h-full flex-grow"><Loader2 className="h-12 w-12 animate-spin text-primary" /><p className="ml-4 text-lg">Loading document...</p></div>; 
+    return <div className="flex items-center justify-center h-full flex-grow"><Loader2 className="h-12 w-12 animate-spin text-primary" /><p className="ml-4 text-lg">{readerDict.loadingDocument}</p></div>; 
   }
   if (showDocumentError) { 
-    return <div className="flex flex-col items-center justify-center h-full flex-grow p-4 text-center"> <AlertTriangle className="h-12 w-12 text-destructive mb-4" /> <h2 className="text-xl font-semibold mb-2">Error Loading Document</h2> <p className="text-muted-foreground mb-4">{docErrorMessage}</p> <Button onClick={() => router.push('/library')}>Go to Library</Button> </div>; 
+    return <div className="flex flex-col items-center justify-center h-full flex-grow p-4 text-center"> <AlertTriangle className="h-12 w-12 text-destructive mb-4" /> <h2 className="text-xl font-semibold mb-2">{readerDict.docErrorTitle}</h2> <p className="text-muted-foreground mb-4">{docErrorMessage}</p> <Button onClick={() => router.push('/library')}>{readerDict.goToLibrary}</Button> </div>; 
   }
   
   const showOcrButtonForPdfPage = activeDoc?.type === 'pdf' && !isPdfTextView && pdfPageImage && !isRenderingPdfPage && !isLoadingDoc && !pdfPageIsTextBased;
@@ -1612,16 +1620,16 @@ const ttsTextWithAnnotations = useMemo(() => {
                 {(isLoadingDoc || isEpubLoading || isRenderingPdfPage) && (
                     <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
                         <Loader2 className="h-10 w-10 animate-spin text-primary" />
-                        <p className="ml-3">Loading content...</p>
+                        <p className="ml-3">{readerDict.loadingContent}</p>
                     </div>
                 )}
                 {docErrorMessage && !activeDoc && (
                     <div className="absolute inset-x-0 top-4 mx-auto w-fit max-w-md bg-destructive/10 border border-destructive text-destructive p-3 rounded-md shadow-lg z-20 flex items-start gap-2">
                         <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
                         <div>
-                            <p className="font-medium text-sm">Document Display Issue</p>
+                            <p className="font-medium text-sm">{readerDict.docDisplayIssue}</p>
                             <p className="text-xs">{docErrorMessage}</p>
-                            <Button variant="ghost" size="sm" className="text-xs h-auto p-1 mt-1 text-destructive hover:bg-destructive/20" onClick={() => setDocErrorMessage(null)}>Dismiss</Button>
+                            <Button variant="ghost" size="sm" className="text-xs h-auto p-1 mt-1 text-destructive hover:bg-destructive/20" onClick={() => setDocErrorMessage(null)}>{readerDict.dismiss}</Button>
                         </div>
                     </div>
                 )}
@@ -1641,7 +1649,7 @@ const ttsTextWithAnnotations = useMemo(() => {
                           className="w-full h-full min-h-[200px] whitespace-pre-wrap select-text text-sm resize-none" 
                           value={scratchpadText}
                           onChange={(e) => setScratchpadText(e.target.value)}
-                          placeholder="Welcome to the Scratchpad! Type or paste your text here..."
+                          placeholder={readerDict.scratchpadPlaceholder}
                       />
                     </div>
                   )}
@@ -1688,14 +1696,14 @@ const ttsTextWithAnnotations = useMemo(() => {
           <div className="flex-shrink-0 pt-2">
               <Card className="shadow-md">
                   <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3">
-                      <CardTitle className="text-sm flex items-center"><FileText className="mr-2 h-4 w-4"/> Current Text for TTS</CardTitle>
+                      <CardTitle className="text-sm flex items-center"><FileText className="mr-2 h-4 w-4"/>{readerDict.ttsCurrentText}</CardTitle>
                       <div className="flex items-center gap-2">
                             <Button
                                 onClick={() => setIsTtsAreaExpanded(!isTtsAreaExpanded)}
                                 size="icon"
                                 variant="outline"
                                 className="h-9 w-9"
-                                title={isTtsAreaExpanded ? "Shrink TTS Area" : "Expand TTS Area"}
+                                title={isTtsAreaExpanded ? readerDict.shrinkTTS : readerDict.expandTTS}
                             >
                                 {isTtsAreaExpanded ? <Shrink className="h-4 w-4" /> : <Expand className="h-4 w-4" />}
                             </Button>
@@ -1705,7 +1713,7 @@ const ttsTextWithAnnotations = useMemo(() => {
                                 size="icon"
                                 variant="outline"
                                 className="h-9 w-9"
-                                title="Add Annotation"
+                                title={readerDict.addAnnotation}
                             >
                                 <MessageSquarePlus className="h-4 w-4" />
                             </Button>
@@ -1717,7 +1725,7 @@ const ttsTextWithAnnotations = useMemo(() => {
                                   size="icon"
                                   variant="outline"
                                   className="h-9 w-9"
-                                  title={activeDoc?.type === 'image' ? 'OCR Image' : 'OCR Page'}
+                                  title={activeDoc?.type === 'image' ? readerDict.ocrImage : readerDict.ocrPage}
                               >
                                   {isPerformingOcr ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanText className="h-4 w-4" />}
                               </Button>
@@ -1726,12 +1734,12 @@ const ttsTextWithAnnotations = useMemo(() => {
                               <PopoverTrigger asChild>
                                   <Button variant="outline" size="icon" className="h-9 w-9">
                                       <CaseSensitive className="h-4 w-4" />
-                                      <span className="sr-only">Set font size</span>
+                                      <span className="sr-only">{readerDict.setFontSize}</span>
                                   </Button>
                               </PopoverTrigger>
                               <PopoverContent className="w-56" align="end">
                                   <div className="space-y-2">
-                                      <Label htmlFor="tts-font-size" className="text-sm">Font Size: {ttsTextSize}px</Label>
+                                      <Label htmlFor="tts-font-size" className="text-sm">{readerDict.fontSize.replace('{size}', ttsTextSize.toString())}</Label>
                                       <Slider
                                           id="tts-font-size"
                                           min={10}
@@ -1759,19 +1767,19 @@ const ttsTextWithAnnotations = useMemo(() => {
               <Card>
                   <CardHeader className="pb-2 pt-4">
                       <CardTitle className="text-base truncate flex items-center gap-1">
-                          <BookOpen className="h-5 w-5 text-primary"/> {activeDoc?.title || "Scratchpad"}
+                          <BookOpen className="h-5 w-5 text-primary"/> {activeDoc?.title || readerDict.scratchpad}
                       </CardTitle>
                       <CardDescription className="text-xs">
                         {activeDoc
-                          ? `Type: ${activeDoc.type?.toUpperCase()}${activeDoc?.type === 'pdf' && !isPdfTextView && pdfTotalPages > 0 ? `, Page: ${currentPdfPageNum}/${pdfTotalPages}` : ''}`
-                          : 'Custom text input'}
+                          ? `${readerDict.docType.replace('{type}', activeDoc.type?.toUpperCase() || '')}${activeDoc?.type === 'pdf' && !isPdfTextView && pdfTotalPages > 0 ? readerDict.docPage.replace('{current}', currentPdfPageNum.toString()).replace('{total}', pdfTotalPages.toString()) : ''}`
+                          : readerDict.customInput}
                       </CardDescription>
                   </CardHeader>
                   <CardContent className="pt-2">
                     <div className="flex w-full items-center gap-2">
                       <Button variant="outline" size="sm" className="flex-grow" onClick={handleSwitchToScratchpad} disabled={isLoadingDoc}>
                           <Edit className="mr-2 h-4 w-4" />
-                          Switch to Scratchpad
+                          {readerDict.switchToScratchpad}
                       </Button>
                       <Button
                           variant="ghost"
@@ -1779,8 +1787,8 @@ const ttsTextWithAnnotations = useMemo(() => {
                           className="h-9 w-9 flex-shrink-0"
                           onClick={handleClearScratchpad}
                           disabled={isLoadingDoc || !!activeDoc}
-                          aria-label="Clear scratchpad text"
-                          title="Clear scratchpad text"
+                          aria-label={readerDict.clearScratchpad}
+                          title={readerDict.clearScratchpad}
                       >
                           <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
@@ -1790,7 +1798,7 @@ const ttsTextWithAnnotations = useMemo(() => {
 
               {activeDoc?.type === 'pdf' && !isPdfTextView && pdfTotalPages > 0 && (
                 <Card>
-                  <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">PDF Navigation</CardTitle></CardHeader>
+                  <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">{readerDict.pdfNav}</CardTitle></CardHeader>
                   <CardContent className="space-y-2 pt-0">
                     <div className="flex items-center justify-between">
                       <Button onClick={() => navigatePdf('prev')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum <= 1} size="sm" variant="outline" aria-label="Previous Page"><ChevronLeft /></Button>
@@ -1805,18 +1813,18 @@ const ttsTextWithAnnotations = useMemo(() => {
 
               {activeDoc?.type === 'epub' && (
                 <Card>
-                  <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">EPUB Navigation</CardTitle></CardHeader>
+                  <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">{readerDict.epubNav}</CardTitle></CardHeader>
                   <CardContent className="flex items-center justify-between pt-0">
                       <Button onClick={() => navigateEpub('prev')} size="sm" variant="outline" disabled={isEpubLoading || isEpubPaginating} aria-label="Previous Page"><ChevronLeft /></Button>
                       
                       {isEpubPaginating ? (
-                        <span className="text-sm text-muted-foreground px-2 flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Page info loading...</span>
+                        <span className="text-sm text-muted-foreground px-2 flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> {readerDict.pageInfoLoading}</span>
                       ) : epubTotalPages > 0 ? (
                         <Button variant="ghost" className="h-9 tabular-nums" onClick={() => openJumpDialog('epub', epubCurrentPageNum, epubTotalPages)}>
                             {epubCurrentPageNum} / {epubTotalPages}
                         </Button>
                       ) : (
-                        <span className="text-sm text-muted-foreground px-2">No page info</span>
+                        <span className="text-sm text-muted-foreground px-2">{readerDict.noPageInfo}</span>
                       )}
                       
                       <Button onClick={() => navigateEpub('next')} size="sm" variant="outline" disabled={isEpubLoading || isEpubPaginating} aria-label="Next Page"><ChevronRight /></Button>
@@ -1836,7 +1844,7 @@ const ttsTextWithAnnotations = useMemo(() => {
                       >
                         {mainButtonState.icon} {mainButtonState.text}
                       </Button>
-                      <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full" title="Favorite Text">
+                      <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full" title={readerDict.favorite}>
                         <Star />
                       </Button>
                       <Button 
@@ -1846,14 +1854,14 @@ const ttsTextWithAnnotations = useMemo(() => {
                           if (selection.text.trim()) {
                             speakTextOnce(selection.text);
                           } else {
-                            toast({ title: "No Selection", description: "Please select text to repeat." });
+                            toast({ title: readerDict.noSelection, description: readerDict.selectToRepeat });
                           }
                         }}
                         variant="outline" 
                         size="sm" 
                         className="w-full" 
                         disabled={isLoadingTTS}
-                        title="Repeat Selection"
+                        title={readerDict.repeat}
                       > 
                         <Repeat />
                       </Button>
@@ -1862,25 +1870,25 @@ const ttsTextWithAnnotations = useMemo(() => {
                   <Separator className="my-3" />
 
                   <div className="space-y-2">
-                      <Label htmlFor="tts-engine" className="text-xs">Engine</Label>
+                      <Label htmlFor="tts-engine" className="text-xs">{readerDict.ttsEngine}</Label>
                       <Select value={ttsSettings.engine} onValueChange={(v) => handleSettingChange('engine', v as 'local' | 'cloud')} disabled={isSpeaking && !isPaused}>
                         <SelectTrigger id="tts-engine" className="h-9 text-xs"><SelectValue /></SelectTrigger>
-                        <SelectContent><SelectItem value="local"><div className="flex items-center gap-1 text-xs"><Smartphone className="h-3 w-3"/>Local</div></SelectItem><SelectItem value="cloud"><div className="flex items-center gap-1 text-xs"><CloudIcon className="h-3 w-3"/>Cloud</div></SelectItem></SelectContent>
+                        <SelectContent><SelectItem value="local"><div className="flex items-center gap-1 text-xs"><Smartphone className="h-3 w-3"/>{readerDict.local}</div></SelectItem><SelectItem value="cloud"><div className="flex items-center gap-1 text-xs"><CloudIcon className="h-3 w-3"/>{readerDict.cloud}</div></SelectItem></SelectContent>
                       </Select>
                   </div>
 
                   {ttsSettings.engine === 'local' && (
                     <div className="space-y-2">
-                      <Label htmlFor="tts-voice" className="text-xs">Voice (Local)</Label>
+                      <Label htmlFor="tts-voice" className="text-xs">{readerDict.voiceLocal}</Label>
                       <Select 
                         value={ttsSettings.voiceURI || ""} 
                         onValueChange={(v) => handleSettingChange('voiceURI', v)} 
                         disabled={isSpeaking && !isPaused || availableVoices.length === 0}
                       >
-                        <SelectTrigger id="tts-voice" className="h-9 text-xs"><SelectValue placeholder={availableVoices.length > 0 ? "Select voice" : "No local voices available"} /></SelectTrigger>
+                        <SelectTrigger id="tts-voice" className="h-9 text-xs"><SelectValue placeholder={availableVoices.length > 0 ? readerDict.selectVoice : readerDict.noLocalVoices} /></SelectTrigger>
                         <SelectContent className="max-h-48">
                             {availableVoices.length === 0 ? (
-                                <SelectItem value="no-voices" disabled>No local voices found on this device</SelectItem>
+                                <SelectItem value="no-voices" disabled>{readerDict.noLocalVoices}</SelectItem>
                             ) : (
                                 Object.entries(groupedLocalVoices).map(([lang, voices]) => (
                                     <SelectGroup key={lang}>
@@ -1899,9 +1907,9 @@ const ttsTextWithAnnotations = useMemo(() => {
                   {ttsSettings.engine === 'cloud' && (
                     <>
                       <div className="space-y-2">
-                        <Label htmlFor="cloud-tts-language" className="text-xs">Language (Cloud)</Label>
+                        <Label htmlFor="cloud-tts-language" className="text-xs">{readerDict.languageCloud}</Label>
                         <Select value={ttsSettings.language} onValueChange={(v) => handleSettingChange('language', v as string)} disabled={isSpeaking && !isPaused}>
-                            <SelectTrigger id="cloud-tts-language" className="h-9 text-xs"><SelectValue placeholder="Select a language" /></SelectTrigger>
+                            <SelectTrigger id="cloud-tts-language" className="h-9 text-xs"><SelectValue placeholder={readerDict.selectLanguage} /></SelectTrigger>
                             <SelectContent className="max-h-48">
                                 {Object.entries(edgeTTSLanguageVoices).map(([locale, { language }]) => (
                                     <SelectItem key={locale} value={locale} className="text-xs">{language} ({locale})</SelectItem>
@@ -1910,9 +1918,9 @@ const ttsTextWithAnnotations = useMemo(() => {
                         </Select>
                       </div>
                       <div className="space-y-2">
-                          <Label htmlFor="cloud-tts-voice" className="text-xs">Voice (Cloud)</Label>
+                          <Label htmlFor="cloud-tts-voice" className="text-xs">{readerDict.voiceCloud}</Label>
                           <Select value={ttsSettings.cloudVoiceId || ""} onValueChange={(v) => handleSettingChange('cloudVoiceId', v)} disabled={isSpeaking && !isPaused || !ttsSettings.language}>
-                              <SelectTrigger id="cloud-tts-voice" className="h-9 text-xs"><SelectValue placeholder="Select a voice" /></SelectTrigger>
+                              <SelectTrigger id="cloud-tts-voice" className="h-9 text-xs"><SelectValue placeholder={readerDict.selectVoice} /></SelectTrigger>
                               <SelectContent className="max-h-48">
                                   {(edgeTTSLanguageVoices[ttsSettings.language]?.voices || []).map(voice => (
                                       <SelectItem key={voice.id} value={voice.id} className="text-xs">{voice.name}</SelectItem>
@@ -1924,11 +1932,11 @@ const ttsTextWithAnnotations = useMemo(() => {
                   )}
 
                   <div className="space-y-1 pt-2">
-                    <Label htmlFor="tts-rate" className="text-xs">Rate: {ttsSettings.rate.toFixed(1)}</Label>
+                    <Label htmlFor="tts-rate" className="text-xs">{readerDict.rate.replace('{rate}', ttsSettings.rate.toFixed(1))}</Label>
                     <Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isSpeaking && !isPaused}/>
                   </div>
                   <div className="space-y-1">
-                    <Label htmlFor="tts-pitch" className="text-xs">Pitch: {ttsSettings.pitch.toFixed(1)}</Label>
+                    <Label htmlFor="tts-pitch" className="text-xs">{readerDict.pitch.replace('{pitch}', ttsSettings.pitch.toFixed(1))}</Label>
                     <Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isSpeaking && !isPaused}/>
                   </div>
                 </CardContent>
@@ -1936,7 +1944,7 @@ const ttsTextWithAnnotations = useMemo(() => {
               
               {showViewControls && (
                   <Card>
-                    <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">View Controls</CardTitle></CardHeader>
+                    <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">{readerDict.viewControls}</CardTitle></CardHeader>
                     <CardContent className="space-y-2 pt-0">
                       <div className="flex items-center gap-2">
                         <Button onClick={() => handleViewScaleChange(viewScale - 0.25)} size="icon" variant="outline" className="h-7 w-7" disabled={isRenderingPdfPage || viewScale <= 0.25}><ZoomOut className="h-4 w-4"/></Button>
@@ -1955,7 +1963,7 @@ const ttsTextWithAnnotations = useMemo(() => {
                             }}
                             disabled={isLoadingDoc || isRenderingPdfPage || !pdfTextContent}
                           >
-                           {isPdfTextView ? "Switch to Image View" : "Switch to Text View"}
+                           {isPdfTextView ? readerDict.switchToImageView : readerDict.switchToTextView}
                           </Button>
                         </div>
                        )}
@@ -1969,9 +1977,9 @@ const ttsTextWithAnnotations = useMemo(() => {
         <AlertDialog open={jumpDialogInfo.open} onOpenChange={(isOpen) => !isOpen && handleCancelJump()}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Jump to Page</AlertDialogTitle>
+              <AlertDialogTitle>{readerDict.jumpDialogTitle}</AlertDialogTitle>
               <AlertDialogDescription>
-                Enter a page number between 1 and {jumpDialogInfo.totalPages}.
+                {readerDict.jumpDialogDescription.replace('{totalPages}', jumpDialogInfo.totalPages.toString())}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <div className="py-2">
@@ -1980,14 +1988,14 @@ const ttsTextWithAnnotations = useMemo(() => {
                 value={jumpToPageInput}
                 onChange={(e) => setJumpToPageInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleConfirmJump()}
-                placeholder={`Page (1-${jumpDialogInfo.totalPages})`}
+                placeholder={readerDict.jumpDialogInputPlaceholder.replace('{totalPages}', jumpDialogInfo.totalPages.toString())}
                 className="text-center"
                 autoFocus
               />
             </div>
             <AlertDialogFooter>
-              <AlertDialogCancel onClick={handleCancelJump}>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleConfirmJump}>Jump</AlertDialogAction>
+              <AlertDialogCancel onClick={handleCancelJump}>{commonDict.cancel}</AlertDialogCancel>
+              <AlertDialogAction onClick={handleConfirmJump}>{readerDict.jump}</AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
@@ -2003,23 +2011,23 @@ const ttsTextWithAnnotations = useMemo(() => {
         >
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>{annotationDialog.id ? 'Edit Annotation' : 'Add Annotation'}</AlertDialogTitle>
+              <AlertDialogTitle>{annotationDialog.id ? readerDict.editAnnotationTitle : readerDict.addAnnotationTitle}</AlertDialogTitle>
               <AlertDialogDescription>
-                Add a note and an optional image for the selected text.
+                {readerDict.addAnnotationDescription}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <div className="space-y-4 py-2">
               <div className="space-y-2">
-                <Label htmlFor="annotation-note">Your Note</Label>
+                <Label htmlFor="annotation-note">{readerDict.yourNote}</Label>
                 <Textarea
                   id="annotation-note"
-                  placeholder="Type your note here..."
+                  placeholder={readerDict.notePlaceholder}
                   value={annotationDialog.note}
                   onChange={(e) => setAnnotationDialog((p) => ({ ...p, note: e.target.value }))}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="annotation-image">Attach Image (Optional)</Label>
+                <Label htmlFor="annotation-image">{readerDict.attachImage}</Label>
                 <Input
                   id="annotation-image"
                   type="file"
@@ -2030,7 +2038,7 @@ const ttsTextWithAnnotations = useMemo(() => {
               </div>
               {annotationDialog.imageDataUrl && (
                 <div className="relative group">
-                  <p className="text-sm font-medium mb-1">Image Preview:</p>
+                  <p className="text-sm font-medium mb-1">{readerDict.imagePreview}</p>
                   <img src={annotationDialog.imageDataUrl} alt="Annotation preview" className="max-h-32 rounded-md border" />
                   <Button
                     variant="destructive"
@@ -2047,10 +2055,10 @@ const ttsTextWithAnnotations = useMemo(() => {
               )}
             </div>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogCancel>{commonDict.cancel}</AlertDialogCancel>
               <AlertDialogAction onClick={handleSaveAnnotation} disabled={annotationDialog.isSaving}>
                 {annotationDialog.isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Save
+                {readerDict.save}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -2059,9 +2067,9 @@ const ttsTextWithAnnotations = useMemo(() => {
         <Dialog open={!!viewingAnnotation} onOpenChange={(isOpen) => !isOpen && setViewingAnnotation(null)}>
           <DialogContent className="max-w-md">
             <DialogHeader>
-              <DialogTitle>Annotation Details</DialogTitle>
+              <DialogTitle>{readerDict.annotationDetailsTitle}</DialogTitle>
               <DialogDescription>
-                Note for: <span className="italic">&quot;{viewingAnnotation?.targetText}&quot;</span>
+                {readerDict.noteFor.replace('{text}', viewingAnnotation?.targetText || '')}
               </DialogDescription>
             </DialogHeader>
             <div className="py-4 space-y-4 max-h-[60vh] overflow-y-auto">
@@ -2082,13 +2090,13 @@ const ttsTextWithAnnotations = useMemo(() => {
                     handleEditAnnotation(viewingAnnotation);
                   }
                 }}>
-                    <Pencil className="mr-2 h-4 w-4" /> Edit
+                    <Pencil className="mr-2 h-4 w-4" /> {readerDict.edit}
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => viewingAnnotation && handleFavoriteAnnotation(viewingAnnotation)}>
-                  <Star className="mr-2 h-4 w-4" /> Favorite
+                  <Star className="mr-2 h-4 w-4" /> {readerDict.favoriteNote}
                 </Button>
                 <Button variant="destructive" size="sm" onClick={() => viewingAnnotation && handleDeleteAnnotation(viewingAnnotation)}>
-                  <Trash2 className="mr-2 h-4 w-4" /> Delete
+                  <Trash2 className="mr-2 h-4 w-4" /> {readerDict.delete}
                 </Button>
             </DialogFooter>
           </DialogContent>
@@ -2097,16 +2105,15 @@ const ttsTextWithAnnotations = useMemo(() => {
         <AlertDialog open={!!annotationToDelete} onOpenChange={(isOpen) => !isOpen && setAnnotationToDelete(null)}>
           <AlertDialogContent>
               <AlertDialogHeader>
-              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+              <AlertDialogTitle>{readerDict.confirmDeleteAnnotationTitle}</AlertDialogTitle>
               <AlertDialogDescription>
-                  This action cannot be undone. This will permanently delete the annotation for
-                  <span className="font-bold italic"> &quot;{annotationToDelete?.targetText}&quot;</span>.
+                  {readerDict.confirmDeleteAnnotationDesc.replace('{text}', annotationToDelete?.targetText || '')}
               </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogCancel>{commonDict.cancel}</AlertDialogCancel>
               <AlertDialogAction onClick={performDeleteAnnotation}>
-                  Continue
+                  {commonDict.continue}
               </AlertDialogAction>
               </AlertDialogFooter>
           </AlertDialogContent>
