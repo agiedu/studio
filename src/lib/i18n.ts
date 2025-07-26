@@ -301,7 +301,7 @@ const dictionaries: Record<Locale, any> = {
         annotationDetailsTitle: "Annotation Details",
         noteFor: "Note for: \"{text}\"",
         edit: "Edit",
-        favoriteNote: "Favorite",
+        favoriteNote: "Favorite Note",
         delete: "Delete",
         annotationSaved: "Annotation Saved",
         annotationUpdated: "Annotation Updated",
@@ -2689,7 +2689,7 @@ const dictionaries: Record<Locale, any> = {
         notes: "Notas",
         select: "Selecionar",
         areYouSure: "Você tem certeza absoluta?",
-        actionCannotBeUndone: "Esta ação não pode ser desfeita.",
+        actionCannotBeUndone: "Esta ação не pode ser desfeita.",
         password: "Senha",
         newPassword: "Nova senha",
         confirmNewPassword: "Confirmar nova senha",
@@ -2727,7 +2727,7 @@ const dictionaries: Record<Locale, any> = {
         title: "Registrar",
         description: "Crie uma conta para salvar sua biblioteca.",
         passwordLengthError: "A senha deve ter pelo menos 4 caracteres.",
-        passwordsDoNotMatch: "As senhas не coincidem.",
+        passwordsDoNotMatch: "As senhas não coincidem.",
         userExistsError: "Já existe um usuário com este e-mail.",
         registrationSuccessful: "Registro bem-sucedido",
         pleaseLogin: "Por favor, faça login com sua nova conta.",
@@ -2760,7 +2760,7 @@ const dictionaries: Record<Locale, any> = {
         adminPasswordUpdated: "Senha de administrador atualizada com sucesso.",
         failedToUpdateAdminPassword: "Falha ao atualizar a senha.",
         adminLoginURL: "URL de login do administrador",
-        urlNotChangeable: "Isso não pode ser alterado em um aplicativo somente cliente.",
+        urlNotChangeable: "Isso не pode ser alterado em um aplicativo somente cliente.",
         deleteUserConfirmation: "Isso excluirá permanentemente o usuário {email} e todos os seus dados associados.",
     },
     library: {
@@ -2787,7 +2787,7 @@ const dictionaries: Record<Locale, any> = {
         saveToDeviceFailed: "Não foi possível salvar \"{title}\". {message}",
         documentType: "Tipo",
         storedDate: "Armazenado",
-        deleteConfirmation: "Esta ação não pode ser desfeita. Isso excluirá permanentemente o documento \"{title}\".",
+        deleteConfirmation: "Esta ação не pode ser desfeita. Isso excluirá permanentemente o documento \"{title}\".",
         deletionSuccess: "\"{title}\" foi excluído.",
         deletionFailed: "Falha na exclusão",
         indexedDBNote: "Os documentos são armazenados no IndexedDB do seu navegador. Limpar os dados do site os removerá.",
@@ -2802,7 +2802,7 @@ const dictionaries: Record<Locale, any> = {
         uploadMediaTitle: "Carregar mídia",
         uploadMediaDescription: "Adicione seus próprios arquivos de áudio ou vídeo à sua lista de favoritos.",
         selectFile: "Selecionar arquivo de áudio/vídeo",
-        unsupportedFileType: "Tipo de arquivo не suportado",
+        unsupportedFileType: "Tipo de arquivo não suportado",
         unsupportedFileMessage: "Por favor, selecione um arquivo de áudio ou vídeo válido.",
         processingAndSaving: "Processando e salvando...",
         uploadFailed: "Falha no upload",
@@ -4302,27 +4302,37 @@ const dictionaries: Record<Locale, any> = {
   ne: {},
   bn: {},
   tr: {},
-  fa: {},
-  pt: {},
+  'fa-IR': {},
 };
 
 export const getDictionary = (locale: Locale) => {
-    return dictionaries[locale] || dictionaries.en;
+    // Fallback to English if the dictionary for the given locale is empty or doesn't exist
+    if (!dictionaries[locale] || Object.keys(dictionaries[locale]).length === 0) {
+        return dictionaries.en;
+    }
+    return dictionaries[locale];
 };
 
 // Add fallback for new languages using direct assignment
-dictionaries.th = dictionaries.en;
-dictionaries.km = dictionaries.en;
-dictionaries.my = dictionaries.en;
-dictionaries.lo = dictionaries.en;
-dictionaries.ms = dictionaries.en;
-dictionaries.ur = dictionaries.en;
-dictionaries.fil = dictionaries.en;
-dictionaries.ne = dictionaries.en;
-dictionaries.bn = dictionaries.en;
-dictionaries.tr = dictionaries.en;
-dictionaries['fa-IR'] = dictionaries.en;
+// This ensures that if a translation is missing, it will use the English text.
+dictionaries.th = { ...dictionaries.en, ...dictionaries.th };
+dictionaries.km = { ...dictionaries.en, ...dictionaries.km };
+dictionaries.my = { ...dictionaries.en, ...dictionaries.my };
+dictionaries.lo = { ...dictionaries.en, ...dictionaries.lo };
+dictionaries.ms = { ...dictionaries.en, ...dictionaries.ms };
+dictionaries.ur = { ...dictionaries.en, ...dictionaries.ur };
+dictionaries.fil = { ...dictionaries.en, ...dictionaries.fil };
+dictionaries.ne = { ...dictionaries.en, ...dictionaries.ne };
+dictionaries.bn = { ...dictionaries.en, ...dictionaries.bn };
+dictionaries.tr = { ...dictionaries.en, ...dictionaries.tr };
+dictionaries['fa-IR'] = { ...dictionaries.en, ...dictionaries['fa-IR'] };
 // Note: pt-BR is a new primary language, and the old 'pt' key is no longer in use.
 // If 'pt' were still needed, you would handle it separately.
 // dictionaries.pt = dictionaries['pt-BR']; // Example if needed
 
+// Temporary fix for empty dictionaries to ensure they have content for the initial release
+Object.keys(dictionaries).forEach(key => {
+    if (Object.keys(dictionaries[key as Locale]).length === 0) {
+        dictionaries[key as Locale] = dictionaries.en;
+    }
+});
