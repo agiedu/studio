@@ -2689,7 +2689,7 @@ const dictionaries: Record<Locale, any> = {
         notes: "Notas",
         select: "Selecionar",
         areYouSure: "Você tem certeza absoluta?",
-        actionCannotBeUndone: "Esta ação не pode ser desfeita.",
+        actionCannotBeUndone: "Esta ação não pode ser desfeita.",
         password: "Senha",
         newPassword: "Nova senha",
         confirmNewPassword: "Confirmar nova senha",
@@ -2760,14 +2760,14 @@ const dictionaries: Record<Locale, any> = {
         adminPasswordUpdated: "Senha de administrador atualizada com sucesso.",
         failedToUpdateAdminPassword: "Falha ao atualizar a senha.",
         adminLoginURL: "URL de login do administrador",
-        urlNotChangeable: "Isso не pode ser alterado em um aplicativo somente cliente.",
+        urlNotChangeable: "Isso não pode ser alterado em um aplicativo somente cliente.",
         deleteUserConfirmation: "Isso excluirá permanentemente o usuário {email} e todos os seus dados associados.",
     },
     library: {
         addDocumentTitle: "Adicionar documento ao armazenamento do navegador",
         fileInputLabel: "Arquivo de documento (.epub, .pdf, .txt, .png, .jpg)",
         unsupportedFileType: "Tipo de arquivo não suportado",
-        unsupportedFileTypeError: "O tipo \"{type}\" ({name}) не é suportado. Por favor, carregue uma imagem, PDF, EPUB, MOBI ou TXT.",
+        unsupportedFileTypeError: "O tipo \"{type}\" ({name}) não é suportado. Por favor, carregue uma imagem, PDF, EPUB, MOBI ou TXT.",
         processingAndSaving: "Processando e salvando no navegador...",
         documentSaved: "Documento salvo no navegador",
         documentSavedMessage: "\"{title}\" salvo.",
@@ -2787,7 +2787,7 @@ const dictionaries: Record<Locale, any> = {
         saveToDeviceFailed: "Não foi possível salvar \"{title}\". {message}",
         documentType: "Tipo",
         storedDate: "Armazenado",
-        deleteConfirmation: "Esta ação не pode ser desfeita. Isso excluirá permanentemente o documento \"{title}\".",
+        deleteConfirmation: "Esta ação não pode ser desfeita. Isso excluirá permanentemente o documento \"{title}\".",
         deletionSuccess: "\"{title}\" foi excluído.",
         deletionFailed: "Falha na exclusão",
         indexedDBNote: "Os documentos são armazenados no IndexedDB do seu navegador. Limpar os dados do site os removerá.",
@@ -2953,7 +2953,7 @@ const dictionaries: Record<Locale, any> = {
         noteFavorited: "Nota favoritada",
         noteFavoritedDesc: "Salvo na sua página de notas favoritas.",
         confirmDeleteAnnotationTitle: "Você tem certeza absoluta?",
-        confirmDeleteAnnotationDesc: "Esta ação não pode ser desfeita. Isso excluirá permanentemente a anotação para \"{text}\".",
+        confirmDeleteAnnotationDesc: "Esta ação не pode ser desfeita. Isso excluirá permanentemente a anotação para \"{text}\".",
         ocrError: "Erro de OCR",
         noActiveDoc: "Nenhum documento ativo.",
         ocrFailed: "Falha no OCR.",
@@ -4326,9 +4326,6 @@ dictionaries.ne = { ...dictionaries.en, ...dictionaries.ne };
 dictionaries.bn = { ...dictionaries.en, ...dictionaries.bn };
 dictionaries.tr = { ...dictionaries.en, ...dictionaries.tr };
 dictionaries['fa-IR'] = { ...dictionaries.en, ...dictionaries['fa-IR'] };
-// Note: pt-BR is a new primary language, and the old 'pt' key is no longer in use.
-// If 'pt' were still needed, you would handle it separately.
-// dictionaries.pt = dictionaries['pt-BR']; // Example if needed
 
 // Temporary fix for empty dictionaries to ensure they have content for the initial release
 Object.keys(dictionaries).forEach(key => {
