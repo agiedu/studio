@@ -2642,7 +2642,7 @@ const dictionaries: Record<Locale, any> = {
         cloudTtsFailed: "Ошибка облачного TTS",
     },
   },
-  pt: {
+  'pt-BR': {
     nav: {
       home: 'Início',
       library: 'Biblioteca',
@@ -2689,7 +2689,7 @@ const dictionaries: Record<Locale, any> = {
         notes: "Notas",
         select: "Selecionar",
         areYouSure: "Você tem certeza absoluta?",
-        actionCannotBeUndone: "Esta ação не pode ser desfeita.",
+        actionCannotBeUndone: "Esta ação não pode ser desfeita.",
         password: "Senha",
         newPassword: "Nova senha",
         confirmNewPassword: "Confirmar nova senha",
@@ -2727,7 +2727,7 @@ const dictionaries: Record<Locale, any> = {
         title: "Registrar",
         description: "Crie uma conta para salvar sua biblioteca.",
         passwordLengthError: "A senha deve ter pelo menos 4 caracteres.",
-        passwordsDoNotMatch: "As senhas não coincidem.",
+        passwordsDoNotMatch: "As senhas не coincidem.",
         userExistsError: "Já existe um usuário com este e-mail.",
         registrationSuccessful: "Registro bem-sucedido",
         pleaseLogin: "Por favor, faça login com sua nova conta.",
@@ -2766,7 +2766,7 @@ const dictionaries: Record<Locale, any> = {
     library: {
         addDocumentTitle: "Adicionar documento ao armazenamento do navegador",
         fileInputLabel: "Arquivo de documento (.epub, .pdf, .txt, .png, .jpg)",
-        unsupportedFileType: "Tipo de arquivo не suportado",
+        unsupportedFileType: "Tipo de arquivo não suportado",
         unsupportedFileTypeError: "O tipo \"{type}\" ({name}) не é suportado. Por favor, carregue uma imagem, PDF, EPUB, MOBI ou TXT.",
         processingAndSaving: "Processando e salvando no navegador...",
         documentSaved: "Documento salvo no navegador",
@@ -2787,7 +2787,7 @@ const dictionaries: Record<Locale, any> = {
         saveToDeviceFailed: "Não foi possível salvar \"{title}\". {message}",
         documentType: "Tipo",
         storedDate: "Armazenado",
-        deleteConfirmation: "Esta ação не pode ser desfeita. Isso excluirá permanentemente o documento \"{title}\".",
+        deleteConfirmation: "Esta ação não pode ser desfeita. Isso excluirá permanentemente o documento \"{title}\".",
         deletionSuccess: "\"{title}\" foi excluído.",
         deletionFailed: "Falha na exclusão",
         indexedDBNote: "Os documentos são armazenados no IndexedDB do seu navegador. Limpar os dados do site os removerá.",
@@ -2963,7 +2963,7 @@ const dictionaries: Record<Locale, any> = {
         ocrNoText: "OCR concluído, nenhum texto encontrado.",
         noImageData: "Nenhum dado de imagem disponível para OCR.",
         epubOcrMissing: "A fonte da imagem EPUB para OCR está faltando.",
-        mobiNotSupported: "Arquivos MOBI не podem ser visualizados diretamente. Por favor, converta para EPUB ou PDF.",
+        mobiNotSupported: "Arquivos MOBI não podem ser visualizados diretamente. Por favor, converta para EPUB ou PDF.",
         audioError: "Erro de áudio",
         failedToPlay: "Falha ao reproduzir o áudio.",
         ttsError: "Erro de TTS",
@@ -4301,6 +4301,9 @@ const dictionaries: Record<Locale, any> = {
   fil: {},
   ne: {},
   bn: {},
+  tr: {},
+  fa: {},
+  pt: {},
 };
 
 export const getDictionary = (locale: Locale) => {
@@ -4317,3 +4320,9 @@ dictionaries.ur = dictionaries.en;
 dictionaries.fil = dictionaries.en;
 dictionaries.ne = dictionaries.en;
 dictionaries.bn = dictionaries.en;
+dictionaries.tr = dictionaries.en;
+dictionaries['fa-IR'] = dictionaries.en;
+// Note: pt-BR is a new primary language, and the old 'pt' key is no longer in use.
+// If 'pt' were still needed, you would handle it separately.
+// dictionaries.pt = dictionaries['pt-BR']; // Example if needed
+

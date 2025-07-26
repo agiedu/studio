@@ -3,7 +3,7 @@
 
 import React, { createContext, useState, useEffect } from 'react';
 
-export type Locale = 'en' | 'zh-CN' | 'vi' | 'ja' | 'ko' | 'es' | 'fr' | 'de' | 'ru' | 'pt' | 'it' | 'ar' | 'hi' | 'th' | 'km' | 'my' | 'lo' | 'ms' | 'ur' | 'fil' | 'ne' | 'bn';
+export type Locale = 'en' | 'zh-CN' | 'vi' | 'ja' | 'ko' | 'es' | 'fr' | 'de' | 'ru' | 'pt-BR' | 'it' | 'ar' | 'hi' | 'th' | 'km' | 'my' | 'lo' | 'ms' | 'ur' | 'fil' | 'ne' | 'bn' | 'tr' | 'fa-IR';
 
 export const languages: { code: Locale; name: string }[] = [
     { code: 'en', name: 'English' },
@@ -15,7 +15,7 @@ export const languages: { code: Locale; name: string }[] = [
     { code: 'fr', name: 'Français' },
     { code: 'de', name: 'Deutsch' },
     { code: 'ru', name: 'Русский' },
-    { code: 'pt', name: 'Português' },
+    { code: 'pt-BR', name: 'Português (Brasil)' },
     { code: 'it', name: 'Italiano' },
     { code: 'ar', name: 'العربية' },
     { code: 'hi', name: 'हिन्दी' },
@@ -28,6 +28,8 @@ export const languages: { code: Locale; name: string }[] = [
     { code: 'fil', name: 'Filipino' }, // Filipino
     { code: 'ne', name: 'नेपाली' }, // Nepali
     { code: 'bn', name: 'বাংলা' }, // Bengali
+    { code: 'tr', name: 'Türkçe' }, // Turkish
+    { code: 'fa-IR', name: 'فارسی' }, // Persian
 ];
 
 const LANGUAGE_KEY = 'mangaTalk_language';
