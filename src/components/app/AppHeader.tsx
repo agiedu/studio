@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useContext } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { BookOpenText, Library, Star, User, LogOut, ShieldCheck, NotebookText, Home, Film, Languages } from 'lucide-react';
@@ -10,32 +10,18 @@ import { MangaTalkLogo } from '@/components/icons/MangaTalkLogo';
 import { cn } from '@/lib/utils';
 import { getCurrentUser, logout, isAdminSessionActive } from '@/lib/authService';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { LanguageContext, languages } from '@/context/LanguageContext';
+import { getDictionary } from '@/lib/i18n';
 
 const PROTECTED_ROUTES = ['/library', '/reader', '/favorites', '/notes-favorites', '/profile', '/admin', '/media'];
-
-const languages = [
-    { code: 'en', name: 'English' },
-    { code: 'zh-CN', name: '简体中文' },
-    { code: 'zh-TW', name: '繁體中文' },
-    { code: 'ja', name: '日本語' },
-    { code: 'ko', name: '한국어' },
-    { code: 'es', name: 'Español' },
-    { code: 'fr', name: 'Français' },
-    { code: 'de', name: 'Deutsch' },
-    { code: 'ru', name: 'Русский' },
-    { code: 'pt', name: 'Português' },
-    { code: 'it', name: 'Italiano' },
-    { code: 'ar', name: 'العربية' },
-    { code: 'hi', name: 'हिन्दी' },
-];
-
 
 export function AppHeader() {
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState<{ email: string } | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [currentLanguage, setCurrentLanguage] = useState('en');
+  const { locale, setLocale } = useContext(LanguageContext);
+  const dictionary = getDictionary(locale);
 
   useEffect(() => {
     const currentUser = getCurrentUser();
@@ -81,43 +67,43 @@ export function AppHeader() {
               <>
                 <Button variant="ghost" asChild size="sm" className={getLinkClass('/')}>
                   <Link href="/">
-                    <Home className="mr-1 h-4 w-4" /> Home
+                    <Home className="mr-1 h-4 w-4" /> {dictionary.nav.home}
                   </Link>
                 </Button>
                 <Button variant="ghost" asChild size="sm" className={getLinkClass('/library')}>
                   <Link href="/library">
-                    <Library className="mr-1 h-4 w-4" /> Library
+                    <Library className="mr-1 h-4 w-4" /> {dictionary.nav.library}
                   </Link>
                 </Button>
                 <Button variant="ghost" asChild size="sm" className={getLinkClass('/reader')}>
                   <Link href="/reader">
-                    <BookOpenText className="mr-1 h-4 w-4" /> Reader
+                    <BookOpenText className="mr-1 h-4 w-4" /> {dictionary.nav.reader}
                   </Link>
                 </Button>
                  <Button variant="ghost" asChild size="sm" className={getLinkClass('/media')}>
                   <Link href="/media">
-                    <Film className="mr-1 h-4 w-4" /> Media
+                    <Film className="mr-1 h-4 w-4" /> {dictionary.nav.media}
                   </Link>
                 </Button>
                 <Button variant="ghost" asChild size="sm" className={getLinkClass('/favorites')}>
                   <Link href="/favorites">
-                    <Star className="mr-1 h-4 w-4" /> Favorites
+                    <Star className="mr-1 h-4 w-4" /> {dictionary.nav.favorites}
                   </Link>
                 </Button>
                 <Button variant="ghost" asChild size="sm" className={getLinkClass('/notes-favorites')}>
                   <Link href="/notes-favorites">
-                    <NotebookText className="mr-1 h-4 w-4" /> Notes
+                    <NotebookText className="mr-1 h-4 w-4" /> {dictionary.nav.notes}
                   </Link>
                 </Button>
                 <Button variant="ghost" asChild size="sm" className={getLinkClass('/profile')}>
                   <Link href="/profile">
-                    <User className="mr-1 h-4 w-4" /> Profile
+                    <User className="mr-1 h-4 w-4" /> {dictionary.nav.profile}
                   </Link>
                 </Button>
                 {isAdmin && (
                    <Button variant="ghost" asChild size="sm" className={getLinkClass('/admin/management')}>
                       <Link href="/admin/management">
-                          <ShieldCheck className="mr-1 h-4 w-4" /> Admin
+                          <ShieldCheck className="mr-1 h-4 w-4" /> {dictionary.nav.admin}
                       </Link>
                   </Button>
                 )}
@@ -126,12 +112,12 @@ export function AppHeader() {
           </nav>
         </div>
         <div className="flex items-center gap-2">
-            <Select value={currentLanguage} onValueChange={setCurrentLanguage}>
+            <Select value={locale} onValueChange={(value) => setLocale(value as any)}>
                 <SelectTrigger className="w-auto h-9 border-none focus:ring-0">
                     <SelectValue asChild>
                          <div className="flex items-center gap-2">
                             <Languages className="h-4 w-4" />
-                            <span className="hidden md:inline">{languages.find(l => l.code === currentLanguage)?.name}</span>
+                            <span className="hidden md:inline">{languages.find(l => l.code === locale)?.name}</span>
                          </div>
                     </SelectValue>
                 </SelectTrigger>
@@ -144,11 +130,11 @@ export function AppHeader() {
 
             {user ? (
                 <Button variant="ghost" size="sm" onClick={handleLogout}>
-                    <LogOut className="mr-1 h-4 w-4" /> Logout
+                    <LogOut className="mr-1 h-4 w-4" /> {dictionary.nav.logout}
                 </Button>
             ) : (
                  <Button variant="ghost" size="sm" asChild>
-                    <Link href="/login">Login</Link>
+                    <Link href="/login">{dictionary.nav.login}</Link>
                 </Button>
             )}
         </div>
