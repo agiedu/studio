@@ -2741,7 +2741,7 @@ const dictionaries: Record<Locale, any> = {
         changePassword: "Alterar senha",
         changePasswordDescription: "Digite uma nova senha para sua conta.",
         passwordUpdated: "Sua senha foi alterada.",
-        passwordUpdateFailed: "Falha ao alterar a senha.",
+        passwordUpdateFailed: "Falha ao alterar la senha.",
         passwordsMismatch: "As senhas não coincidem.",
         saveNewPassword: "Salvar nova senha",
     },
