@@ -4,19 +4,38 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { BookOpenText, Library, Star, User, LogOut, ShieldCheck, NotebookText, Home, Film } from 'lucide-react';
+import { BookOpenText, Library, Star, User, LogOut, ShieldCheck, NotebookText, Home, Film, Languages } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { MangaTalkLogo } from '@/components/icons/MangaTalkLogo';
 import { cn } from '@/lib/utils';
 import { getCurrentUser, logout, isAdminSessionActive } from '@/lib/authService';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const PROTECTED_ROUTES = ['/library', '/reader', '/favorites', '/notes-favorites', '/profile', '/admin', '/media'];
+
+const languages = [
+    { code: 'en', name: 'English' },
+    { code: 'zh-CN', name: '简体中文' },
+    { code: 'zh-TW', name: '繁體中文' },
+    { code: 'ja', name: '日本語' },
+    { code: 'ko', name: '한국어' },
+    { code: 'es', name: 'Español' },
+    { code: 'fr', name: 'Français' },
+    { code: 'de', name: 'Deutsch' },
+    { code: 'ru', name: 'Русский' },
+    { code: 'pt', name: 'Português' },
+    { code: 'it', name: 'Italiano' },
+    { code: 'ar', name: 'العربية' },
+    { code: 'hi', name: 'हिन्दी' },
+];
+
 
 export function AppHeader() {
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState<{ email: string } | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [currentLanguage, setCurrentLanguage] = useState('en');
 
   useEffect(() => {
     const currentUser = getCurrentUser();
@@ -106,7 +125,23 @@ export function AppHeader() {
             )}
           </nav>
         </div>
-        <div className="flex items-center">
+        <div className="flex items-center gap-2">
+            <Select value={currentLanguage} onValueChange={setCurrentLanguage}>
+                <SelectTrigger className="w-auto h-9 border-none focus:ring-0">
+                    <SelectValue asChild>
+                         <div className="flex items-center gap-2">
+                            <Languages className="h-4 w-4" />
+                            <span className="hidden md:inline">{languages.find(l => l.code === currentLanguage)?.name}</span>
+                         </div>
+                    </SelectValue>
+                </SelectTrigger>
+                <SelectContent align="end">
+                    {languages.map(lang => (
+                        <SelectItem key={lang.code} value={lang.code}>{lang.name}</SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+
             {user ? (
                 <Button variant="ghost" size="sm" onClick={handleLogout}>
                     <LogOut className="mr-1 h-4 w-4" /> Logout
