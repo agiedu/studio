@@ -350,8 +350,10 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
           audioPlayerRef.current.play().catch(e => {
               console.error("Error playing audio:", e);
-              toast({ variant: "destructive", title: "Playback Error", description: `The audio file could not be played.` });
-              stop();
+              if (e.name !== 'AbortError') { // Ignore user-initiated aborts
+                toast({ variant: "destructive", title: "Playback Error", description: `The audio file could not be played.` });
+                stop();
+              }
           });
       }
       return () => {
@@ -570,5 +572,3 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   return <PlaybackContext.Provider value={value}>{children}</PlaybackContext.Provider>;
 }
-
-    
