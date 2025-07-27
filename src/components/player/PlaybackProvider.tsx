@@ -274,21 +274,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setProgress(0);
     setCurrentText(item.type === 'media_favorite' ? item.item.name : (item.type === 'favorite' ? item.item.text : (item.item.annotation.targetText || item.item.annotation.note || '')));
 
-    if (item.type === 'media_favorite') {
-        const player = item.item.type === 'video' ? videoPlayer : audioPlayerRef.current;
-        if (player) {
-             const blob = new Blob([item.item.fileData], { type: item.item.originalType });
-             const url = URL.createObjectURL(blob);
-             player.src = url;
-            try {
-                await player.play();
-            } catch (e) {
-                console.error("Error playing media item:", e);
-                toast({ variant: "destructive", title: "Playback Error", description: "The media file could not be played." });
-                stop();
-            }
-        }
-    } else {
+    if (item.type !== 'media_favorite') {
         setDuration(0);
         speechQueueRef.current = [];
         segmentIndexRef.current = 0;
@@ -306,7 +292,34 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         
         await speakNextSegment();
     }
-  }, [stop, originalTextTtsSettings, yourNoteTtsSettings, speakNextSegment, toast, videoPlayer]);
+  }, [stop, originalTextTtsSettings, yourNoteTtsSettings, speakNextSegment]);
+
+  // Effect to handle playing media items when the player element is ready.
+  useEffect(() => {
+    const playMedia = async () => {
+        if (!currentItem || currentItem.type !== 'media_favorite' || !isPlaying || isPaused) {
+            return;
+        }
+
+        const player = currentItem.item.type === 'video' ? videoPlayer : audioPlayerRef.current;
+        if (player) {
+            const blob = new Blob([currentItem.item.fileData], { type: currentItem.item.originalType });
+            const url = URL.createObjectURL(blob);
+            player.src = url;
+            try {
+                await player.play();
+            } catch (e) {
+                console.error("Error playing media item:", e);
+                toast({ variant: "destructive", title: "Playback Error", description: "The media file could not be played." });
+                stop();
+            }
+        }
+    };
+
+    playMedia();
+
+  }, [currentItem, isPlaying, isPaused, videoPlayer, stop, toast]);
+
 
 
   const pause = useCallback(() => {
