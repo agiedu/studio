@@ -265,12 +265,14 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [stop, toast, onPlaybackEnd]);
   
-  const play = useCallback(async (item: PlayableItem, newPlaylist: PlayableItem[], startIndex: number) => {
+  const play = useCallback((item: PlayableItem, newPlaylist: PlayableItem[], startIndex: number) => {
     if (!isMountedRef.current) return;
 
-    stop(false);
+    stop(false); // Stop previous playback but don't clear UI yet
     
-    isSpeakingRef.current = true;
+    isSpeakingRef.current = true; // Set speaking flag
+    
+    // Set all state to trigger UI changes and prepare for playback
     setCurrentItem(item);
     setPlaylist(newPlaylist);
     setCurrentIndex(startIndex);
@@ -278,32 +280,11 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setIsPaused(false);
     setIsLoading(true);
     setProgress(0);
+    setDuration(0);
     setCurrentText(item.type === 'media_favorite' ? item.item.name : (item.type === 'favorite' ? item.item.text : (item.item.annotation.targetText || item.item.annotation.note || '')));
 
-    if (item.type === 'media_favorite') {
-        setDuration(0);
-        const player = item.item.type === 'video' ? videoPlayer : audioPlayerRef.current;
-        if (!player) {
-            toast({ variant: "destructive", title: "Playback Error", description: "Player is not available."});
-            stop();
-            return;
-        }
-
-        const blob = new Blob([item.item.fileData], { type: item.item.originalType });
-        const url = URL.createObjectURL(blob);
-        mediaObjectUrlRef.current = url;
-        player.src = url;
-
-        try {
-            await player.play();
-        } catch (e) {
-            console.error(`Error playing ${item.item.type}:`, e);
-            toast({ variant: "destructive", title: "Playback Error", description: `The ${item.item.type} file could not be played.` });
-            stop();
-        }
-
-    } else { // Handle TTS playback
-        setDuration(0);
+    // TTS logic can be called directly as it doesn't depend on a late-rendering element
+    if (item.type !== 'media_favorite') {
         speechQueueRef.current = [];
         segmentIndexRef.current = 0;
         
@@ -318,9 +299,43 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           }
         }
         
-        await speakNextSegment();
+        speakNextSegment();
     }
-  }, [stop, originalTextTtsSettings, yourNoteTtsSettings, speakNextSegment, videoPlayer, toast]);
+  }, [stop, originalTextTtsSettings, yourNoteTtsSettings, speakNextSegment]);
+
+  // Effect specifically for handling video playback once the video element is ready.
+  useEffect(() => {
+    if (currentItem?.type === 'media_favorite' && currentItem.item.type === 'video' && videoPlayer) {
+        const item = currentItem.item;
+        const blob = new Blob([item.fileData], { type: item.originalType });
+        const url = URL.createObjectURL(blob);
+        mediaObjectUrlRef.current = url;
+        videoPlayer.src = url;
+
+        videoPlayer.play().catch(e => {
+            console.error("Error playing video:", e);
+            toast({ variant: "destructive", title: "Playback Error", description: `The video file could not be played.` });
+            stop();
+        });
+    }
+  }, [currentItem, videoPlayer, stop, toast]);
+
+  // Effect specifically for handling audio playback.
+  useEffect(() => {
+      if (currentItem?.type === 'media_favorite' && currentItem.item.type === 'audio' && audioPlayerRef.current) {
+          const item = currentItem.item;
+          const blob = new Blob([item.fileData], { type: item.originalType });
+          const url = URL.createObjectURL(blob);
+          mediaObjectUrlRef.current = url;
+          audioPlayerRef.current.src = url;
+
+          audioPlayerRef.current.play().catch(e => {
+              console.error("Error playing audio:", e);
+              toast({ variant: "destructive", title: "Playback Error", description: `The audio file could not be played.` });
+              stop();
+          });
+      }
+  }, [currentItem, stop, toast]);
 
 
   const pause = useCallback(() => {
