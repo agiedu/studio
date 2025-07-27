@@ -294,32 +294,43 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [stop, originalTextTtsSettings, yourNoteTtsSettings, speakNextSegment]);
 
-  // Effect to handle playing media items when the player element is ready.
+  // Effect for VIDEO playback
   useEffect(() => {
-    const playMedia = async () => {
-        if (!currentItem || currentItem.type !== 'media_favorite' || !isPlaying || isPaused) {
-            return;
-        }
-
-        const player = currentItem.item.type === 'video' ? videoPlayer : audioPlayerRef.current;
-        if (player) {
-            const blob = new Blob([currentItem.item.fileData], { type: currentItem.item.originalType });
+    const playVideo = async () => {
+        if (currentItem?.type === 'media_favorite' && currentItem.item.type === 'video' && isPlaying && !isPaused && videoPlayer) {
+             const blob = new Blob([currentItem.item.fileData], { type: currentItem.item.originalType });
             const url = URL.createObjectURL(blob);
-            player.src = url;
+            videoPlayer.src = url;
             try {
-                await player.play();
+                await videoPlayer.play();
             } catch (e) {
-                console.error("Error playing media item:", e);
-                toast({ variant: "destructive", title: "Playback Error", description: "The media file could not be played." });
+                console.error("Error playing video item:", e);
+                toast({ variant: "destructive", title: "Playback Error", description: "The video file could not be played." });
                 stop();
             }
         }
     };
-
-    playMedia();
-
+    playVideo();
   }, [currentItem, isPlaying, isPaused, videoPlayer, stop, toast]);
 
+  // Effect for AUDIO playback
+  useEffect(() => {
+    const playAudio = async () => {
+        if (currentItem?.type === 'media_favorite' && currentItem.item.type === 'audio' && isPlaying && !isPaused && audioPlayerRef.current) {
+            const blob = new Blob([currentItem.item.fileData], { type: currentItem.item.originalType });
+            const url = URL.createObjectURL(blob);
+            audioPlayerRef.current.src = url;
+            try {
+                await audioPlayerRef.current.play();
+            } catch (e) {
+                console.error("Error playing audio item:", e);
+                toast({ variant: "destructive", title: "Playback Error", description: "The audio file could not be played." });
+                stop();
+            }
+        }
+    };
+    playAudio();
+  }, [currentItem, isPlaying, isPaused, stop, toast]);
 
 
   const pause = useCallback(() => {
