@@ -82,6 +82,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const isMountedRef = useRef(false);
   
   const functionsRef = useRef<any>({});
+  const mediaObjectUrlRef = useRef<string | null>(null);
 
 
   useEffect(() => {
@@ -110,6 +111,11 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       videoPlayer.pause();
       videoPlayer.removeAttribute('src');
       videoPlayer.load();
+    }
+    
+    if (mediaObjectUrlRef.current) {
+        URL.revokeObjectURL(mediaObjectUrlRef.current);
+        mediaObjectUrlRef.current = null;
     }
 
     utteranceRef.current = null;
@@ -261,7 +267,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   
   const play = useCallback(async (item: PlayableItem, newPlaylist: PlayableItem[], startIndex: number) => {
     if (!isMountedRef.current) return;
-    
+
     stop(false);
     
     isSpeakingRef.current = true;
@@ -274,7 +280,29 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setProgress(0);
     setCurrentText(item.type === 'media_favorite' ? item.item.name : (item.type === 'favorite' ? item.item.text : (item.item.annotation.targetText || item.item.annotation.note || '')));
 
-    if (item.type !== 'media_favorite') {
+    if (item.type === 'media_favorite') {
+        setDuration(0);
+        const player = item.item.type === 'video' ? videoPlayer : audioPlayerRef.current;
+        if (!player) {
+            toast({ variant: "destructive", title: "Playback Error", description: "Player is not available."});
+            stop();
+            return;
+        }
+
+        const blob = new Blob([item.item.fileData], { type: item.item.originalType });
+        const url = URL.createObjectURL(blob);
+        mediaObjectUrlRef.current = url;
+        player.src = url;
+
+        try {
+            await player.play();
+        } catch (e) {
+            console.error(`Error playing ${item.item.type}:`, e);
+            toast({ variant: "destructive", title: "Playback Error", description: `The ${item.item.type} file could not be played.` });
+            stop();
+        }
+
+    } else { // Handle TTS playback
         setDuration(0);
         speechQueueRef.current = [];
         segmentIndexRef.current = 0;
@@ -292,45 +320,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         
         await speakNextSegment();
     }
-  }, [stop, originalTextTtsSettings, yourNoteTtsSettings, speakNextSegment]);
-
-  // Effect for VIDEO playback
-  useEffect(() => {
-    const playVideo = async () => {
-        if (currentItem?.type === 'media_favorite' && currentItem.item.type === 'video' && isPlaying && !isPaused && videoPlayer) {
-             const blob = new Blob([currentItem.item.fileData], { type: currentItem.item.originalType });
-            const url = URL.createObjectURL(blob);
-            videoPlayer.src = url;
-            try {
-                await videoPlayer.play();
-            } catch (e) {
-                console.error("Error playing video item:", e);
-                toast({ variant: "destructive", title: "Playback Error", description: "The video file could not be played." });
-                stop();
-            }
-        }
-    };
-    playVideo();
-  }, [currentItem, isPlaying, isPaused, videoPlayer, stop, toast]);
-
-  // Effect for AUDIO playback
-  useEffect(() => {
-    const playAudio = async () => {
-        if (currentItem?.type === 'media_favorite' && currentItem.item.type === 'audio' && isPlaying && !isPaused && audioPlayerRef.current) {
-            const blob = new Blob([currentItem.item.fileData], { type: currentItem.item.originalType });
-            const url = URL.createObjectURL(blob);
-            audioPlayerRef.current.src = url;
-            try {
-                await audioPlayerRef.current.play();
-            } catch (e) {
-                console.error("Error playing audio item:", e);
-                toast({ variant: "destructive", title: "Playback Error", description: "The audio file could not be played." });
-                stop();
-            }
-        }
-    };
-    playAudio();
-  }, [currentItem, isPlaying, isPaused, stop, toast]);
+  }, [stop, originalTextTtsSettings, yourNoteTtsSettings, speakNextSegment, videoPlayer, toast]);
 
 
   const pause = useCallback(() => {
@@ -433,7 +423,15 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
     
     const handleError = (e: any) => {
-        if (e?.target?.error?.message?.toLowerCase().includes('interrupted')) return;
+        // The error event is annoyingly vague. We check for common interruption messages.
+        const errorMessage = e?.target?.error?.message?.toLowerCase() ?? "";
+        if (errorMessage.includes('interrupted') || errorMessage.includes('aborted')) {
+            // This is often not a "real" error, but happens when we call stop() or load()
+            // while playback is starting. We can usually ignore it.
+            console.warn("Playback was interrupted, likely by a user action. Ignoring error.");
+            return;
+        }
+
         if (isMountedRef.current) {
             toast({variant: "destructive", title: "Media Error", description: "Failed to play media."});
             stop();
@@ -522,3 +520,5 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   return <PlaybackContext.Provider value={value}>{children}</PlaybackContext.Provider>;
 }
+
+    
