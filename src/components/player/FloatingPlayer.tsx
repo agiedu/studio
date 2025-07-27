@@ -25,7 +25,7 @@ export default function FloatingPlayer() {
     stop,
     hasNext,
     hasPrevious,
-    videoPlayerRef,
+    setVideoPlayerRef, // Use the new callback ref setter
     progress,
     duration,
     handleSeek,
@@ -96,7 +96,7 @@ export default function FloatingPlayer() {
                 {/* Video Player - will be visible if 'isVideo' is true */}
                 <div className={cn("w-full bg-black rounded-md flex-grow min-h-0", isVideo ? "block" : "hidden")}>
                     <video
-                      ref={videoPlayerRef}
+                      ref={setVideoPlayerRef} // Pass the DOM element to the provider
                       className="w-full h-full object-contain"
                       playsInline
                     />

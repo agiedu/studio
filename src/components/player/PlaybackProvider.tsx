@@ -39,7 +39,7 @@ interface PlaybackContextType {
   yourNoteTtsSettings: TTSSettings;
   setYourNoteTtsSettings: React.Dispatch<React.SetStateAction<TTSSettings>>;
   audioPlayerRef: React.RefObject<HTMLAudioElement>;
-  videoPlayerRef: React.RefObject<HTMLVideoElement>;
+  setVideoPlayerRef: (node: HTMLVideoElement | null) => void;
   progress: number;
   duration: number;
   handleSeek: (value: number) => void;
@@ -74,7 +74,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [yourNoteTtsSettings, setYourNoteTtsSettings] = useState<TTSSettings>(LocalStorage.defaultTTSSettings);
   
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
-  const videoPlayerRef = useRef<HTMLVideoElement | null>(null);
+  const [videoPlayer, setVideoPlayer] = useState<HTMLVideoElement | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const speechQueueRef = useRef<{ text: string; settings: TTSSettings; part?: 'original' | 'note' }[]>([]);
   const segmentIndexRef = useRef(0);
@@ -106,10 +106,10 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       audioPlayerRef.current.removeAttribute('src');
       audioPlayerRef.current.load();
     }
-     if (videoPlayerRef.current) {
-      videoPlayerRef.current.pause();
-      videoPlayerRef.current.removeAttribute('src');
-      videoPlayerRef.current.load();
+     if (videoPlayer) {
+      videoPlayer.pause();
+      videoPlayer.removeAttribute('src');
+      videoPlayer.load();
     }
 
     utteranceRef.current = null;
@@ -130,7 +130,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         navigator.mediaSession.playbackState = 'none';
         navigator.mediaSession.metadata = null;
     }
-  }, []);
+  }, [videoPlayer]);
 
   const onPlaybackEnd = useCallback(() => {
     if (!isSpeakingRef.current || !isMountedRef.current) return;
@@ -246,7 +246,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         if ('audioUrl' in result && audioPlayerRef.current) {
           audioPlayerRef.current.src = result.audioUrl;
-          await audioPlayerRef.current.play();
+          await audioPlayerRef.current.play(); 
         } else if ('error' in result) {
           toast({ variant: "destructive", title: "Cloud TTS Error", description: result.error });
           stop();
@@ -275,7 +275,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setCurrentText(item.type === 'media_favorite' ? item.item.name : (item.type === 'favorite' ? item.item.text : (item.item.annotation.targetText || item.item.annotation.note || '')));
 
     if (item.type === 'media_favorite') {
-        const player = item.item.type === 'video' ? videoPlayerRef.current : audioPlayerRef.current;
+        const player = item.item.type === 'video' ? videoPlayer : audioPlayerRef.current;
         if (player) {
              const blob = new Blob([item.item.fileData], { type: item.item.originalType });
              const url = URL.createObjectURL(blob);
@@ -306,7 +306,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         
         await speakNextSegment();
     }
-  }, [stop, originalTextTtsSettings, yourNoteTtsSettings, speakNextSegment, toast]);
+  }, [stop, originalTextTtsSettings, yourNoteTtsSettings, speakNextSegment, toast, videoPlayer]);
 
 
   const pause = useCallback(() => {
@@ -316,10 +316,10 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         window.speechSynthesis.pause();
     }
     audioPlayerRef.current?.pause();
-    videoPlayerRef.current?.pause();
+    videoPlayer?.pause();
 
     if (navigator.mediaSession) navigator.mediaSession.playbackState = 'paused';
-  }, [isPaused]);
+  }, [isPaused, videoPlayer]);
 
   const resume = useCallback(() => {
     if (!isSpeakingRef.current || !isMountedRef.current || !isPaused) return;
@@ -330,7 +330,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!item) return;
 
     if (item.type === 'media_favorite') {
-        const player = item.item.type === 'video' ? videoPlayerRef.current : audioPlayerRef.current;
+        const player = item.item.type === 'video' ? videoPlayer : audioPlayerRef.current;
         player?.play().catch(stop);
         return;
     }
@@ -346,11 +346,11 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             audioPlayerRef.current.play().catch(stop);
         }
     }
-  }, [isPaused, stop]);
+  }, [isPaused, stop, videoPlayer]);
 
   const handleSeek = (value: number) => {
     const player = currentItem?.type === 'media_favorite' 
-      ? (currentItem.item.type === 'video' ? videoPlayerRef.current : audioPlayerRef.current)
+      ? (currentItem.item.type === 'video' ? videoPlayer : audioPlayerRef.current)
       : audioPlayerRef.current;
 
     if (player && player.duration) {
@@ -394,7 +394,6 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   useEffect(() => {
     const audioPlayer = audioPlayerRef.current;
-    const videoPlayer = videoPlayerRef.current;
 
     const handlePlaying = (e: any) => { 
         if (isMountedRef.current && isPlaying) setIsLoading(false);
@@ -466,7 +465,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         navigator.mediaSession.setActionHandler('stop', null);
       }
     };
-  }, [isPlaying, toast, stop, handleMediaEnded, hasNext, hasPrevious]);
+  }, [isPlaying, toast, stop, handleMediaEnded, hasNext, hasPrevious, videoPlayer]);
 
   const value: PlaybackContextType = {
     isPlaying,
@@ -490,7 +489,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     yourNoteTtsSettings,
     setYourNoteTtsSettings,
     audioPlayerRef: audioPlayerRef as React.RefObject<HTMLAudioElement>,
-    videoPlayerRef: videoPlayerRef as React.RefObject<HTMLVideoElement>,
+    setVideoPlayerRef: setVideoPlayer,
     progress,
     duration,
     handleSeek,
