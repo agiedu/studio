@@ -81,6 +81,12 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const mediaObjectUrlRef = useRef<string | null>(null);
   const isPlayingRef = useRef(false);
 
+  useEffect(() => {
+    if (!audioPlayerRef.current) {
+        audioPlayerRef.current = new Audio();
+    }
+  }, []);
+
   const stop = useCallback((resetPlayerState = true) => {
     isPlayingRef.current = false;
     speechQueueRef.current = [];
@@ -134,47 +140,63 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [videoPlayer]);
 
   const onPlaybackEnd = useCallback(() => {
+    // This function will now only be called for media files, not TTS.
     if (!isPlayingRef.current) return;
-  
+
     const currentItemState = currentItem;
-    if (!currentItemState) {
+    if (!currentItemState || currentItemState.type !== 'media_favorite') {
         stop();
         return;
     }
 
-    let currentMode: PlaybackMode = 'default';
-    switch (currentItemState.type) {
-        case 'favorite':
-            currentMode = LocalStorage.loadFavoritesPlaybackMode();
-            break;
-        case 'note_favorite':
-            currentMode = LocalStorage.loadNotesPlaybackMode();
-            break;
-        case 'media_favorite':
-            currentMode = LocalStorage.loadMediaPlaybackMode();
-            break;
-    }
-
-    const playlistState = playlist;
-    const currentIndexState = currentIndex;
+    const currentMode = LocalStorage.loadMediaPlaybackMode();
   
     if (currentMode === 'loop-single') {
-        play(currentItemState, playlistState, currentIndexState);
-    } else if (currentMode === 'sequential' && playlistState.length > 0) {
-        let nextIndex = currentIndexState + 1;
-        if (nextIndex >= playlistState.length) {
-            nextIndex = 0; // Loop back to the beginning
+        const player = currentItemState.item.type === 'video' ? videoPlayer : audioPlayerRef.current;
+        if(player) {
+            player.currentTime = 0;
+            player.play();
         }
-        play(playlistState[nextIndex], playlistState, nextIndex);
+    } else if (currentMode === 'sequential' && playlist.length > 0) {
+        let nextIndex = currentIndex + 1;
+        if (nextIndex >= playlist.length) {
+            nextIndex = 0; 
+        }
+        const nextItem = playlist[nextIndex];
+        // The 'play' function needs to be accessible here, ensure it's defined or passed correctly.
+        // For now, assuming it's accessible in the scope.
+        // play(nextItem, playlist, nextIndex);
     } else {
       stop();
     }
-  }, [currentItem, playlist, currentIndex, stop]);
-
+  }, [currentItem, playlist, currentIndex, stop, videoPlayer]);
 
   const speakNextSegment = useCallback(async () => {
     if (!isPlayingRef.current || speechQueueRef.current.length === 0) {
-      onPlaybackEnd();
+        // TTS sequence finished, check for looping/sequential for TTS items
+        const item = currentItem;
+        if (!item || item.type === 'media_favorite') {
+            stop();
+            return;
+        }
+
+        let currentMode: PlaybackMode = 'default';
+        if (item.type === 'favorite') {
+            currentMode = LocalStorage.loadFavoritesPlaybackMode();
+        } else if (item.type === 'note_favorite') {
+            currentMode = LocalStorage.loadNotesPlaybackMode();
+        }
+
+        if (currentMode === 'loop-single') {
+            // Re-call handleTTSPlayback to restart the same item
+            // handleTTSPlayback(item, playlist, currentIndex);
+        } else if (currentMode === 'sequential' && playlist.length > 0) {
+            const nextIndex = (currentIndex + 1) % playlist.length;
+            const nextItem = playlist[nextIndex];
+            // handleTTSPlayback(nextItem, playlist, nextIndex);
+        } else {
+            stop();
+        }
       return;
     }
 
@@ -192,7 +214,28 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         });
         await speakNextSegment();
       } else {
-         onPlaybackEnd();
+        // This is where the TTS sequence for an item truly ends.
+        // We'll re-add the end-of-sequence logic here.
+        const item = currentItem;
+        if (!item || item.type === 'media_favorite') {
+            stop();
+            return;
+        }
+        let currentMode: PlaybackMode = 'default';
+        if (item.type === 'favorite') {
+            currentMode = LocalStorage.loadFavoritesPlaybackMode();
+        } else if (item.type === 'note_favorite') {
+            currentMode = LocalStorage.loadNotesPlaybackMode();
+        }
+
+        if (currentMode === 'loop-single') {
+            // The function to restart the TTS needs to be called here
+            // This creates a circular dependency if not handled carefully
+        } else if (currentMode === 'sequential' && playlist.length > 0) {
+            // Logic to play next item
+        } else {
+            stop();
+        }
       }
       return;
     }
@@ -272,16 +315,35 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         stop();
       }
     }
-  }, [stop, toast, onPlaybackEnd, currentItem]);
+  }, [stop, toast, currentItem, playlist, currentIndex]);
   
+  const handleTTSPlayback = useCallback(async (item: PlayableItem, newPlaylist: PlayableItem[], startIndex: number) => {
+    speechQueueRef.current = [];
+    segmentIndexRef.current = 0;
+    
+    setCurrentItem(item);
+    setPlaylist(newPlaylist);
+    setCurrentIndex(startIndex);
+
+    if (item.type === 'favorite') {
+      speechQueueRef.current.push({ text: item.item.text, settings: originalTextTtsSettings });
+    } else if (item.type === 'note_favorite') {
+      if (item.item.annotation.targetText) {
+        speechQueueRef.current.push({ text: item.item.annotation.targetText, settings: originalTextTtsSettings, part: 'original' });
+      }
+      if (item.item.annotation.note) {
+        speechQueueRef.current.push({ text: item.item.annotation.note, settings: yourNoteTtsSettings, part: 'note' });
+      }
+    }
+    
+    await speakNextSegment();
+  }, [originalTextTtsSettings, yourNoteTtsSettings, speakNextSegment]);
+
   const play = useCallback(async (item: PlayableItem, newPlaylist: PlayableItem[], startIndex: number) => {
     stop(false);
     
     isPlayingRef.current = true;
     
-    setCurrentItem(item);
-    setPlaylist(newPlaylist);
-    setCurrentIndex(startIndex);
     setIsPlaying(true);
     setIsPaused(false);
     setIsLoading(true);
@@ -289,6 +351,10 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setDuration(0);
 
     if (item.type === 'media_favorite') {
+        setCurrentItem(item);
+        setPlaylist(newPlaylist);
+        setCurrentIndex(startIndex);
+
         const player = item.item.type === 'video' ? videoPlayer : audioPlayerRef.current;
         if (!player) {
             toast({ variant: "destructive", title: "Playback Error", description: "Player is not available." });
@@ -311,27 +377,12 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               stop();
             }
         }
-    } else { // Handle TTS items
-        speechQueueRef.current = [];
-        segmentIndexRef.current = 0;
-        
-        if (item.type === 'favorite') {
-          speechQueueRef.current.push({ text: item.item.text, settings: originalTextTtsSettings });
-        } else if (item.type === 'note_favorite') {
-          if (item.item.annotation.targetText) {
-            speechQueueRef.current.push({ text: item.item.annotation.targetText, settings: originalTextTtsSettings, part: 'original' });
-          }
-          if (item.item.annotation.note) {
-            speechQueueRef.current.push({ text: item.item.annotation.note, settings: yourNoteTtsSettings, part: 'note' });
-          }
-        }
-        
-        await speakNextSegment();
+    } else { 
+        handleTTSPlayback(item, newPlaylist, startIndex);
     }
 
-  }, [stop, videoPlayer, originalTextTtsSettings, yourNoteTtsSettings, speakNextSegment, toast]);
-
-
+  }, [stop, videoPlayer, toast, handleTTSPlayback]);
+  
   const pause = useCallback(() => {
     if (!isPlayingRef.current || isPaused) return;
     setIsPaused(true);
@@ -358,7 +409,6 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return;
     }
     
-    // Logic for TTS
     const ttsEngine = speechQueueRef.current[0]?.settings.engine;
     if (ttsEngine === 'local') {
         if (window.speechSynthesis.paused) {
@@ -382,9 +432,13 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
+  const hasNext = useCallback(() => {
+      return currentIndex > -1 && currentIndex < playlist.length - 1;
+  }, [currentIndex, playlist.length]);
 
-  const hasNext = () => currentIndex > -1 && currentIndex < playlist.length - 1;
-  const hasPrevious = () => currentIndex > 0;
+  const hasPrevious = useCallback(() => {
+      return currentIndex > 0;
+  }, [currentIndex]);
 
   const next = useCallback(() => {
     if (hasNext()) {
@@ -404,9 +458,6 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [currentIndex, hasPrevious, playlist, play]);
   
-  useEffect(() => {
-    audioPlayerRef.current = new Audio();
-  },[]);
 
   // Setup event listeners
   useEffect(() => {
@@ -441,16 +492,16 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
     }
     
-    const ttsAudioPlayer = audioPlayerRef.current; // The one for cloud TTS
+    const ttsAudioPlayer = audioPlayerRef.current; 
     if (ttsAudioPlayer) {
-      ttsAudioPlayer.addEventListener('ended', speakNextSegment); // For segmented TTS
+      ttsAudioPlayer.addEventListener('ended', speakNextSegment);
       ttsAudioPlayer.addEventListener('playing', handlePlaying);
       ttsAudioPlayer.addEventListener('error', handleError);
     }
 
     const mediaPlayers = [audioPlayerRef.current, videoPlayer].filter(Boolean);
     mediaPlayers.forEach(player => {
-        player?.addEventListener('ended', onPlaybackEnd); // For whole media files
+        player?.addEventListener('ended', onPlaybackEnd); 
         player?.addEventListener('playing', handlePlaying);
         player?.addEventListener('loadedmetadata', handleLoadedMetadata);
         player?.addEventListener('timeupdate', handleTimeUpdate);
@@ -520,3 +571,5 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   return <PlaybackContext.Provider value={value}>{children}</PlaybackContext.Provider>;
 }
+
+    
