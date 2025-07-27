@@ -324,8 +324,10 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         videoPlayer.play().catch(e => {
             console.error("Error playing video:", e);
-            toast({ variant: "destructive", title: "Playback Error", description: `The video file could not be played.` });
-            stop();
+            if (e.name !== 'AbortError') {
+              toast({ variant: "destructive", title: "Playback Error", description: `The video file could not be played.` });
+              stop();
+            }
         });
     }
 
@@ -468,8 +470,8 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     
     const handleError = (e: any) => {
         const errorMessage = e?.target?.error?.message?.toLowerCase() ?? "";
-        if (errorMessage.includes('interrupted') || errorMessage.includes('aborted')) {
-            console.warn("Playback was interrupted, likely by a user action. Ignoring error.");
+        if (errorMessage.includes('interrupted by a new load request')) {
+            console.warn("Playback was interrupted, likely by a new user action. Ignoring error.", e.target.error);
             return;
         }
 
