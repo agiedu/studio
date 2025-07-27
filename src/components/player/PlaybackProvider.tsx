@@ -133,17 +133,32 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [videoPlayer]);
 
-
   const onPlaybackEnd = useCallback(() => {
     if (!isPlayingRef.current) return;
-    
-    // Check playback mode and decide next action
-    const currentMode = LocalStorage.loadMediaPlaybackMode(); 
+  
     const currentItemState = currentItem;
+    if (!currentItemState) {
+        stop();
+        return;
+    }
+
+    let currentMode: PlaybackMode = 'default';
+    switch (currentItemState.type) {
+        case 'favorite':
+            currentMode = LocalStorage.loadFavoritesPlaybackMode();
+            break;
+        case 'note_favorite':
+            currentMode = LocalStorage.loadNotesPlaybackMode();
+            break;
+        case 'media_favorite':
+            currentMode = LocalStorage.loadMediaPlaybackMode();
+            break;
+    }
+
     const playlistState = playlist;
     const currentIndexState = currentIndex;
-
-    if (currentMode === 'loop-single' && currentItemState) {
+  
+    if (currentMode === 'loop-single') {
         play(currentItemState, playlistState, currentIndexState);
     } else if (currentMode === 'sequential' && playlistState.length > 0) {
         let nextIndex = currentIndexState + 1;
