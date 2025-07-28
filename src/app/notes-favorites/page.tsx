@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useRef, useContext } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Trash2, Info, NotebookText, FileText, Play, Pause, Loader2, Smartphone, Cloud as CloudIcon, Star, Repeat1, ListOrdered, SkipBack, SkipForward } from 'lucide-react';
+import { Trash2, Info, NotebookText, FileText, Play, Pause, Loader2, Smartphone, Cloud as CloudIcon, Star, Repeat1, ListOrdered, SkipBack, SkipForward, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
 import * as LocalStorage from '@/lib/localStorageService';
 import type { NoteFavoriteItem, TTSVoice, TTSSettings } from '@/types';
 import { format } from 'date-fns';
@@ -29,10 +29,12 @@ import { getCloudSpeech } from '@/app/actions';
 import { edgeTTSLanguageVoices } from '@/lib/edge-tts-voices';
 import { Separator } from '@/components/ui/separator';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { usePlayback } from '@/components/player/PlaybackProvider';
 import { LanguageContext } from '@/context/LanguageContext';
 import { getDictionary } from '@/lib/i18n';
 
+const ITEMS_PER_PAGE = 5;
 
 const groupVoicesByLanguage = (voices: TTSVoice[]) => {
   return voices.reduce((acc, voice) => {
@@ -77,6 +79,7 @@ function NotesFavoritesPageContent() {
   const [favoriteNotes, setFavoriteNotes] = useState<NoteFavoriteItem[]>([]);
   const [noteToDelete, setNoteToDelete] = useState<NoteFavoriteItem | null>(null);
   const [availableVoices, setAvailableVoices] = useState<TTSVoice[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const { locale } = useContext(LanguageContext);
   const dictionary = getDictionary(locale);
@@ -106,6 +109,12 @@ function NotesFavoritesPageContent() {
     hasNext,
     hasPrevious,
   } = usePlayback();
+  
+  const paginatedItems = favoriteNotes.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
+  const totalPages = Math.max(1, Math.ceil(favoriteNotes.length / ITEMS_PER_PAGE));
 
 
   // Load initial settings and favorite items
@@ -189,7 +198,11 @@ function NotesFavoritesPageContent() {
     if (!noteToDelete) return;
     if (currentItem?.item.id === noteToDelete.id) stop();
     LocalStorage.deleteNoteFavorite(noteToDelete.id);
-    setFavoriteNotes(prev => prev.filter(item => item.id !== noteToDelete.id));
+    const updatedItems = LocalStorage.loadNoteFavorites();
+    setFavoriteNotes(updatedItems);
+    if (paginatedItems.length === 1 && currentPage > 1) {
+        setCurrentPage(currentPage - 1);
+    }
     toast({ title: notesFavDict.noteFavoriteRemoved });
     setNoteToDelete(null);
   };
@@ -360,67 +373,86 @@ function NotesFavoritesPageContent() {
 
   return (
     <>
-      <div className="container mx-auto p-4 md:p-6 space-y-6">
+      <div className="container mx-auto p-2 md:p-6 space-y-4">
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><NotebookText className="text-primary" />{notesFavDict.title}</CardTitle>
-            <CardDescription>{notesFavDict.description}</CardDescription>
+             <div className="flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                    <NotebookText className="text-primary h-6 w-6" />
+                    <div>
+                        <CardTitle>{notesFavDict.title}</CardTitle>
+                        <CardDescription>{notesFavDict.description}</CardDescription>
+                    </div>
+                </div>
+                <Sheet>
+                    <SheetTrigger asChild>
+                        <Button variant="outline" size="icon">
+                            <Settings className="h-5 w-5" />
+                        </Button>
+                    </SheetTrigger>
+                    <SheetContent className="overflow-y-auto">
+                        <SheetHeader>
+                            <SheetTitle>{favDict.globalSettingsTitle}</SheetTitle>
+                        </SheetHeader>
+                        <div className="py-4 space-y-4">
+                             <div className="mb-4">
+                                <Label className="font-medium text-sm">{notesFavDict.playbackMode}</Label>
+                                <RadioGroup
+                                    value={playbackMode}
+                                    onValueChange={(v) => {
+                                    setPlaybackMode(v as 'default' | 'loop-single' | 'sequential');
+                                    }}
+                                    className="flex items-center gap-4 mt-2"
+                                >
+                                    <div className="flex items-center space-x-2">
+                                    <RadioGroupItem value="default" id="mode-default" />
+                                    <Label htmlFor="mode-default" className="flex items-center gap-1 cursor-pointer"><Play className="h-4 w-4"/>{commonDict.default}</Label>
+                                    </div>
+                                    <div className="flex items-center space-x-2">
+                                    <RadioGroupItem value="loop-single" id="mode-loop" />
+                                    <Label htmlFor="mode-loop" className="flex items-center gap-1 cursor-pointer"><Repeat1 className="h-4 w-4"/>{notesFavDict.loopSingle}</Label>
+                                    </div>
+                                    <div className="flex items-center space-x-2">
+                                    <RadioGroupItem value="sequential" id="mode-sequential" />
+                                    <Label htmlFor="mode-sequential" className="flex items-center gap-1 cursor-pointer"><ListOrdered className="h-4 w-4"/>{notesFavDict.listLoopMode}</Label>
+                                    </div>
+                                </RadioGroup>
+                            </div>
+                            <Separator className="my-6" />
+                            {renderTtsPanel('original', notesFavDict.originalTextSettings, originalTextTtsSettings)}
+                            <Separator className="my-6" />
+                            {renderTtsPanel('note', notesFavDict.yourNoteSettings, yourNoteTtsSettings)}
+                        </div>
+                    </SheetContent>
+                </Sheet>
+             </div>
           </CardHeader>
           <CardContent>
-            <div className="mb-6 p-4 border rounded-md bg-muted/20">
-                <div className="mb-4">
-                      <Label className="font-medium text-sm">{notesFavDict.playbackMode}</Label>
-                      <RadioGroup
-                        value={playbackMode}
-                        onValueChange={(v) => {
-                          setPlaybackMode(v as 'default' | 'loop-single' | 'sequential');
-                        }}
-                        className="flex items-center gap-4 mt-2"
-                      >
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="default" id="mode-default" />
-                          <Label htmlFor="mode-default" className="flex items-center gap-1 cursor-pointer"><Play className="h-4 w-4"/>{commonDict.default}</Label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="loop-single" id="mode-loop" />
-                          <Label htmlFor="mode-loop" className="flex items-center gap-1 cursor-pointer"><Repeat1 className="h-4 w-4"/>{notesFavDict.loopSingle}</Label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="sequential" id="mode-sequential" />
-                          <Label htmlFor="mode-sequential" className="flex items-center gap-1 cursor-pointer"><ListOrdered className="h-4 w-4"/>{notesFavDict.listLoopMode}</Label>
-                        </div>
-                      </RadioGroup>
-                  </div>
-                  <div className="flex items-center justify-center gap-4 my-4 p-2 rounded-lg bg-muted/50">
-                      <Button variant="ghost" size="icon" onClick={previous} disabled={!hasPrevious() || isLoading}><SkipBack className="h-5 w-5"/></Button>
-                      <Button variant="ghost" size="icon" onClick={handleGlobalPlayPause} disabled={isLoading || favoriteNotes.length === 0}>
-                      {isLoading ? <Loader2 className="h-6 w-6 animate-spin"/> : isPlaying && !isPaused ? <Pause className="h-6 w-6"/> : <Play className="h-6 w-6"/>}
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={next} disabled={!hasNext() || isLoading}><SkipForward className="h-5 w-5"/></Button>
-                  </div>
-                <Separator className="my-6" />
-                {renderTtsPanel('original', notesFavDict.originalTextSettings, originalTextTtsSettings)}
-                <Separator className="my-6" />
-                {renderTtsPanel('note', notesFavDict.yourNoteSettings, yourNoteTtsSettings)}
+            <div className="flex items-center justify-center gap-4 my-4 p-2 rounded-lg bg-muted/50">
+                <Button variant="ghost" size="icon" onClick={previous} disabled={!hasPrevious() || isLoading}><SkipBack className="h-5 w-5"/></Button>
+                <Button variant="ghost" size="icon" onClick={handleGlobalPlayPause} disabled={isLoading || favoriteNotes.length === 0}>
+                {isLoading ? <Loader2 className="h-6 w-6 animate-spin"/> : isPlaying && !isPaused ? <Pause className="h-6 w-6"/> : <Play className="h-6 w-6"/>}
+                </Button>
+                <Button variant="ghost" size="icon" onClick={next} disabled={!hasNext() || isLoading}><SkipForward className="h-5 w-5"/></Button>
             </div>
-
+            
             {favoriteNotes.length === 0 ? (
-              <p className="text-muted-foreground flex items-center gap-2"><Info className="h-5 w-5" />{notesFavDict.emptyList}</p>
+              <p className="text-center text-muted-foreground flex items-center justify-center gap-2 py-8"><Info className="h-5 w-5" />{notesFavDict.emptyList}</p>
             ) : (
-              <ul className="space-y-4">
-                {favoriteNotes.map(item => {
+              <ul className="space-y-3">
+                {paginatedItems.map(item => {
                   const isCurrentlyPlayingThisItem = currentItem?.item.id === item.id;
-                  let buttonIcon = <Play className="mr-1.5 h-4 w-4" />;
+                  let buttonIcon = <Play className="h-4 w-4" />;
                   let buttonText = commonDict.play;
                   if (isCurrentlyPlayingThisItem) {
                       if (isLoading) {
-                          buttonIcon = <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />;
+                          buttonIcon = <Loader2 className="h-4 w-4 animate-spin" />;
                           buttonText = commonDict.loading;
                       } else if (isPaused) {
-                          buttonIcon = <Play className="mr-1.5 h-4 w-4" />;
+                          buttonIcon = <Play className="h-4 w-4" />;
                           buttonText = commonDict.resume;
                       } else {
-                          buttonIcon = <Pause className="mr-1.5 h-4 w-4" />;
+                          buttonIcon = <Pause className="h-4 w-4" />;
                           buttonText = commonDict.pause;
                       }
                   }
@@ -430,11 +462,11 @@ function NotesFavoritesPageContent() {
                   const isHighlightingNote = isCurrentlyPlayingThisItem && currentItem?.part === 'note';
 
                   return (
-                    <li key={item.id} className="p-4 border rounded-md flex flex-col justify-between gap-4 bg-card hover:shadow-md transition-shadow">
-                      <div className="flex-grow space-y-3 w-full">
-                          <div className="p-3 bg-muted/50 rounded-md">
+                    <li key={item.id} className="p-3 border rounded-md flex flex-col justify-between gap-3 bg-card hover:shadow-md transition-shadow">
+                      <div className="flex-grow space-y-2 w-full">
+                          <div className="p-2 bg-muted/50 rounded-md">
                               <p className="text-xs text-muted-foreground mb-1">{notesFavDict.originalText}</p>
-                              <p className={cn("text-sm italic", !item.annotation.targetText && "text-muted-foreground")}>
+                              <p className={cn("text-base italic", !item.annotation.targetText && "text-muted-foreground")}>
                                 <HighlightableText
                                   text={item.annotation.targetText || ''}
                                   isSpeaking={isHighlightingTarget}
@@ -444,9 +476,9 @@ function NotesFavoritesPageContent() {
                               </p>
                           </div>
 
-                          <div className="p-3 bg-background rounded-md border">
+                          <div className="p-2 bg-background rounded-md border">
                                <p className="text-xs text-muted-foreground mb-1">{notesFavDict.yourNote}</p>
-                              <p className={cn("text-sm whitespace-pre-wrap", !item.annotation.note && "italic text-muted-foreground")}>
+                              <p className={cn("text-base whitespace-pre-wrap", !item.annotation.note && "italic text-muted-foreground")}>
                                 <HighlightableText
                                     text={item.annotation.note || ''}
                                     isSpeaking={isHighlightingNote}
@@ -458,17 +490,17 @@ function NotesFavoritesPageContent() {
                         
                           {item.annotation.imageDataUrl && (
                               <div className="p-2 border rounded-md">
-                                  <p className="text-xs text-muted-foreground mb-2">{notesFavDict.attachedImage}</p>
-                                  <div className="relative w-full max-w-xs">
-                                       <NextImage src={item.annotation.imageDataUrl} alt="Annotation attachment" width={300} height={200} className="rounded-md object-contain" />
+                                  <p className="text-xs text-muted-foreground mb-1">{notesFavDict.attachedImage}</p>
+                                  <div className="relative w-full max-w-[200px]">
+                                       <NextImage src={item.annotation.imageDataUrl} alt="Annotation attachment" width={200} height={150} className="rounded-md object-contain" />
                                   </div>
                               </div>
                           )}
                       </div>
-                      <div className="flex flex-col sm:flex-row gap-2 sm:items-center justify-between pt-3 border-t">
+                      <div className="flex flex-col sm:flex-row gap-2 sm:items-center justify-between pt-2 border-t mt-2">
                            <p className="text-xs text-muted-foreground">
                             {item.sourceDocumentName && <span className="flex items-center gap-1"><FileText className="h-3 w-3"/>{notesFavDict.from}: {item.sourceDocumentName} | </span>}
-                            {notesFavDict.favorited}: {format(new Date(item.favoritedAt), "MMM d, yyyy HH:mm")}
+                            {notesFavDict.favorited}: {format(new Date(item.favoritedAt), "MMM d, yyyy")}
                           </p>
                           <div className="flex gap-2 self-end sm:self-center">
                             <Button 
@@ -476,12 +508,12 @@ function NotesFavoritesPageContent() {
                               variant={isCurrentlyPlayingThisItem && !isPaused ? "outline" : "default"}
                               onClick={() => handlePlayPauseNote(item)} 
                               disabled={(isLoading && !isCurrentlyPlayingThisItem) || !hasContentToPlay}
-                              className="w-[100px]"
+                              className="w-[90px] h-8 text-xs"
                               title={hasContentToPlay ? notesFavDict.playPauseNote : notesFavDict.noTextToPlay}
                               >
                               {buttonIcon} {buttonText}
                             </Button>
-                            <Button size="sm" variant="ghost" onClick={() => setNoteToDelete(item)} aria-label="Delete Note Favorite" disabled={isLoading && isCurrentlyPlayingThisItem}>
+                            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setNoteToDelete(item)} aria-label="Delete Note Favorite" disabled={isLoading && isCurrentlyPlayingThisItem}>
                               <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
                           </div>
@@ -492,6 +524,29 @@ function NotesFavoritesPageContent() {
               </ul>
             )}
           </CardContent>
+          {favoriteNotes.length > ITEMS_PER_PAGE && (
+              <CardFooter className="flex justify-center items-center gap-2">
+                  <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => p - 1)}
+                      disabled={currentPage === 1}
+                  >
+                      <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm text-muted-foreground">
+                      {commonDict.page} {currentPage} / {totalPages}
+                  </span>
+                  <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => p + 1)}
+                      disabled={currentPage === totalPages}
+                  >
+                      <ChevronRight className="h-4 w-4" />
+                  </Button>
+              </CardFooter>
+          )}
           {favoriteNotes.length > 0 && (
             <CardFooter>
               <p className="text-xs text-muted-foreground">{notesFavDict.storageNote}</p>
