@@ -78,6 +78,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const segmentIndexRef = useRef(0);
   const mediaObjectUrlRef = useRef<string | null>(null);
   const isPlayingRef = useRef(false);
+  const localSpeechIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && !audioPlayerRef.current) {
@@ -89,6 +90,11 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     isPlayingRef.current = false;
     speechQueueRef.current = [];
     segmentIndexRef.current = 0;
+
+    if (localSpeechIntervalRef.current) {
+        clearInterval(localSpeechIntervalRef.current);
+        localSpeechIntervalRef.current = null;
+    }
 
     if (utteranceRef.current) {
       utteranceRef.current.onend = null;
@@ -144,6 +150,11 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!isPlayingRef.current) {
         stop();
         return;
+    }
+    
+    if (localSpeechIntervalRef.current) {
+      clearInterval(localSpeechIntervalRef.current);
+      localSpeechIntervalRef.current = null;
     }
 
     if (speechQueueRef.current.length === 0) {
@@ -203,13 +214,6 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (voice) utterance.voice = voice;
       }
       
-      utterance.onend = () => { 
-        if(utteranceRef.current === utterance && isPlayingRef.current) { 
-          utteranceRef.current = null;
-          segmentIndexRef.current++;
-          speakNextSegment();
-        }
-      };
       utterance.onerror = (event) => {
           if(utteranceRef.current === utterance && event.error !== 'canceled' && event.error !== 'interrupted' && isPlayingRef.current) {
               console.error('SpeechSynthesis Error:', event);
@@ -217,9 +221,20 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               stop();
           }
       };
+      
       utteranceRef.current = utterance;
       setIsLoading(false);
       window.speechSynthesis.speak(utterance);
+      
+      localSpeechIntervalRef.current = setInterval(() => {
+        if (!window.speechSynthesis.speaking && isPlayingRef.current) {
+          if(localSpeechIntervalRef.current) clearInterval(localSpeechIntervalRef.current);
+          localSpeechIntervalRef.current = null;
+          segmentIndexRef.current++;
+          speakNextSegment();
+        }
+      }, 250);
+
     } else {
       try {
         const result = await getCloudSpeech(cleanedText, currentPart.settings.language, currentPart.settings.cloudVoiceId);
@@ -370,7 +385,6 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           player.play().catch(() => stop());
       }
     } else {
-      // This handles both local and cloud TTS for favorites and notes
       if (window.speechSynthesis.paused) {
           window.speechSynthesis.resume();
       }
@@ -418,7 +432,6 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [currentIndex, hasPrevious, playlist, play]);
   
 
-  // Setup event listeners
   useEffect(() => {
     const handlePlaying = (e: any) => { 
         if (isPlayingRef.current) setIsLoading(false);
@@ -537,4 +550,3 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   return <PlaybackContext.Provider value={value}>{children}</PlaybackContext.Provider>;
 };
 
-    
