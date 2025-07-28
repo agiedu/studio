@@ -1782,6 +1782,88 @@ const ttsTextWithAnnotations = useMemo(() => {
                       </div>
                     </PopoverContent>
                   </Popover>
+                   <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" size="icon" className="h-9 w-9">
+                          <Settings2 className="h-4 w-4" />
+                           <span className="sr-only">TTS Settings</span>
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-80" align="end">
+                         <div className="space-y-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="tts-engine">{readerDict.ttsEngine}</Label>
+                              <Select value={ttsSettings.engine} onValueChange={(v) => handleSettingChange('engine', v as 'local' | 'cloud')} disabled={isSpeaking}>
+                                <SelectTrigger id="tts-engine">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="local"><div className="flex items-center gap-1"><Smartphone className="h-4 w-4" />{readerDict.local}</div></SelectItem>
+                                  <SelectItem value="cloud"><div className="flex items-center gap-1"><CloudIcon className="h-4 w-4" />{readerDict.cloud}</div></SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            {ttsSettings.engine === 'local' && (
+                              <div className="space-y-2">
+                                <Label htmlFor="tts-voice">{readerDict.voiceLocal}</Label>
+                                <Select value={ttsSettings.voiceURI || ""} onValueChange={(v) => handleSettingChange('voiceURI', v)} disabled={isSpeaking || availableVoices.length === 0}>
+                                  <SelectTrigger id="tts-voice">
+                                    <SelectValue placeholder={availableVoices.length > 0 ? readerDict.selectVoice : readerDict.noLocalVoices} />
+                                  </SelectTrigger>
+                                  <SelectContent className="max-h-60">
+                                    {availableVoices.length === 0 ? (
+                                      <SelectItem value="no-voices" disabled>{readerDict.noLocalVoices}</SelectItem>
+                                    ) : (
+                                      Object.entries(groupedLocalVoices).map(([lang, voices]) => (
+                                        <SelectGroup key={lang}>
+                                          <SelectLabel>{lang}</SelectLabel>
+                                          {voices.map(voice => (
+                                            <SelectItem key={voice.voiceURI} value={voice.voiceURI}>{voice.name}</SelectItem>
+                                          ))}
+                                        </SelectGroup>
+                                      ))
+                                    )}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            )}
+                            {ttsSettings.engine === 'cloud' && (
+                              <>
+                                <div className="space-y-2">
+                                    <Label htmlFor="cloud-tts-language">{readerDict.languageCloud}</Label>
+                                    <Select value={ttsSettings.language} onValueChange={(v) => handleSettingChange('language', v as string)} disabled={isSpeaking}>
+                                        <SelectTrigger id="cloud-tts-language"><SelectValue placeholder={readerDict.selectLanguage} /></SelectTrigger>
+                                        <SelectContent className="max-h-60">
+                                            {Object.entries(edgeTTSLanguageVoices).map(([locale, { language }]) => (
+                                                <SelectItem key={locale} value={locale}>{language} ({locale})</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="cloud-tts-voice">{readerDict.voiceCloud}</Label>
+                                    <Select value={ttsSettings.cloudVoiceId || ""} onValueChange={(v) => handleSettingChange('cloudVoiceId', v)} disabled={isSpeaking || !ttsSettings.language}>
+                                        <SelectTrigger id="cloud-tts-voice"><SelectValue placeholder={readerDict.selectVoice} /></SelectTrigger>
+                                        <SelectContent className="max-h-60">
+                                            {(edgeTTSLanguageVoices[ttsSettings.language]?.voices || []).map(voice => (
+                                                <SelectItem key={voice.id} value={voice.id}>{voice.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                              </>
+                            )}
+                            <div className="space-y-2">
+                              <Label htmlFor="tts-rate">{readerDict.rate.replace('{rate}', ttsSettings.rate.toFixed(1))}</Label>
+                              <Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isSpeaking} />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="tts-pitch">{readerDict.pitch.replace('{pitch}', ttsSettings.pitch.toFixed(1))}</Label>
+                              <Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isSpeaking} />
+                            </div>
+                          </div>
+                      </PopoverContent>
+                    </Popover>
                 </div>
               </CardHeader>
               <CardContent className="pt-0">
@@ -1891,89 +1973,6 @@ const ttsTextWithAnnotations = useMemo(() => {
                     </CardContent>
                   </Card>
               )}
-               <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full">
-                      <Settings2 className="mr-2 h-4 w-4" />
-                      TTS Settings
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-80" align="end">
-                     <div className="space-y-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="tts-engine">{readerDict.ttsEngine}</Label>
-                          <Select value={ttsSettings.engine} onValueChange={(v) => handleSettingChange('engine', v as 'local' | 'cloud')} disabled={isSpeaking}>
-                            <SelectTrigger id="tts-engine">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="local"><div className="flex items-center gap-1"><Smartphone className="h-4 w-4" />{readerDict.local}</div></SelectItem>
-                              <SelectItem value="cloud"><div className="flex items-center gap-1"><CloudIcon className="h-4 w-4" />{readerDict.cloud}</div></SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        {ttsSettings.engine === 'local' && (
-                          <div className="space-y-2">
-                            <Label htmlFor="tts-voice">{readerDict.voiceLocal}</Label>
-                            <Select value={ttsSettings.voiceURI || ""} onValueChange={(v) => handleSettingChange('voiceURI', v)} disabled={isSpeaking || availableVoices.length === 0}>
-                              <SelectTrigger id="tts-voice">
-                                <SelectValue placeholder={availableVoices.length > 0 ? readerDict.selectVoice : readerDict.noLocalVoices} />
-                              </SelectTrigger>
-                              <SelectContent className="max-h-60">
-                                {availableVoices.length === 0 ? (
-                                  <SelectItem value="no-voices" disabled>{readerDict.noLocalVoices}</SelectItem>
-                                ) : (
-                                  Object.entries(groupedLocalVoices).map(([lang, voices]) => (
-                                    <SelectGroup key={lang}>
-                                      <SelectLabel>{lang}</SelectLabel>
-                                      {voices.map(voice => (
-                                        <SelectItem key={voice.voiceURI} value={voice.voiceURI}>{voice.name}</SelectItem>
-                                      ))}
-                                    </SelectGroup>
-                                  ))
-                                )}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        )}
-                        {ttsSettings.engine === 'cloud' && (
-                          <>
-                            <div className="space-y-2">
-                                <Label htmlFor="cloud-tts-language">{readerDict.languageCloud}</Label>
-                                <Select value={ttsSettings.language} onValueChange={(v) => handleSettingChange('language', v as string)} disabled={isSpeaking}>
-                                    <SelectTrigger id="cloud-tts-language"><SelectValue placeholder={readerDict.selectLanguage} /></SelectTrigger>
-                                    <SelectContent className="max-h-60">
-                                        {Object.entries(edgeTTSLanguageVoices).map(([locale, { language }]) => (
-                                            <SelectItem key={locale} value={locale}>{language} ({locale})</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="cloud-tts-voice">{readerDict.voiceCloud}</Label>
-                                <Select value={ttsSettings.cloudVoiceId || ""} onValueChange={(v) => handleSettingChange('cloudVoiceId', v)} disabled={isSpeaking || !ttsSettings.language}>
-                                    <SelectTrigger id="cloud-tts-voice"><SelectValue placeholder={readerDict.selectVoice} /></SelectTrigger>
-                                    <SelectContent className="max-h-60">
-                                        {(edgeTTSLanguageVoices[ttsSettings.language]?.voices || []).map(voice => (
-                                            <SelectItem key={voice.id} value={voice.id}>{voice.name}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                          </>
-                        )}
-                        <div className="space-y-2">
-                          <Label htmlFor="tts-rate">{readerDict.rate.replace('{rate}', ttsSettings.rate.toFixed(1))}</Label>
-                          <Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isSpeaking} />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="tts-pitch">{readerDict.pitch.replace('{pitch}', ttsSettings.pitch.toFixed(1))}</Label>
-                          <Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isSpeaking} />
-                        </div>
-                      </div>
-                  </PopoverContent>
-                </Popover>
-
           </div>
         </aside>
 
