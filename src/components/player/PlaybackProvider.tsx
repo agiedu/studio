@@ -365,18 +365,20 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (typeof navigator !== 'undefined' && navigator.mediaSession) navigator.mediaSession.playbackState = 'playing';
 
     if (currentItem?.type === 'media_favorite') {
-      if (videoPlayer?.paused) {
-          videoPlayer.play().catch(() => stop());
+      const player = currentItem.item.type === 'video' ? videoPlayer : audioPlayerRef.current;
+      if(player?.paused) {
+          player.play().catch(() => stop());
       }
     } else {
-      if (typeof window !== 'undefined' && window.speechSynthesis.paused) {
+      // This handles both local and cloud TTS for favorites and notes
+      if (window.speechSynthesis.paused) {
           window.speechSynthesis.resume();
       }
       if (audioPlayerRef.current?.paused) {
           audioPlayerRef.current.play().catch(() => stop());
       }
     }
-  }, [isPaused, stop, videoPlayer, currentItem]);
+  }, [isPaused, currentItem, videoPlayer, stop]);
 
   const handleSeek = (value: number) => {
     const player = currentItem?.type === 'media_favorite' 
@@ -534,5 +536,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   return <PlaybackContext.Provider value={value}>{children}</PlaybackContext.Provider>;
 };
+
+    
 
     
