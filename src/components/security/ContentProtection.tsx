@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect } from 'react';
@@ -8,27 +9,29 @@ export function ContentProtection() {
 
   // Effect to prevent right-clicking, text selection, and copying
   useEffect(() => {
-    const handleContextmenu = (e: MouseEvent) => {
-      e.preventDefault();
-    };
-    const handleCopy = (e: ClipboardEvent) => {
-      e.preventDefault();
-    };
+    // The following lines that prevent copy and context menu have been removed
+    // to re-enable this functionality as requested.
+    // const handleContextmenu = (e: MouseEvent) => {
+    //   e.preventDefault();
+    // };
+    // const handleCopy = (e: ClipboardEvent) => {
+    //   e.preventDefault();
+    // };
 
-    document.addEventListener('contextmenu', handleContextmenu);
-    document.addEventListener('copy', handleCopy);
+    // document.addEventListener('contextmenu', handleContextmenu);
+    // document.addEventListener('copy', handleCopy);
 
-    // Apply CSS to disable text selection
-    document.body.style.userSelect = 'none';
-    document.body.style.webkitUserSelect = 'none'; // For Safari
+    // The following lines that disable text selection have been removed.
+    // document.body.style.userSelect = 'none';
+    // document.body.style.webkitUserSelect = 'none'; // For Safari
 
     return () => {
-      document.removeEventListener('contextmenu', handleContextmenu);
-      document.removeEventListener('copy', handleCopy);
+      // document.removeEventListener('contextmenu', handleContextmenu);
+      // document.removeEventListener('copy', handleCopy);
       
-      // Clean up styles
-      document.body.style.userSelect = 'auto';
-      document.body.style.webkitUserSelect = 'auto';
+      // The style cleanup is no longer necessary as the styles are not applied.
+      // document.body.style.userSelect = 'auto';
+      // document.body.style.webkitUserSelect = 'auto';
     };
   }, [pathname]); // Re-apply if path changes, though it's a global effect
 
