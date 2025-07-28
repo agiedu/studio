@@ -57,7 +57,7 @@ import { AuthGuard } from '@/components/auth/AuthGuard';
 import { edgeTTSLanguageVoices } from '@/lib/edge-tts-voices';
 import { LanguageContext } from '@/context/LanguageContext';
 import { getDictionary } from '@/lib/i18n';
-import { useIsMobile } from '@/hooks/use-is-mobile';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 const PDF_DEFAULT_SCALE = 1.0;
 const PUNCTUATION_REGEX = /[.,?!,。？！，、\n\r"“„”'‘’`*_{}\[\]()#&@:;~<>/\\|\-—–^%$《》]/g;
@@ -1616,9 +1616,10 @@ const ttsTextWithAnnotations = useMemo(() => {
   return (
     <>
       <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)]">
-        <div className="flex-grow flex flex-col bg-muted/20 p-2 md:p-4 min-w-0">
+        <div className="flex-grow flex flex-col bg-muted/20 p-2 md:p-4 min-w-0 relative">
           
-          <div className="flex-grow flex flex-col min-h-0">
+           {/* Main Document Display Area */}
+           <div className="flex-grow flex flex-col min-h-0">
             <Card className="flex-grow flex flex-col min-h-0 shadow-inner">
               <CardContent ref={scrollContainerRef} className="flex-grow p-2 md:p-4 overflow-auto">
                 {(isLoadingDoc || isEpubLoading || isRenderingPdfPage) && (
@@ -1697,13 +1698,19 @@ const ttsTextWithAnnotations = useMemo(() => {
             </Card>
           </div>
 
-          <Card className="mt-2 shadow-md">
-            <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3">
+          {/* TTS Control Area */}
+          <Card 
+            className={cn(
+              "shadow-md transition-all duration-300 ease-in-out absolute bottom-2 left-2 right-2",
+              isTtsAreaExpanded ? "top-2 z-20 flex flex-col" : "mt-2"
+            )}
+            >
+            <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-4">
               <CardTitle className="text-sm flex items-center">
                 <FileText className="mr-2 h-4 w-4" />
                 {readerDict.ttsCurrentText}
               </CardTitle>
-              <div className="flex items-center gap-1 flex-wrap">
+              <div className="flex items-center gap-1 flex-wrap justify-end">
                   <Button 
                       onClick={playPauseSpeech} 
                       disabled={mainButtonState.disabled} 
@@ -1947,10 +1954,10 @@ const ttsTextWithAnnotations = useMemo(() => {
                 </Popover>
               </div>
             </CardHeader>
-            <CardContent className="pt-0">
-              <div className={cn("w-full px-3 py-2 border rounded-md bg-muted/30 overflow-y-auto whitespace-pre-wrap select-text transition-all duration-300 ease-in-out", isTtsAreaExpanded ? "h-64" : "h-20")} style={{ fontSize: `${ttsTextSize}px` }}>
-                {ttsTextWithAnnotations}
-              </div>
+            <CardContent className={cn("pt-0", isTtsAreaExpanded ? "flex-grow flex flex-col" : "h-0 invisible")}>
+                 <div className={cn("w-full border rounded-md bg-muted/30 whitespace-pre-wrap select-text transition-all duration-300 ease-in-out overflow-y-auto", isTtsAreaExpanded ? "flex-grow p-4" : "h-0 p-0 border-none")} style={{ fontSize: `${ttsTextSize}px` }}>
+                    {ttsTextWithAnnotations}
+                 </div>
             </CardContent>
           </Card>
         </div>
