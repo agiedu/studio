@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useRef, useContext } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Play, Trash2, Loader2, Pause, Smartphone, Cloud as CloudIcon, Info, Star, Repeat1, ListOrdered, SkipBack, SkipForward, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Play, Trash2, Loader2, Pause, Smartphone, Cloud as CloudIcon, Info, Star, Repeat1, ListOrdered, SkipBack, SkipForward, Settings, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
 import * as LocalStorage from '@/lib/localStorageService';
 import type { FavoriteItem, TTSVoice } from '@/types';
 import { format } from 'date-fns';
@@ -423,34 +423,44 @@ function FavoritesPageContent() {
                   }
 
                   return (
-                    <li key={item.id} className="p-3 border rounded-md flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-card hover:shadow-md transition-shadow">
-                      <div className="flex-grow space-y-1">
-                        <p className="text-base whitespace-pre-wrap">
-                          {isCurrentlyPlaying && currentText ? 
-                            <span className="text-green-600">{`“${currentText}”`}</span>
-                            : 
-                            `"${item.text}"`
-                          }
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {item.sourceDocumentName && `${favDict.from}: ${item.sourceDocumentName} | `}
-                          {favDict.added}: {format(new Date(item.createdAt), "MMM d, yyyy HH:mm")}
-                        </p>
-                      </div>
-                      <div className="flex gap-2 self-end sm:self-center flex-shrink-0">
-                        <Button 
-                          size="sm" 
-                          variant={isCurrentlyPlaying && !isPaused ? "outline" : "default"}
-                          onClick={() => handlePlayPauseFavorite(item)} 
-                          disabled={isLoading && !isCurrentlyPlaying}
-                          className="w-[90px] h-8 text-xs"
-                          >
-                          {buttonIcon} {buttonText}
-                        </Button>
-                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setItemToDelete(item)} disabled={isLoading && isCurrentlyPlaying} aria-label="Delete Favorite">
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
+                    <li key={item.id} className="p-2 border rounded-md flex flex-col justify-between gap-2 bg-card hover:shadow-md transition-shadow">
+                        <div className="flex-grow space-y-2">
+                            <p className="text-base font-medium whitespace-pre-wrap">
+                            {isCurrentlyPlaying && currentText ? 
+                                <span className="text-green-600">{`“${currentText}”`}</span>
+                                : 
+                                `"${item.text}"`
+                            }
+                            </p>
+                            <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                {item.sourceDocumentName && (
+                                    <div className="flex items-center gap-1 min-w-0">
+                                        <FileText className="h-3 w-3 flex-shrink-0" />
+                                        <p className="truncate" title={item.sourceDocumentName}>
+                                            {item.sourceDocumentName}
+                                        </p>
+                                    </div>
+                                )}
+                                <p className="flex-shrink-0 ml-auto pl-2">
+                                    {favDict.added}: {format(new Date(item.createdAt), "MMM d, yyyy")}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-2 self-end sm:self-center flex-shrink-0">
+                            <Button 
+                            size="sm" 
+                            variant={isCurrentlyPlaying && !isPaused ? "outline" : "default"}
+                            onClick={() => handlePlayPauseFavorite(item)} 
+                            disabled={isLoading && !isCurrentlyPlaying}
+                            className="w-[80px] h-8 text-xs"
+                            >
+                            {buttonIcon} {buttonText}
+                            </Button>
+                            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setItemToDelete(item)} disabled={isLoading && isCurrentlyPlaying} aria-label="Delete Favorite">
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                        </div>
                     </li>
                   );
                 })}

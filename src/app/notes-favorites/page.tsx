@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useRef, useContext } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Trash2, Info, NotebookText, FileText, Play, Pause, Loader2, Smartphone, Cloud as CloudIcon, Star, Repeat1, ListOrdered, SkipBack, SkipForward, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Trash2, Info, NotebookText, FileText, Play, Pause, Loader2, Smartphone, Cloud as CloudIcon, Star, Repeat1, ListOrdered, SkipBack, SkipForward, Settings, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
 import * as LocalStorage from '@/lib/localStorageService';
 import type { NoteFavoriteItem, TTSVoice, TTSSettings } from '@/types';
 import { format } from 'date-fns';
@@ -462,61 +462,75 @@ function NotesFavoritesPageContent() {
                   const isHighlightingNote = isCurrentlyPlayingThisItem && currentItem?.part === 'note';
 
                   return (
-                    <li key={item.id} className="p-3 border rounded-md flex flex-col justify-between gap-3 bg-card hover:shadow-md transition-shadow">
-                      <div className="flex-grow space-y-2 w-full">
-                          <div className="p-2 bg-muted/50 rounded-md">
-                              <p className="text-xs text-muted-foreground mb-1">{notesFavDict.originalText}</p>
-                              <p className={cn("text-base italic", !item.annotation.targetText && "text-muted-foreground")}>
-                                <HighlightableText
-                                  text={item.annotation.targetText || ''}
-                                  isSpeaking={isHighlightingTarget}
-                                  highlightedText={currentText}
-                                  noTextContent={notesFavDict.noTextAvailable}
-                                />
-                              </p>
-                          </div>
+                    <li key={item.id} className="p-2 border rounded-md flex flex-col justify-between gap-2 bg-card hover:shadow-md transition-shadow">
+                        <div className="flex-grow space-y-2 w-full">
+                            <div className="p-2 bg-muted/50 rounded-md">
+                                <div className="flex items-start gap-2">
+                                    <FileText className="h-4 w-4 mt-1 flex-shrink-0 text-muted-foreground" />
+                                    <p className={cn("text-base font-medium italic", !item.annotation.targetText && "text-muted-foreground")}>
+                                    <HighlightableText
+                                        text={item.annotation.targetText || ''}
+                                        isSpeaking={isHighlightingTarget}
+                                        highlightedText={currentText}
+                                        noTextContent={notesFavDict.noTextAvailable}
+                                    />
+                                    </p>
+                                </div>
+                            </div>
 
-                          <div className="p-2 bg-background rounded-md border">
-                               <p className="text-xs text-muted-foreground mb-1">{notesFavDict.yourNote}</p>
-                              <p className={cn("text-base whitespace-pre-wrap", !item.annotation.note && "italic text-muted-foreground")}>
-                                <HighlightableText
-                                    text={item.annotation.note || ''}
-                                    isSpeaking={isHighlightingNote}
-                                    highlightedText={currentText}
-                                    noTextContent={notesFavDict.noTextAvailable}
-                                  />
-                              </p>
-                          </div>
+                            <div className="p-2 bg-background rounded-md border">
+                                <div className="flex items-start gap-2">
+                                    <Pencil className="h-4 w-4 mt-1 flex-shrink-0 text-muted-foreground" />
+                                    <p className={cn("text-base font-medium whitespace-pre-wrap", !item.annotation.note && "italic text-muted-foreground")}>
+                                    <HighlightableText
+                                        text={item.annotation.note || ''}
+                                        isSpeaking={isHighlightingNote}
+                                        highlightedText={currentText}
+                                        noTextContent={notesFavDict.noTextAvailable}
+                                    />
+                                    </p>
+                                </div>
+                            </div>
                         
-                          {item.annotation.imageDataUrl && (
-                              <div className="p-2 border rounded-md">
-                                  <p className="text-xs text-muted-foreground mb-1">{notesFavDict.attachedImage}</p>
-                                  <div className="relative w-full max-w-[200px]">
-                                       <NextImage src={item.annotation.imageDataUrl} alt="Annotation attachment" width={200} height={150} className="rounded-md object-contain" />
-                                  </div>
-                              </div>
-                          )}
-                      </div>
-                      <div className="flex flex-col sm:flex-row gap-2 sm:items-center justify-between pt-2 border-t mt-2">
-                           <p className="text-xs text-muted-foreground">
-                            {item.sourceDocumentName && <span className="flex items-center gap-1"><FileText className="h-3 w-3"/>{notesFavDict.from}: {item.sourceDocumentName} | </span>}
-                            {notesFavDict.favorited}: {format(new Date(item.favoritedAt), "MMM d, yyyy")}
-                          </p>
-                          <div className="flex gap-2 self-end sm:self-center">
+                            {item.annotation.imageDataUrl && (
+                                <div className="p-2 border rounded-md">
+                                    <p className="text-xs text-muted-foreground mb-1">{notesFavDict.attachedImage}</p>
+                                    <div className="relative w-full max-w-[200px]">
+                                        <NextImage src={item.annotation.imageDataUrl} alt="Annotation attachment" width={200} height={150} className="rounded-md object-contain" />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        <div className="flex flex-col sm:flex-row gap-2 sm:items-center justify-between pt-2 border-t mt-2">
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-0">
+                                {item.sourceDocumentName && (
+                                    <>
+                                        <FileText className="h-3 w-3 flex-shrink-0" />
+                                        <p className="truncate" title={item.sourceDocumentName}>
+                                            {item.sourceDocumentName}
+                                        </p>
+                                        <span className="mx-1">|</span>
+                                    </>
+                                )}
+                                <p className="flex-shrink-0">
+                                    {notesFavDict.favorited}: {format(new Date(item.favoritedAt), "MMM d, yyyy")}
+                                </p>
+                            </div>
+                            <div className="flex gap-2 self-end sm:self-center">
                             <Button 
-                              size="sm" 
-                              variant={isCurrentlyPlayingThisItem && !isPaused ? "outline" : "default"}
-                              onClick={() => handlePlayPauseNote(item)} 
-                              disabled={(isLoading && !isCurrentlyPlayingThisItem) || !hasContentToPlay}
-                              className="w-[90px] h-8 text-xs"
-                              title={hasContentToPlay ? notesFavDict.playPauseNote : notesFavDict.noTextToPlay}
-                              >
-                              {buttonIcon} {buttonText}
+                                size="sm" 
+                                variant={isCurrentlyPlayingThisItem && !isPaused ? "outline" : "default"}
+                                onClick={() => handlePlayPauseNote(item)} 
+                                disabled={(isLoading && !isCurrentlyPlayingThisItem) || !hasContentToPlay}
+                                className="w-[80px] h-8 text-xs"
+                                title={hasContentToPlay ? notesFavDict.playPauseNote : notesFavDict.noTextToPlay}
+                                >
+                                {buttonIcon} {buttonText}
                             </Button>
                             <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setNoteToDelete(item)} aria-label="Delete Note Favorite" disabled={isLoading && isCurrentlyPlayingThisItem}>
-                              <Trash2 className="h-4 w-4 text-destructive" />
+                                <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
-                          </div>
+                            </div>
                         </div>
                     </li>
                   )
