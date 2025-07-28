@@ -31,6 +31,18 @@ function arrayBufferToBlob(buffer: ArrayBuffer, type: string): Blob {
   return new Blob([buffer], { type });
 }
 
+function truncateTitle(title: string, maxWords: number = 4): string {
+    const words = title.split(/\s+/);
+    if (words.length > maxWords) {
+        // Simple middle truncation
+        const start = words.slice(0, Math.floor(maxWords / 2)).join(' ');
+        const end = words.slice(words.length - Math.floor(maxWords / 2)).join(' ');
+        return `${start} ... ${end}`;
+    }
+    return title;
+}
+
+
 function LibraryPageContent() {
   const { toast } = useToast();
   // Initialize with empty/loading state to match server render and prevent hydration errors
@@ -247,7 +259,9 @@ function LibraryPageContent() {
                       <div className="flex items-center gap-3 flex-grow min-w-0">
                         {getDocumentIcon(doc.type)}
                         <div className="min-w-0">
-                          <p className="text-base font-medium truncate" title={doc.title}>{doc.title || 'Untitled Document'}</p>
+                           <p className="text-base font-medium" title={doc.title}>
+                                {truncateTitle(doc.title || 'Untitled Document')}
+                            </p>
                           <p className="text-xs text-muted-foreground">
                             {libraryDict.documentType}: {doc.originalType || doc.type} | {libraryDict.storedDate}: {new Date(doc.createdAt || 0).toLocaleDateString()}
                             {doc.type === 'pdf' && doc.numPages !== undefined && ` | ${commonDict.pages}: ${doc.numPages}`}
@@ -255,26 +269,28 @@ function LibraryPageContent() {
                         </div>
                       </div>
                       <div className="flex gap-2 self-end sm:self-center flex-shrink-0">
-                        <Button size="sm" variant="outline" asChild disabled={isUploading || isLoading}>
-                          <Link href={`/reader?docId=${doc.id}`}>
-                            <BookOpen className="mr-1.5 h-4 w-4" />{libraryDict.openInReader}
-                          </Link>
+                        <Button size="icon" variant="outline" asChild disabled={isUploading || isLoading} title={libraryDict.openInReader}>
+                           <Link href={`/reader?docId=${doc.id}`}>
+                              <BookOpen className="h-4 w-4" />
+                           </Link>
                         </Button>
                         <Button
-                            size="sm"
+                            size="icon"
                             variant="outline"
                             onClick={() => handleSaveToDevice(doc)}
                             disabled={isSavingToDevice === doc.id || isUploading || isLoading}
-                            title={libraryDict.saveToDeviceTooltip}
+                            title={libraryDict.saveToDevice}
                         >
-                            {isSavingToDevice === doc.id ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />}{libraryDict.saveToDevice}
+                            {isSavingToDevice === doc.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                         </Button>
                         <Button
-                          size="sm"
+                          size="icon"
                           variant="ghost"
                           onClick={() => setDocToDelete(doc)}
                           disabled={isUploading || isLoading}
-                          aria-label="Delete Document">
+                          aria-label="Delete Document"
+                          title="Delete Document"
+                        >
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
