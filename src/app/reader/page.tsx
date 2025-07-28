@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo, useContext } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import NextImage from 'next/image';
-import { GlobalWorkerOptions, getDocument, version } from 'pdfjs-dist';
+import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist/types/src/display/api';
 import ePub from 'epubjs';
 import type Book from 'epubjs/types/book';
@@ -437,7 +437,10 @@ const ttsTextWithAnnotations = useMemo(() => {
   useEffect(() => {
     isMountedRef.current = true;
     if (typeof window !== 'undefined') {
-      GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${version}/build/pdf.worker.mjs`;
+      GlobalWorkerOptions.workerSrc = new URL(
+        'pdfjs-dist/build/pdf.worker.min.mjs',
+        import.meta.url
+      ).toString();
     }
     return () => {
       isMountedRef.current = false;

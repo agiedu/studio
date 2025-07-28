@@ -12,7 +12,7 @@ import { UploadCloud, Info, Trash2, BookOpen, FileText, Image as ImageIcon, Refr
 import * as IndexedDBService from '@/lib/indexedDBService';
 import * as LocalStorageService from '@/lib/localStorageService';
 import type { StoredMangaDocument } from '@/types';
-import { getDocument, GlobalWorkerOptions, version } from 'pdfjs-dist';
+import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -77,8 +77,11 @@ function LibraryPageContent() {
     fetchDocuments();
 
     if (typeof window !== 'undefined') {
-      // Use a CDN to load the PDF.js worker to avoid Next.js chunking issues.
-      GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${version}/pdf.worker.mjs`;
+      // Use the version of pdf.worker.min.mjs that is installed with pdfjs-dist
+      GlobalWorkerOptions.workerSrc = new URL(
+        'pdfjs-dist/build/pdf.worker.min.mjs',
+        import.meta.url
+      ).toString();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty dependency array ensures this runs only once on mount
