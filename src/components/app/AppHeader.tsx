@@ -117,7 +117,7 @@ export function AppHeader() {
             <MangaTalkLogo className="h-8 w-8" />
             <h1 className="text-xl md:text-2xl font-bold font-headline text-primary">MangaTalk</h1>
           </Link>
-          {!isMobile && (
+          {isMobile === false && (
             <nav className="flex items-center gap-1 md:gap-2">
                 {navLinks}
             </nav>
@@ -144,12 +144,13 @@ export function AppHeader() {
             </Sheet>
           )}
 
-          {user ? (
+          {user && (
               <Button variant="ghost" size="sm" onClick={handleLogout}>
                   <LogOut className="mr-1 h-4 w-4" /> 
                   <span className={cn(isMobile && "hidden")}>{dictionary.nav.logout}</span>
               </Button>
-          ) : (
+          )}
+          {!user && (
                <Button variant="ghost" size="sm" asChild>
                   <Link href="/login">{dictionary.nav.login}</Link>
               </Button>
