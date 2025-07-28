@@ -243,7 +243,7 @@ function LibraryPageContent() {
             {storedDocuments.length > 0 && (
               <ul className="space-y-3">
                 {storedDocuments.map(doc => (
-                    <li key={doc.id} className="p-3 border rounded-md flex flex-col sm:flex-row justify-between items-start gap-3 bg-card hover:shadow-md transition-shadow">
+                    <li key={doc.id} className="p-3 border rounded-md flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-card hover:shadow-md transition-shadow">
                       <div className="flex items-center gap-3 flex-grow min-w-0">
                         {getDocumentIcon(doc.type)}
                         <div className="min-w-0">
@@ -254,7 +254,7 @@ function LibraryPageContent() {
                           </p>
                         </div>
                       </div>
-                      <div className="flex gap-2 mt-2 sm:mt-0 sm:items-center flex-shrink-0">
+                      <div className="flex gap-2 self-end sm:self-center flex-shrink-0">
                         <Button size="sm" variant="outline" asChild disabled={isUploading || isLoading}>
                           <Link href={`/reader?docId=${doc.id}`}>
                             <BookOpen className="mr-1.5 h-4 w-4" />{libraryDict.openInReader}
@@ -265,7 +265,6 @@ function LibraryPageContent() {
                             variant="outline"
                             onClick={() => handleSaveToDevice(doc)}
                             disabled={isSavingToDevice === doc.id || isUploading || isLoading}
-                            className="w-[150px]"
                             title={libraryDict.saveToDeviceTooltip}
                         >
                             {isSavingToDevice === doc.id ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />}{libraryDict.saveToDevice}
@@ -290,20 +289,6 @@ function LibraryPageContent() {
               <p className="text-xs text-muted-foreground">{libraryDict.indexedDBNote}</p>
             </CardFooter>
           )}
-        </Card>
-
-        <Card className="border-blue-500 bg-blue-500/5">
-          <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-blue-700 dark:text-blue-300"><Info className="h-6 w-6" />{libraryDict.saveToDeviceNoteTitle}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm text-blue-600 dark:text-blue-400/90">
-              <p className="font-semibold text-base">
-                  {libraryDict.saveToDeviceNoteDescription}
-              </p>
-              <p>
-                  {libraryDict.saveToDeviceNoteDetail}
-              </p>
-          </CardContent>
         </Card>
         
         <AlertDialog open={!!docToDelete} onOpenChange={(isOpen) => !isOpen && setDocToDelete(null)}>
