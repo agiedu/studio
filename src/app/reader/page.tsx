@@ -80,8 +80,7 @@ const groupVoicesByLanguage = (voices: TTSVoice[]) => {
 // Define a type for the locked selection to ensure type safety
 type SelectionForAnnotation = {
   text: string;
-  startIndex: number;
-  pageNumber: number; // Optional because not all contexts (like scratchpad) have a page number
+  startIndex: number; // Optional because not all contexts (like scratchpad) have a page number
 } | null;
 
 
@@ -168,7 +167,7 @@ function ReaderPageContent() {
     currentPage: number;
     totalPages: number;
   }>({ open: false, type: null, currentPage: 0, totalPages: 0 });
-  const [jumpToPageInput, setJumpToPageInput] = useState("");
+  const jumpToPageInput = useRef("");
 
   const [annotationDialog, setAnnotationDialog] = useState({
     open: false,
@@ -1388,16 +1387,16 @@ const ttsTextWithAnnotations = useMemo(() => {
     }
     
     setJumpDialogInfo({ open: true, type, currentPage, totalPages });
-    setJumpToPageInput(String(currentPage));
+    jumpToPageInput.current = String(currentPage);
   };
   
   const handleCancelJump = () => {
-    setJumpToPageInput("");
+    jumpToPageInput.current = "";
     setJumpDialogInfo({ open: false, type: null, currentPage: 0, totalPages: 0 });
   };
 
   const handleConfirmJump = () => {
-    const pageNum = parseInt(jumpToPageInput, 10);
+    const pageNum = parseInt(jumpToPageInput.current, 10);
     const { type, totalPages } = jumpDialogInfo;
   
     if (!type || isNaN(pageNum) || pageNum < 1 || pageNum > totalPages) {
@@ -1448,17 +1447,10 @@ const ttsTextWithAnnotations = useMemo(() => {
       return;
     }
 
-    let pageNum: number;
-    if (activeDoc?.type === 'pdf' && !isPdfTextView) pageNum = currentPdfPageNum;
-    else if (activeDoc?.type === 'epub') pageNum = epubCurrentPageNum;
-    else if (activeDoc) pageNum = 1;
-    else pageNum = 1; // For scratchpad
-
     // CRITICAL: Lock the selection info into state here
     setSelectionForAnnotation({
         text: selectionInfo.text,
-        startIndex: selectionInfo.startIndex,
-        pageNumber: pageNum,
+        startIndex: selectionInfo.startIndex
     });
 
     setAnnotationDialog({
@@ -1492,15 +1484,15 @@ const ttsTextWithAnnotations = useMemo(() => {
       }
   
       const { id, note, imageDataUrl } = annotationDialog;
-      const { text, startIndex, pageNumber } = selectionForAnnotation;
+      const { text, startIndex } = selectionForAnnotation;
   
-      if (activeDoc && pageNumber === undefined) {
-        throw new Error("Cannot save annotation without a page number for a document.");
-      }
+      let pageNum = 1;
+       if (activeDoc?.type === 'pdf' && !isPdfTextView) pageNum = currentPdfPageNum;
+       else if (activeDoc?.type === 'epub') pageNum = epubCurrentPageNum;
 
       const newOrUpdatedAnnotation: Annotation = {
         id: id || `ann_${Date.now()}`,
-        pageNumber: pageNumber!,
+        pageNumber: pageNum,
         targetText: text,
         startIndex: startIndex,
         note,
@@ -1581,8 +1573,7 @@ const ttsTextWithAnnotations = useMemo(() => {
     setViewingAnnotation(null);
     setSelectionForAnnotation({
         text: annotation.targetText,
-        startIndex: annotation.startIndex,
-        pageNumber: annotation.pageNumber,
+        startIndex: annotation.startIndex
     });
     setAnnotationDialog({
       open: true,
@@ -1619,97 +1610,99 @@ const ttsTextWithAnnotations = useMemo(() => {
         <div className="flex-grow flex flex-col bg-muted/20 p-2 md:p-4 min-w-0 relative">
           
            {/* Main Document Display Area */}
-           <div className="flex-grow flex flex-col min-h-0">
-            <Card className="flex-grow flex flex-col min-h-0 shadow-inner">
-              <CardContent ref={scrollContainerRef} className="flex-grow p-2 md:p-4 overflow-auto">
-                {(isLoadingDoc || isEpubLoading || isRenderingPdfPage) && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
-                        <Loader2 className="h-10 w-10 animate-spin text-primary" />
-                        <p className="ml-3">{readerDict.loadingContent}</p>
-                    </div>
-                )}
-                {docErrorMessage && !activeDoc && (
-                    <div className="absolute inset-x-0 top-4 mx-auto w-fit max-w-md bg-destructive/10 border border-destructive text-destructive p-3 rounded-md shadow-lg z-20 flex items-start gap-2">
-                        <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
-                        <div>
-                            <p className="font-medium text-sm">{readerDict.docDisplayIssue}</p>
-                            <p className="text-xs">{docErrorMessage}</p>
-                            <Button variant="ghost" size="sm" className="text-xs h-auto p-1 mt-1 text-destructive hover:bg-destructive/20" onClick={() => setDocErrorMessage(null)}>{readerDict.dismiss}</Button>
+            <div className="flex-grow flex flex-col min-h-0">
+                <Card className="flex-grow flex flex-col min-h-0 shadow-inner">
+                <CardContent ref={scrollContainerRef} className="flex-grow p-2 md:p-4 overflow-auto">
+                    {(isLoadingDoc || isEpubLoading || isRenderingPdfPage) && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
+                            <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                            <p className="ml-3">{readerDict.loadingContent}</p>
                         </div>
+                    )}
+                    {docErrorMessage && !activeDoc && (
+                        <div className="absolute inset-x-0 top-4 mx-auto w-fit max-w-md bg-destructive/10 border border-destructive text-destructive p-3 rounded-md shadow-lg z-20 flex items-start gap-2">
+                            <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                            <div>
+                                <p className="font-medium text-sm">{readerDict.docDisplayIssue}</p>
+                                <p className="text-xs">{docErrorMessage}</p>
+                                <Button variant="ghost" size="sm" className="text-xs h-auto p-1 mt-1 text-destructive hover:bg-destructive/20" onClick={() => setDocErrorMessage(null)}>{readerDict.dismiss}</Button>
+                            </div>
+                        </div>
+                    )}
+                    
+                    <div 
+                    className="w-full h-full p-2 md:p-4 flex flex-col items-start justify-start"
+                    style={{
+                        transform: `scale(${viewScale})`,
+                        transformOrigin: 'top left',
+                        transition: 'transform 0.2s ease-out'
+                    }}
+                    >
+                    {!activeDoc && !isLoadingDoc && !docErrorMessage && (
+                        <div className="w-full h-full">
+                        <Textarea 
+                            ref={mainTextAreaRef}
+                            className="w-full h-full min-h-[200px] whitespace-pre-wrap select-text text-sm resize-none" 
+                            value={scratchpadText}
+                            onChange={(e) => setScratchpadText(e.target.value)}
+                            placeholder={readerDict.scratchpadPlaceholder}
+                        />
+                        </div>
+                    )}
+
+                    {activeDoc?.type === 'pdf' && isPdfTextView && (
+                        <div className="w-full h-full px-3 py-2 text-sm">
+                            {renderedTextWithoutAnnotations}
+                        </div>
+                    )}
+
+                    {activeDoc?.type === 'pdf' && !isPdfTextView && (
+                        <div className="w-full text-center space-y-4">
+                            {pdfPageImage && <NextImage src={pdfPageImage} alt={`Page ${currentPdfPageNum}`} width={0} height={0} style={{ width: 'auto', height: 'auto', maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} className="shadow-lg border rounded-md" />}
+                        </div>
+                    )}
+                    
+                    <div id="epub-container" className={cn("w-full h-full flex flex-col items-center", activeDoc?.type !== 'epub' && "hidden")}>
+                        <div
+                            key={docId || 'epub-placeholder'}
+                            id="epub-viewer"
+                            ref={epubViewerRef}
+                            className="w-full flex-grow"
+                        />
                     </div>
-                )}
-                
-                <div 
-                  className="w-full h-full p-2 md:p-4 flex flex-col items-start justify-start"
-                  style={{
-                    transform: `scale(${viewScale})`,
-                    transformOrigin: 'top left',
-                    transition: 'transform 0.2s ease-out'
-                  }}
-                >
-                  {!activeDoc && !isLoadingDoc && !docErrorMessage && (
-                    <div className="w-full h-full">
-                      <Textarea 
-                          ref={mainTextAreaRef}
-                          className="w-full h-full min-h-[200px] whitespace-pre-wrap select-text text-sm resize-none" 
-                          value={scratchpadText}
-                          onChange={(e) => setScratchpadText(e.target.value)}
-                          placeholder={readerDict.scratchpadPlaceholder}
-                      />
+
+                    {activeDoc?.type === 'txt' && (
+                        <div className="w-full h-full px-3 py-2 text-sm">
+                            {renderedTextWithoutAnnotations}
+                        </div>
+                    )}
+
+
+                    {activeDoc?.type === 'image' && displayedImageSrc && (
+                        <div className="w-full text-center space-y-4">
+                            <NextImage src={displayedImageSrc} alt={activeDoc.title || 'Uploaded Image'} width={800} height={600} style={{objectFit: 'contain'}} className="max-w-full max-h-[calc(100%-4rem)] shadow-lg border rounded-md inline-block" data-ai-hint="illustration abstract" />
+                        </div>
+                    )}
                     </div>
-                  )}
-
-                  {activeDoc?.type === 'pdf' && isPdfTextView && (
-                     <div className="w-full h-full px-3 py-2 text-sm">
-                        {renderedTextWithoutAnnotations}
-                    </div>
-                  )}
-
-                  {activeDoc?.type === 'pdf' && !isPdfTextView && (
-                      <div className="w-full text-center space-y-4">
-                          {pdfPageImage && <NextImage src={pdfPageImage} alt={`Page ${currentPdfPageNum}`} width={0} height={0} style={{ width: 'auto', height: 'auto', maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} className="shadow-lg border rounded-md" />}
-                      </div>
-                  )}
-                  
-                  <div id="epub-container" className={cn("w-full h-full flex flex-col items-center", activeDoc?.type !== 'epub' && "hidden")}>
-                      <div
-                          key={docId || 'epub-placeholder'}
-                          id="epub-viewer"
-                          ref={epubViewerRef}
-                          className="w-full flex-grow"
-                      />
-                  </div>
-
-                  {activeDoc?.type === 'txt' && (
-                    <div className="w-full h-full px-3 py-2 text-sm">
-                        {renderedTextWithoutAnnotations}
-                    </div>
-                  )}
-
-
-                  {activeDoc?.type === 'image' && displayedImageSrc && (
-                      <div className="w-full text-center space-y-4">
-                          <NextImage src={displayedImageSrc} alt={activeDoc.title || 'Uploaded Image'} width={800} height={600} style={{objectFit: 'contain'}} className="max-w-full max-h-[calc(100%-4rem)] shadow-lg border rounded-md inline-block" data-ai-hint="illustration abstract" />
-                      </div>
-                  )}
-                </div>
-                {activeDoc?.type === 'mobi' && ( <div className="p-4 bg-background rounded-md shadow-inner text-center h-full flex flex-col justify-center items-center"> <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-2"/> <p className="font-semibold">MOBI Not Supported</p> <p className="text-sm text-muted-foreground">Please convert to EPUB or PDF.</p> </div> )}
-              </CardContent>
-            </Card>
-          </div>
+                    {activeDoc?.type === 'mobi' && ( <div className="p-4 bg-background rounded-md shadow-inner text-center h-full flex flex-col justify-center items-center"> <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-2"/> <p className="font-semibold">MOBI Not Supported</p> <p className="text-sm text-muted-foreground">Please convert to EPUB or PDF.</p> </div> )}
+                </CardContent>
+                </Card>
+            </div>
 
           {/* TTS Control Area */}
-          <Card 
+          <div
             className={cn(
-              "shadow-md transition-all duration-300 ease-in-out absolute bottom-2 left-2 right-2",
-              isTtsAreaExpanded ? "top-2 z-20 flex flex-col" : "mt-2"
+                "transition-all duration-300 ease-in-out absolute bottom-2 left-2 right-2 flex flex-col rounded-lg shadow-md",
+                isTtsAreaExpanded 
+                    ? "top-2 z-20 bg-background/95 backdrop-blur-sm border" 
+                    : "mt-2"
             )}
             >
-            <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-4">
-              <CardTitle className="text-sm flex items-center">
+            <div className={cn("flex flex-row items-center justify-between p-2 rounded-t-lg", !isTtsAreaExpanded && "bg-card border")}>
+              <h3 className="text-sm font-medium flex items-center ml-2">
                 <FileText className="mr-2 h-4 w-4" />
                 {readerDict.ttsCurrentText}
-              </CardTitle>
+              </h3>
               <div className="flex items-center gap-1 flex-wrap justify-end">
                   <Button 
                       onClick={playPauseSpeech} 
@@ -1953,13 +1946,13 @@ const ttsTextWithAnnotations = useMemo(() => {
                   </PopoverContent>
                 </Popover>
               </div>
-            </CardHeader>
-            <CardContent className={cn("pt-0", isTtsAreaExpanded ? "flex-grow flex flex-col" : "h-0 invisible")}>
-                 <div className={cn("w-full border rounded-md bg-muted/30 whitespace-pre-wrap select-text transition-all duration-300 ease-in-out overflow-y-auto", isTtsAreaExpanded ? "flex-grow p-4" : "h-0 p-0 border-none")} style={{ fontSize: `${ttsTextSize}px` }}>
+            </div>
+            <div className={cn("pt-0", isTtsAreaExpanded ? "flex-grow flex flex-col p-2" : "h-0 invisible")}>
+                 <div className={cn("w-full whitespace-pre-wrap select-text transition-all duration-300 ease-in-out overflow-y-auto", isTtsAreaExpanded ? "flex-grow p-4 bg-muted/30 rounded-md" : "h-0 p-0")} style={{ fontSize: `${ttsTextSize}px` }}>
                     {ttsTextWithAnnotations}
                  </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
 
         <AlertDialog open={jumpDialogInfo.open} onOpenChange={(isOpen) => !isOpen && handleCancelJump()}>
@@ -1973,8 +1966,8 @@ const ttsTextWithAnnotations = useMemo(() => {
             <div className="py-2">
               <Input
                 type="number"
-                value={jumpToPageInput}
-                onChange={(e) => setJumpToPageInput(e.target.value)}
+                defaultValue={jumpToPageInput.current}
+                onChange={(e) => jumpToPageInput.current = e.target.value}
                 onKeyDown={(e) => e.key === 'Enter' && handleConfirmJump()}
                 placeholder={readerDict.jumpDialogInputPlaceholder.replace('{totalPages}', jumpDialogInfo.totalPages.toString())}
                 className="text-center"
