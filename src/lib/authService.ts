@@ -1,4 +1,3 @@
-'use client';
 import type { User, FailedLoginAttempt } from '@/types';
 import bcrypt from 'bcryptjs';
 import { deleteDatabaseForUser } from '@/lib/indexedDBService';
