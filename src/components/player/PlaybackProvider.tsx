@@ -85,8 +85,6 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, []);
 
-  const onPlaybackEndRef = useRef<() => void>();
-
   const stop = useCallback((resetPlayerState = true) => {
     isPlayingRef.current = false;
     speechQueueRef.current = [];
@@ -159,7 +157,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (segmentIndexRef.current >= segments.length) {
       speechQueueRef.current.shift();
       segmentIndexRef.current = 0;
-      Promise.resolve().then(speakNextSegment);
+      await speakNextSegment();
       return;
     }
 
@@ -185,7 +183,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     if (!cleanedText) {
       segmentIndexRef.current++;
-      Promise.resolve().then(speakNextSegment);
+      await speakNextSegment();
       return;
     }
     
@@ -306,6 +304,8 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   }, [stop, videoPlayer, toast, handleTTSPlayback]);
   
+  const onPlaybackEndRef = useRef<() => void>();
+
   const onPlaybackEnd = useCallback(() => {
     if (!isPlayingRef.current) return;
   
@@ -366,22 +366,19 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const item = currentItem;
     if (!item) return;
-
-    if (item.type === 'media_favorite') {
-        const player = item.item.type === 'video' ? videoPlayer : audioPlayerRef.current;
-        player?.play().catch(() => stop());
-        return;
+    
+    // For local TTS, resume the browser's synthesis engine
+    if (typeof window !== 'undefined' && window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
     }
     
-    const ttsEngine = speechQueueRef.current[0]?.settings.engine;
-    if (ttsEngine === 'local') {
-        if (typeof window !== 'undefined' && window.speechSynthesis.paused) {
-            window.speechSynthesis.resume();
-        }
-    } else if (ttsEngine === 'cloud') {
-        if (audioPlayerRef.current?.paused) {
-            audioPlayerRef.current.play().catch(() => stop());
-        }
+    // For cloud TTS (audio element) and media files, resume the player
+    if (audioPlayerRef.current?.paused) {
+        audioPlayerRef.current.play().catch(() => stop());
+    }
+    
+    if (videoPlayer?.paused) {
+        videoPlayer.play().catch(() => stop());
     }
   }, [isPaused, stop, videoPlayer, currentItem]);
 
@@ -541,3 +538,5 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   return <PlaybackContext.Provider value={value}>{children}</PlaybackContext.Provider>;
 };
+
+    
