@@ -138,6 +138,8 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [videoPlayer]);
 
+  const onPlaybackEndRef = useRef<() => void>();
+
   const speakNextSegment = useCallback(async () => {
     if (!isPlayingRef.current) {
         stop();
@@ -157,7 +159,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (segmentIndexRef.current >= segments.length) {
       speechQueueRef.current.shift();
       segmentIndexRef.current = 0;
-      await speakNextSegment();
+      speakNextSegment();
       return;
     }
 
@@ -183,7 +185,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     if (!cleanedText) {
       segmentIndexRef.current++;
-      await speakNextSegment();
+      speakNextSegment();
       return;
     }
     
@@ -257,7 +259,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     }
     
-    await speakNextSegment();
+    speakNextSegment();
   }, [originalTextTtsSettings, yourNoteTtsSettings, speakNextSegment]);
   
   const play = useCallback(async (item: PlayableItem, newPlaylist: PlayableItem[], startIndex: number) => {
@@ -304,8 +306,6 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   }, [stop, videoPlayer, toast, handleTTSPlayback]);
   
-  const onPlaybackEndRef = useRef<() => void>();
-
   const onPlaybackEnd = useCallback(() => {
     if (!isPlayingRef.current) return;
   
@@ -364,21 +364,17 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setIsPaused(false);
     if (typeof navigator !== 'undefined' && navigator.mediaSession) navigator.mediaSession.playbackState = 'playing';
 
-    const item = currentItem;
-    if (!item) return;
-    
-    // For local TTS, resume the browser's synthesis engine
-    if (typeof window !== 'undefined' && window.speechSynthesis.paused) {
-        window.speechSynthesis.resume();
-    }
-    
-    // For cloud TTS (audio element) and media files, resume the player
-    if (audioPlayerRef.current?.paused) {
-        audioPlayerRef.current.play().catch(() => stop());
-    }
-    
-    if (videoPlayer?.paused) {
-        videoPlayer.play().catch(() => stop());
+    if (currentItem?.type === 'media_favorite') {
+      if (videoPlayer?.paused) {
+          videoPlayer.play().catch(() => stop());
+      }
+    } else {
+      if (typeof window !== 'undefined' && window.speechSynthesis.paused) {
+          window.speechSynthesis.resume();
+      }
+      if (audioPlayerRef.current?.paused) {
+          audioPlayerRef.current.play().catch(() => stop());
+      }
     }
   }, [isPaused, stop, videoPlayer, currentItem]);
 
