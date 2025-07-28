@@ -44,6 +44,7 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
+  PopoverClose,
 } from "@/components/ui/popover";
 
 
@@ -1618,11 +1619,27 @@ const ttsTextWithAnnotations = useMemo(() => {
         <div className="flex-grow flex flex-col bg-muted/20 p-2 md:p-4 min-h-0">
           
            {/* Main Document Display Area */}
-          <Card className="flex-grow flex flex-col min-h-0 shadow-inner">
+          <Card className="flex-grow flex flex-col min-h-0 shadow-inner relative">
             <CardContent ref={scrollContainerRef} className="flex-grow p-2 md:p-4 overflow-auto">
-              {/* Conditional Rendering based on TTS expansion state */}
+              {(isLoadingDoc || isEpubLoading || isRenderingPdfPage) && !isTtsAreaExpanded && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
+                      <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                      <p className="ml-3">{readerDict.loadingContent}</p>
+                  </div>
+              )}
+              {docErrorMessage && !activeDoc && (
+                  <div className="absolute inset-x-0 top-4 mx-auto w-fit max-w-md bg-destructive/10 border border-destructive text-destructive p-3 rounded-md shadow-lg z-20 flex items-start gap-2">
+                      <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                      <div>
+                          <p className="font-medium text-sm">{readerDict.docDisplayIssue}</p>
+                          <p className="text-xs">{docErrorMessage}</p>
+                          <Button variant="ghost" size="sm" className="text-xs h-auto p-1 mt-1 text-destructive hover:bg-destructive/20" onClick={() => setDocErrorMessage(null)}>{readerDict.dismiss}</Button>
+                      </div>
+                  </div>
+              )}
+              
               {isTtsAreaExpanded ? (
-                // TTS FOCUS VIEW
+                // TTS FOCUS VIEW - Rendered inside CardContent
                 <div className="w-full h-full whitespace-pre-wrap select-text overflow-y-auto" style={{ fontSize: `${ttsTextSize}px` }}>
                    {isEditingTtsText ? (
                         <Textarea
@@ -1637,80 +1654,61 @@ const ttsTextWithAnnotations = useMemo(() => {
                 </div>
               ) : (
                 // NORMAL DOCUMENT VIEW
-                <>
-                  {(isLoadingDoc || isEpubLoading || isRenderingPdfPage) && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
-                          <Loader2 className="h-10 w-10 animate-spin text-primary" />
-                          <p className="ml-3">{readerDict.loadingContent}</p>
-                      </div>
+                <div 
+                  className="w-full h-full p-2 md:p-4 flex flex-col items-start justify-start"
+                  style={{
+                    transform: `scale(${viewScale})`,
+                    transformOrigin: 'top left',
+                    transition: 'transform 0.2s ease-out'
+                  }}
+                >
+                  {!activeDoc && !isLoadingDoc && !docErrorMessage && (
+                    <div className="w-full h-full">
+                      <Textarea 
+                        ref={mainTextAreaRef}
+                        className="w-full h-full min-h-[200px] whitespace-pre-wrap select-text text-sm resize-none" 
+                        value={scratchpadText}
+                        onChange={(e) => setScratchpadText(e.target.value)}
+                        placeholder={readerDict.scratchpadPlaceholder}
+                      />
+                    </div>
                   )}
-                  {docErrorMessage && !activeDoc && (
-                      <div className="absolute inset-x-0 top-4 mx-auto w-fit max-w-md bg-destructive/10 border border-destructive text-destructive p-3 rounded-md shadow-lg z-20 flex items-start gap-2">
-                          <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
-                          <div>
-                              <p className="font-medium text-sm">{readerDict.docDisplayIssue}</p>
-                              <p className="text-xs">{docErrorMessage}</p>
-                              <Button variant="ghost" size="sm" className="text-xs h-auto p-1 mt-1 text-destructive hover:bg-destructive/20" onClick={() => setDocErrorMessage(null)}>{readerDict.dismiss}</Button>
-                          </div>
-                      </div>
+
+                  {activeDoc?.type === 'pdf' && isPdfTextView && (
+                    <div className="w-full h-full px-3 py-2 text-sm">
+                        {renderedTextWithoutAnnotations}
+                    </div>
+                  )}
+
+                  {activeDoc?.type === 'pdf' && !isPdfTextView && (
+                    <div className="w-full text-center space-y-4">
+                        {pdfPageImage && <NextImage src={pdfPageImage} alt={`Page ${currentPdfPageNum}`} width={0} height={0} style={{ width: 'auto', height: 'auto', maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} className="shadow-lg border rounded-md" />}
+                    </div>
                   )}
                   
-                  <div 
-                    className="w-full h-full p-2 md:p-4 flex flex-col items-start justify-start"
-                    style={{
-                      transform: `scale(${viewScale})`,
-                      transformOrigin: 'top left',
-                      transition: 'transform 0.2s ease-out'
-                    }}
-                  >
-                    {!activeDoc && !isLoadingDoc && !docErrorMessage && (
-                      <div className="w-full h-full">
-                        <Textarea 
-                          ref={mainTextAreaRef}
-                          className="w-full h-full min-h-[200px] whitespace-pre-wrap select-text text-sm resize-none" 
-                          value={scratchpadText}
-                          onChange={(e) => setScratchpadText(e.target.value)}
-                          placeholder={readerDict.scratchpadPlaceholder}
-                        />
-                      </div>
-                    )}
-
-                    {activeDoc?.type === 'pdf' && isPdfTextView && (
-                      <div className="w-full h-full px-3 py-2 text-sm">
-                          {renderedTextWithoutAnnotations}
-                      </div>
-                    )}
-
-                    {activeDoc?.type === 'pdf' && !isPdfTextView && (
-                      <div className="w-full text-center space-y-4">
-                          {pdfPageImage && <NextImage src={pdfPageImage} alt={`Page ${currentPdfPageNum}`} width={0} height={0} style={{ width: 'auto', height: 'auto', maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} className="shadow-lg border rounded-md" />}
-                      </div>
-                    )}
-                    
-                    <div id="epub-container" className={cn("w-full h-full flex flex-col items-center", activeDoc?.type !== 'epub' && "hidden")}>
-                        <div
-                            key={docId || 'epub-placeholder'}
-                            id="epub-viewer"
-                            ref={epubViewerRef}
-                            className="w-full flex-grow"
-                        />
-                    </div>
-
-                    {activeDoc?.type === 'txt' && (
-                      <div className="w-full h-full px-3 py-2 text-sm">
-                          {renderedTextWithoutAnnotations}
-                      </div>
-                    )}
-
-
-                    {activeDoc?.type === 'image' && displayedImageSrc && (
-                      <div className="w-full text-center space-y-4">
-                          <NextImage src={displayedImageSrc} alt={activeDoc.title || 'Uploaded Image'} width={800} height={600} style={{objectFit: 'contain'}} className="max-w-full max-h-[calc(100%-4rem)] shadow-lg border rounded-md inline-block" data-ai-hint="illustration abstract" />
-                      </div>
-                    )}
-                    {activeDoc?.type === 'mobi' && ( <div className="p-4 bg-background rounded-md shadow-inner text-center h-full flex flex-col justify-center items-center"> <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-2"/> <p className="font-semibold">MOBI Not Supported</p> <p className="text-sm text-muted-foreground">Please convert to EPUB or PDF.</p> </div> )}
+                  <div id="epub-container" className={cn("w-full h-full flex flex-col items-center", activeDoc?.type !== 'epub' && "hidden")}>
+                      <div
+                          key={docId || 'epub-placeholder'}
+                          id="epub-viewer"
+                          ref={epubViewerRef}
+                          className="w-full flex-grow"
+                      />
                   </div>
-                </>
+
+                  {activeDoc?.type === 'txt' && (
+                    <div className="w-full h-full px-3 py-2 text-sm">
+                        {renderedTextWithoutAnnotations}
+                    </div>
+                  )}
+
+
+                  {activeDoc?.type === 'image' && displayedImageSrc && (
+                    <div className="w-full text-center space-y-4">
+                        <NextImage src={displayedImageSrc} alt={activeDoc.title || 'Uploaded Image'} width={800} height={600} style={{objectFit: 'contain'}} className="max-w-full max-h-[calc(100%-4rem)] shadow-lg border rounded-md inline-block" data-ai-hint="illustration abstract" />
+                    </div>
+                  )}
+                  {activeDoc?.type === 'mobi' && ( <div className="p-4 bg-background rounded-md shadow-inner text-center h-full flex flex-col justify-center items-center"> <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-2"/> <p className="font-semibold">MOBI Not Supported</p> <p className="text-sm text-muted-foreground">Please convert to EPUB or PDF.</p> </div> )}
+                </div>
               )}
             </CardContent>
 
@@ -1799,6 +1797,10 @@ const ttsTextWithAnnotations = useMemo(() => {
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-80" align="end">
+                       <PopoverClose className="absolute right-2 top-2 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
+                        <X className="h-4 w-4" />
+                        <span className="sr-only">Close</span>
+                      </PopoverClose>
                        <div className="space-y-4">
                           <div className="space-y-1">
                              <p className="text-sm font-medium truncate">{activeDoc?.title || readerDict.scratchpad}</p>
