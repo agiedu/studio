@@ -1694,71 +1694,102 @@ const ttsTextWithAnnotations = useMemo(() => {
           </div>
 
           <div className="flex-shrink-0 pt-2">
-              <Card className="shadow-md">
-                  <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3">
-                      <CardTitle className="text-sm flex items-center"><FileText className="mr-2 h-4 w-4"/>{readerDict.ttsCurrentText}</CardTitle>
-                      <div className="flex items-center gap-2">
-                            <Button
-                                onClick={() => setIsTtsAreaExpanded(!isTtsAreaExpanded)}
-                                size="icon"
-                                variant="outline"
-                                className="h-9 w-9"
-                                title={isTtsAreaExpanded ? readerDict.shrinkTTS : readerDict.expandTTS}
-                            >
-                                {isTtsAreaExpanded ? <Shrink className="h-4 w-4" /> : <Expand className="h-4 w-4" />}
-                            </Button>
-                          
-                            <Button
-                                onClick={handleOpenAnnotationDialog}
-                                size="icon"
-                                variant="outline"
-                                className="h-9 w-9"
-                                title={readerDict.addAnnotation}
-                            >
-                                <MessageSquarePlus className="h-4 w-4" />
-                            </Button>
-                          
-                          {(showOcrButtonForPdfPage || showOcrButtonForImage || showOcrButtonForEpubPage) && (
-                              <Button
-                                  onClick={handlePerformOcr}
-                                  disabled={isPerformingOcr}
-                                  size="icon"
-                                  variant="outline"
-                                  className="h-9 w-9"
-                                  title={activeDoc?.type === 'image' ? readerDict.ocrImage : readerDict.ocrPage}
-                              >
-                                  {isPerformingOcr ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanText className="h-4 w-4" />}
-                              </Button>
-                          )}
-                          <Popover>
-                              <PopoverTrigger asChild>
-                                  <Button variant="outline" size="icon" className="h-9 w-9">
-                                      <CaseSensitive className="h-4 w-4" />
-                                      <span className="sr-only">{readerDict.setFontSize}</span>
-                                  </Button>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-56" align="end">
-                                  <div className="space-y-2">
-                                      <Label htmlFor="tts-font-size" className="text-sm">{readerDict.fontSize.replace('{size}', ttsTextSize.toString())}</Label>
-                                      <Slider
-                                          id="tts-font-size"
-                                          min={10}
-                                          max={32}
-                                          step={1}
-                                          value={[ttsTextSize]}
-                                          onValueChange={([v]) => setTtsTextSize(v)}
-                                      />
-                                  </div>
-                              </PopoverContent>
-                          </Popover>
+            <Card className="shadow-md">
+              <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3">
+                <CardTitle className="text-sm flex items-center">
+                  <FileText className="mr-2 h-4 w-4" />
+                  {readerDict.ttsCurrentText}
+                </CardTitle>
+                <div className="flex items-center gap-2">
+                    <Button 
+                        onClick={playPauseSpeech} 
+                        disabled={mainButtonState.disabled} 
+                        variant={mainButtonState.variant} 
+                        size="sm"
+                        className="h-9"
+                      >
+                        {mainButtonState.icon} {mainButtonState.text}
+                      </Button>
+                      <Button onClick={handleFavoriteSelection} variant="outline" size="icon" className="h-9 w-9" title={readerDict.favorite}>
+                        <Star className="h-4 w-4" />
+                      </Button>
+                      <Button 
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          const selection = getSelectedText();
+                          if (selection.text.trim()) {
+                            speakTextOnce(selection.text);
+                          } else {
+                            toast({ title: readerDict.noSelection, description: readerDict.selectToRepeat });
+                          }
+                        }}
+                        variant="outline" 
+                        size="icon" 
+                        className="h-9 w-9"
+                        disabled={isLoadingTTS}
+                        title={readerDict.repeat}
+                      > 
+                        <Repeat className="h-4 w-4" />
+                      </Button>
+                  <Button
+                    onClick={() => setIsTtsAreaExpanded(!isTtsAreaExpanded)}
+                    size="icon"
+                    variant="outline"
+                    className="h-9 w-9"
+                    title={isTtsAreaExpanded ? readerDict.shrinkTTS : readerDict.expandTTS}
+                  >
+                    {isTtsAreaExpanded ? <Shrink className="h-4 w-4" /> : <Expand className="h-4 w-4" />}
+                  </Button>
+                  <Button
+                    onClick={handleOpenAnnotationDialog}
+                    size="icon"
+                    variant="outline"
+                    className="h-9 w-9"
+                    title={readerDict.addAnnotation}
+                  >
+                    <MessageSquarePlus className="h-4 w-4" />
+                  </Button>
+                  {(showOcrButtonForPdfPage || showOcrButtonForImage || showOcrButtonForEpubPage) && (
+                    <Button
+                      onClick={handlePerformOcr}
+                      disabled={isPerformingOcr}
+                      size="icon"
+                      variant="outline"
+                      className="h-9 w-9"
+                      title={activeDoc?.type === 'image' ? readerDict.ocrImage : readerDict.ocrPage}
+                    >
+                      {isPerformingOcr ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanText className="h-4 w-4" />}
+                    </Button>
+                  )}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="icon" className="h-9 w-9">
+                        <CaseSensitive className="h-4 w-4" />
+                        <span className="sr-only">{readerDict.setFontSize}</span>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-56" align="end">
+                      <div className="space-y-2">
+                        <Label htmlFor="tts-font-size" className="text-sm">{readerDict.fontSize.replace('{size}', ttsTextSize.toString())}</Label>
+                        <Slider
+                          id="tts-font-size"
+                          min={10}
+                          max={32}
+                          step={1}
+                          value={[ttsTextSize]}
+                          onValueChange={([v]) => setTtsTextSize(v)}
+                        />
                       </div>
-                  </CardHeader>
-                  <CardContent className="pt-0">
-                      <div className={cn("w-full px-3 py-2 border rounded-md bg-muted/30 overflow-y-auto whitespace-pre-wrap select-text transition-all duration-300 ease-in-out", isTtsAreaExpanded ? "h-64" : "h-20")} style={{ fontSize: `${ttsTextSize}px` }}>
-                        {ttsTextWithAnnotations}
-                      </div>
-                  </CardContent>
-              </Card>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className={cn("w-full px-3 py-2 border rounded-md bg-muted/30 overflow-y-auto whitespace-pre-wrap select-text transition-all duration-300 ease-in-out", isTtsAreaExpanded ? "h-64" : "h-20")} style={{ fontSize: `${ttsTextSize}px` }}>
+                  {ttsTextWithAnnotations}
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
 
@@ -1832,116 +1863,6 @@ const ttsTextWithAnnotations = useMemo(() => {
                 </Card>
               )}
 
-              <Card>
-                <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm flex items-center gap-1"><Settings2 className="h-4 w-4"/> Text-to-Speech</CardTitle></CardHeader>
-                <CardContent className="space-y-3 pt-2">
-                  <div className="grid grid-cols-2 gap-2">
-                      <Button 
-                        onClick={playPauseSpeech} 
-                        disabled={mainButtonState.disabled} 
-                        variant={mainButtonState.variant} 
-                        className="w-full text-xs col-span-2 h-9"
-                      >
-                        {mainButtonState.icon} {mainButtonState.text}
-                      </Button>
-                      <Button onClick={handleFavoriteSelection} variant="outline" size="sm" className="w-full" title={readerDict.favorite}>
-                        <Star />
-                      </Button>
-                      <Button 
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => {
-                          const selection = getSelectedText();
-                          if (selection.text.trim()) {
-                            speakTextOnce(selection.text);
-                          } else {
-                            toast({ title: readerDict.noSelection, description: readerDict.selectToRepeat });
-                          }
-                        }}
-                        variant="outline" 
-                        size="sm" 
-                        className="w-full" 
-                        disabled={isLoadingTTS}
-                        title={readerDict.repeat}
-                      > 
-                        <Repeat />
-                      </Button>
-                  </div>
-
-                  <Separator className="my-3" />
-
-                  <div className="space-y-2">
-                      <Label htmlFor="tts-engine" className="text-xs">{readerDict.ttsEngine}</Label>
-                      <Select value={ttsSettings.engine} onValueChange={(v) => handleSettingChange('engine', v as 'local' | 'cloud')} disabled={isSpeaking && !isPaused}>
-                        <SelectTrigger id="tts-engine" className="h-9 text-xs"><SelectValue /></SelectTrigger>
-                        <SelectContent><SelectItem value="local"><div className="flex items-center gap-1 text-xs"><Smartphone className="h-3 w-3"/>{readerDict.local}</div></SelectItem><SelectItem value="cloud"><div className="flex items-center gap-1 text-xs"><CloudIcon className="h-3 w-3"/>{readerDict.cloud}</div></SelectItem></SelectContent>
-                      </Select>
-                  </div>
-
-                  {ttsSettings.engine === 'local' && (
-                    <div className="space-y-2">
-                      <Label htmlFor="tts-voice" className="text-xs">{readerDict.voiceLocal}</Label>
-                      <Select 
-                        value={ttsSettings.voiceURI || ""} 
-                        onValueChange={(v) => handleSettingChange('voiceURI', v)} 
-                        disabled={isSpeaking && !isPaused || availableVoices.length === 0}
-                      >
-                        <SelectTrigger id="tts-voice" className="h-9 text-xs"><SelectValue placeholder={availableVoices.length > 0 ? readerDict.selectVoice : readerDict.noLocalVoices} /></SelectTrigger>
-                        <SelectContent className="max-h-48">
-                            {availableVoices.length === 0 ? (
-                                <SelectItem value="no-voices" disabled>{readerDict.noLocalVoices}</SelectItem>
-                            ) : (
-                                Object.entries(groupedLocalVoices).map(([lang, voices]) => (
-                                    <SelectGroup key={lang}>
-                                        <SelectLabel className="text-xs">{lang}</SelectLabel>
-                                        {voices.map(voice => (
-                                            <SelectItem key={voice.voiceURI} value={voice.voiceURI} className="text-xs">{voice.name}</SelectItem>
-                                        ))}
-                                    </SelectGroup>
-                                ))
-                            )}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                  
-                  {ttsSettings.engine === 'cloud' && (
-                    <>
-                      <div className="space-y-2">
-                        <Label htmlFor="cloud-tts-language" className="text-xs">{readerDict.languageCloud}</Label>
-                        <Select value={ttsSettings.language} onValueChange={(v) => handleSettingChange('language', v as string)} disabled={isSpeaking && !isPaused}>
-                            <SelectTrigger id="cloud-tts-language" className="h-9 text-xs"><SelectValue placeholder={readerDict.selectLanguage} /></SelectTrigger>
-                            <SelectContent className="max-h-48">
-                                {Object.entries(edgeTTSLanguageVoices).map(([locale, { language }]) => (
-                                    <SelectItem key={locale} value={locale} className="text-xs">{language} ({locale})</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                          <Label htmlFor="cloud-tts-voice" className="text-xs">{readerDict.voiceCloud}</Label>
-                          <Select value={ttsSettings.cloudVoiceId || ""} onValueChange={(v) => handleSettingChange('cloudVoiceId', v)} disabled={isSpeaking && !isPaused || !ttsSettings.language}>
-                              <SelectTrigger id="cloud-tts-voice" className="h-9 text-xs"><SelectValue placeholder={readerDict.selectVoice} /></SelectTrigger>
-                              <SelectContent className="max-h-48">
-                                  {(edgeTTSLanguageVoices[ttsSettings.language]?.voices || []).map(voice => (
-                                      <SelectItem key={voice.id} value={voice.id} className="text-xs">{voice.name}</SelectItem>
-                                  ))}
-                              </SelectContent>
-                          </Select>
-                      </div>
-                    </>
-                  )}
-
-                  <div className="space-y-1 pt-2">
-                    <Label htmlFor="tts-rate" className="text-xs">{readerDict.rate.replace('{rate}', ttsSettings.rate.toFixed(1))}</Label>
-                    <Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isSpeaking && !isPaused}/>
-                  </div>
-                  <div className="space-y-1">
-                    <Label htmlFor="tts-pitch" className="text-xs">{readerDict.pitch.replace('{pitch}', ttsSettings.pitch.toFixed(1))}</Label>
-                    <Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isSpeaking && !isPaused}/>
-                  </div>
-                </CardContent>
-              </Card>
-              
               {showViewControls && (
                   <Card>
                     <CardHeader className="pb-2 pt-3"><CardTitle className="text-sm">{readerDict.viewControls}</CardTitle></CardHeader>
