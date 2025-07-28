@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 import { getCurrentUser, logout, isAdminSessionActive } from '@/lib/authService';
 import { LanguageContext } from '@/context/LanguageContext';
 import { getDictionary } from '@/lib/i18n';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 
@@ -134,6 +134,9 @@ export function AppHeader() {
                 </Button>
               </SheetTrigger>
               <SheetContent side="right" className="w-[250px] p-4">
+                  <SheetHeader>
+                    <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
+                  </SheetHeader>
                   <nav className="flex flex-col gap-2">
                       {navLinks}
                   </nav>
