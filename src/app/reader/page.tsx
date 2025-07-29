@@ -1650,8 +1650,8 @@ const ttsTextWithAnnotations = useMemo(() => {
 
   return (
     <>
-      <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)]">
-        <div className="flex-grow flex flex-col bg-muted/20 p-2 md:p-4 min-h-0">
+      <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)] overflow-hidden">
+        <div className="flex-grow flex flex-col bg-muted/20 p-2 md:p-4 min-h-0 min-w-0">
           <Card className="flex-grow flex flex-col min-h-0 shadow-inner relative">
             <CardContent
               ref={scrollContainerRef}
@@ -1689,7 +1689,7 @@ const ttsTextWithAnnotations = useMemo(() => {
                 </div>
               ) : (
                 <div
-                  className="w-full h-full p-2 md:p-4 flex flex-col items-start justify-start"
+                  className="w-full h-full p-2 md:p-4 flex flex-col items-start justify-start overflow-auto"
                   style={{
                     transform: `scale(${viewScale})`,
                     transformOrigin: 'top left',
