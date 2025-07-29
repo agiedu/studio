@@ -1586,12 +1586,47 @@ const ttsTextWithAnnotations = useMemo(() => {
     });
   };
 
-  const handleEditTtsText = () => {
-      if (isSpeaking) {
-          stopSpeech(true);
-      }
-      setIsEditingTtsText(!isEditingTtsText);
-  }
+  const handleEditTtsText = async () => {
+    if (isSpeaking) {
+        stopSpeech(true);
+    }
+
+    if (isEditingTtsText) {
+        // This is the "Confirm" action
+        if (activeDoc) {
+            let updatedDoc = { ...activeDoc };
+            let docNeedsSave = false;
+
+            if (updatedDoc.type === 'image') {
+                updatedDoc.extractedText = currentTextForTTS;
+                docNeedsSave = true;
+            } else if (updatedDoc.type === 'pdf' && !isPdfTextView) {
+                const pageNum = currentPdfPageNum;
+                if (!updatedDoc.ocrTextPerPage) {
+                    updatedDoc.ocrTextPerPage = {};
+                }
+                updatedDoc.ocrTextPerPage[pageNum] = currentTextForTTS;
+                docNeedsSave = true;
+            } else if (updatedDoc.type === 'txt' || (updatedDoc.type === 'pdf' && isPdfTextView)) {
+                // For plain text docs, we overwrite the fileData
+                const encoder = new TextEncoder();
+                updatedDoc.fileData = encoder.encode(currentTextForTTS);
+                docNeedsSave = true;
+            }
+            
+            if (docNeedsSave) {
+                try {
+                    await IndexedDBService.saveDocument(updatedDoc);
+                    setActiveDoc(updatedDoc); // Update state to reflect saved changes
+                    toast({ title: "Changes Saved", description: "Your edits have been saved to the local database." });
+                } catch (e: any) {
+                    toast({ variant: "destructive", title: "Save Error", description: `Could not save changes: ${e.message}` });
+                }
+            }
+        }
+    }
+    setIsEditingTtsText(!isEditingTtsText);
+};
   
   const mainButtonState = getMainButtonState();
   
