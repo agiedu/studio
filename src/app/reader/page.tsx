@@ -1782,23 +1782,32 @@ const ttsTextWithAnnotations = useMemo(() => {
             </Card>
         </div>
 
-        <Button 
-            className="absolute bottom-4 left-4 z-30 h-12 w-12 rounded-full shadow-lg"
-            size="icon"
-            onClick={() => setIsTtsBarVisible(v => !v)}
-            >
-                <Settings className="h-6 w-6" />
-        </Button>
+        <motion.div
+            drag
+            dragMomentum={false}
+            className="absolute bottom-4 left-4 z-30"
+        >
+            <Button 
+                className="h-12 w-12 rounded-full shadow-lg"
+                size="icon"
+                onClick={() => setIsTtsBarVisible(v => !v)}
+                >
+                    <Settings className="h-6 w-6" />
+            </Button>
+        </motion.div>
+        
         <AnimatePresence>
         {isTtsBarVisible && (
             <motion.div
+                drag
+                dragMomentum={false}
                 className="absolute bottom-4 right-4 z-30"
                 initial={{ y: 100, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 exit={{ y: 100, opacity: 0 }}
                 transition={{ type: "spring", stiffness: 300, damping: 25 }}
             >
-                <div className="flex items-center gap-1 flex-wrap justify-end p-2 bg-background/80 backdrop-blur-sm rounded-lg border shadow-lg">
+                <div className="flex items-center gap-1 flex-wrap justify-end p-2 bg-background/80 backdrop-blur-sm rounded-lg border shadow-lg cursor-move">
                     <Button 
                         onClick={playPauseSpeech} 
                         disabled={mainButtonState.disabled || isEditingTtsText} 
