@@ -65,6 +65,7 @@ const PUNCTUATION_REGEX = /[.,?!,。？！，、\n\r"“„”'‘’`*_{}\[\]()
 
 type SpeechOrigin = 'main' | 'repeat' | null;
 
+type TtsAreaState = 'hidden' | 'caption' | 'fullscreen';
 
 
 const groupVoicesByLanguage = (voices: TTSVoice[]) => {
@@ -143,7 +144,7 @@ function ReaderPageContent() {
   const [speechOrigin, setSpeechOrigin] = useState<SpeechOrigin>(null);
   const [highlightedSegmentIndex, setHighlightedSegmentIndex] = useState<number>(-1);
   const [ttsTextSize, setTtsTextSize] = useState<number>(LocalStorageService.loadTtsTextSize());
-  const [isTtsAreaExpanded, setIsTtsAreaExpanded] = useState(false);
+  const [ttsAreaState, setTtsAreaState] = useState<TtsAreaState>('hidden');
   const [isEditingTtsText, setIsEditingTtsText] = useState(false);
 
 
@@ -1628,6 +1629,24 @@ const ttsTextWithAnnotations = useMemo(() => {
     setIsEditingTtsText(!isEditingTtsText);
 };
   
+  const handleToggleTtsArea = () => {
+    setTtsAreaState(currentState => {
+        if (currentState === 'hidden') return 'caption';
+        if (currentState === 'caption') return 'fullscreen';
+        return 'hidden';
+    });
+  };
+
+  const getTtsAreaIcon = () => {
+    if (ttsAreaState === 'hidden') return <Expand className="h-4 w-4" />;
+    return <Shrink className="h-4 w-4" />;
+  };
+
+  const getTtsAreaTitle = () => {
+    if (ttsAreaState === 'fullscreen') return readerDict.shrinkTTS;
+    return readerDict.expandTTS;
+  };
+  
   const mainButtonState = getMainButtonState();
   
   const showInitialLoader = isLoadingDoc && !activeDoc && !docErrorMessage;
@@ -1651,366 +1670,387 @@ const ttsTextWithAnnotations = useMemo(() => {
   return (
     <>
       <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)] overflow-hidden">
-        <div className="flex-grow flex flex-col bg-muted/20 p-2 md:p-4 min-h-0 min-w-0">
-          <Card className="flex-grow flex flex-col min-h-0 shadow-inner relative">
-            <CardContent
-              ref={scrollContainerRef}
-              className="flex-grow p-2 md:p-4 overflow-auto"
+         <div className="flex-grow flex flex-col bg-muted/20 p-2 md:p-4 min-h-0 min-w-0 relative">
+
+            <div 
+              className={cn(
+                "flex-grow flex flex-col min-h-0 shadow-inner relative transition-all duration-300", 
+                ttsAreaState === 'hidden' && 'h-full',
+                ttsAreaState === 'caption' && 'h-[calc(100%-6rem)]', // Adjust height for caption
+                ttsAreaState === 'fullscreen' && 'h-0 opacity-0 invisible'
+              )}
             >
-              {(isLoadingDoc || isEpubLoading || isRenderingPdfPage) && !isTtsAreaExpanded && (
-                <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
-                  <Loader2 className="h-10 w-10 animate-spin text-primary" />
-                  <p className="ml-3">{readerDict.loadingContent}</p>
-                </div>
-              )}
-              {docErrorMessage && !activeDoc && (
-                <div className="absolute inset-x-0 top-4 mx-auto w-fit max-w-md bg-destructive/10 border border-destructive text-destructive p-3 rounded-md shadow-lg z-20 flex items-start gap-2">
-                  <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <p className="font-medium text-sm">{readerDict.docDisplayIssue}</p>
-                    <p className="text-xs">{docErrorMessage}</p>
-                    <Button variant="ghost" size="sm" className="text-xs h-auto p-1 mt-1 text-destructive hover:bg-destructive/20" onClick={() => setDocErrorMessage(null)}>{readerDict.dismiss}</Button>
-                  </div>
-                </div>
-              )}
-
-              {isTtsAreaExpanded ? (
-                <div className="w-full h-full whitespace-pre-wrap select-text overflow-y-auto" style={{ fontSize: `${ttsTextSize}px` }}>
-                  {isEditingTtsText ? (
-                    <Textarea
-                      value={currentTextForTTS}
-                      onChange={(e) => setCurrentTextForTTS(e.target.value)}
-                      className="w-full h-full resize-none bg-background text-foreground"
-                      autoFocus
-                    />
-                  ) : (
-                    ttsTextWithAnnotations
-                  )}
-                </div>
-              ) : (
-                <div
-                  className="w-full h-full p-2 md:p-4 flex flex-col items-start justify-start overflow-auto"
-                  style={{
-                    transform: `scale(${viewScale})`,
-                    transformOrigin: 'top left',
-                    transition: 'transform 0.2s ease-out'
-                  }}
-                >
-                  {!activeDoc && !isLoadingDoc && !docErrorMessage && (
-                    <div className="w-full h-full">
-                      <Textarea
-                        ref={mainTextAreaRef}
-                        className="w-full h-full min-h-[200px] whitespace-pre-wrap select-text text-sm resize-none"
-                        value={scratchpadText}
-                        onChange={(e) => setScratchpadText(e.target.value)}
-                        placeholder={readerDict.scratchpadPlaceholder}
-                      />
-                    </div>
-                  )}
-                  {activeDoc?.type === 'pdf' && isPdfTextView && (
-                    <div className="w-full h-full px-3 py-2 text-sm">
-                      {renderedTextWithoutAnnotations}
-                    </div>
-                  )}
-                  {activeDoc?.type === 'pdf' && !isPdfTextView && (
-                    <div className="w-full text-center space-y-4">
-                      {pdfPageImage && <NextImage src={pdfPageImage} alt={`Page ${currentPdfPageNum}`} width={0} height={0} style={{ width: 'auto', height: 'auto', maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} className="shadow-lg border rounded-md" />}
-                    </div>
-                  )}
-                  <div id="epub-container" className={cn("w-full h-full flex flex-col items-center", activeDoc?.type !== 'epub' && "hidden")}>
-                    <div
-                      key={docId || 'epub-placeholder'}
-                      id="epub-viewer"
-                      ref={epubViewerRef}
-                      className="w-full flex-grow"
-                    />
-                  </div>
-                  {activeDoc?.type === 'txt' && (
-                    <div className="w-full h-full px-3 py-2 text-sm">
-                      {renderedTextWithoutAnnotations}
-                    </div>
-                  )}
-                  {activeDoc?.type === 'image' && displayedImageSrc && (
-                    <div className="w-full text-center space-y-4">
-                      <NextImage src={displayedImageSrc} alt={activeDoc.title || 'Uploaded Image'} width={800} height={600} style={{ objectFit: 'contain' }} className="max-w-full max-h-[calc(100%-4rem)] shadow-lg border rounded-md inline-block" data-ai-hint="illustration abstract" />
-                    </div>
-                  )}
-                  {activeDoc?.type === 'mobi' && (<div className="p-4 bg-background rounded-md shadow-inner text-center h-full flex flex-col justify-center items-center"> <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-2" /> <p className="font-semibold">MOBI Not Supported</p> <p className="text-sm text-muted-foreground">Please convert to EPUB or PDF.</p> </div>)}
-                </div>
-              )}
-            </CardContent>
-
-            <div className="flex flex-row items-center justify-between p-2 rounded-b-lg border-t bg-background/80 backdrop-blur-sm">
-              <h3 className="text-sm font-medium flex items-center ml-2">
-                <FileText className="mr-2 h-4 w-4" />
-                {readerDict.ttsCurrentText}
-              </h3>
-              <div className="flex items-center gap-1 flex-wrap justify-end">
-                  <Button 
-                      onClick={playPauseSpeech} 
-                      disabled={mainButtonState.disabled || isEditingTtsText} 
-                      variant={mainButtonState.variant} 
-                      size="sm"
-                      className="h-9"
-                    >
-                      {mainButtonState.icon} {mainButtonState.text}
-                    </Button>
-                    <Button onClick={handleFavoriteSelection} variant="outline" size="icon" className="h-9 w-9" title={readerDict.favorite} disabled={isEditingTtsText}>
-                      <Star className="h-4 w-4" />
-                    </Button>
-                    <Button 
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => {
-                        const selection = getSelectedText();
-                        if (selection.text.trim()) {
-                          speakTextOnce(selection.text);
-                        } else {
-                          toast({ title: readerDict.noSelection, description: readerDict.selectToRepeat });
-                        }
-                      }}
-                      variant="outline" 
-                      size="icon" 
-                      className="h-9 w-9"
-                      disabled={isLoadingTTS || isEditingTtsText}
-                      title={readerDict.repeat}
-                    > 
-                      <Repeat className="h-4 w-4" />
-                    </Button>
-                <Button
-                  onClick={() => setIsTtsAreaExpanded(!isTtsAreaExpanded)}
-                  size="icon"
-                  variant="outline"
-                  className="h-9 w-9"
-                  title={isTtsAreaExpanded ? readerDict.shrinkTTS : readerDict.expandTTS}
-                >
-                  {isTtsAreaExpanded ? <Shrink className="h-4 w-4" /> : <Expand className="h-4 w-4" />}
-                </Button>
-                <Button
-                  onClick={handleOpenAnnotationDialog}
-                  size="icon"
-                  variant="outline"
-                  className="h-9 w-9"
-                  title={readerDict.addAnnotation}
-                  disabled={isEditingTtsText}
-                >
-                  <MessageSquarePlus className="h-4 w-4" />
-                </Button>
-                <Button
-                    onClick={handleEditTtsText}
-                    size="icon"
-                    variant={isEditingTtsText ? "default" : "outline"}
-                    className="h-9 w-9"
-                    title={isEditingTtsText ? "Confirm Changes" : "Edit TTS Text"}
-                >
-                    {isEditingTtsText ? <Check className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
-                </Button>
-                {(showOcrButtonForPdfPage || showOcrButtonForImage || showOcrButtonForEpubPage) && (
-                  <Button
-                    onClick={handlePerformOcr}
-                    disabled={isPerformingOcr || isEditingTtsText}
-                    size="icon"
-                    variant="outline"
-                    className="h-9 w-9"
-                    title={activeDoc?.type === 'image' ? readerDict.ocrImage : readerDict.ocrPage}
+              <Card className="flex-grow flex flex-col min-h-0 shadow-inner relative">
+                  <CardContent
+                    ref={scrollContainerRef}
+                    className="flex-grow p-2 md:p-4 overflow-auto"
                   >
-                    {isPerformingOcr ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanText className="h-4 w-4" />}
-                  </Button>
-                )}
-                 <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" size="icon" className="h-9 w-9" title="Document Actions">
-                          <BookOpen className="h-4 w-4" />
-                           <span className="sr-only">Document Actions</span>
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-80" align="end">
-                       <PopoverClose className="absolute right-2 top-2 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
-                        <X className="h-4 w-4" />
-                        <span className="sr-only">Close</span>
-                      </PopoverClose>
-                       <div className="space-y-4">
-                          <div className="space-y-1">
-                             <p className="text-sm font-medium truncate">{activeDoc?.title || readerDict.scratchpad}</p>
-                             <p className="text-xs text-muted-foreground">
-                                {activeDoc ? `${readerDict.docType.replace('{type}', activeDoc.type?.toUpperCase() || '')}` : readerDict.customInput}
-                              </p>
-                          </div>
-                           <Button variant="outline" size="sm" className="w-full" onClick={handleSwitchToScratchpad} disabled={isLoadingDoc}>
-                              <Edit className="mr-2 h-4 w-4" />
-                              {readerDict.switchToScratchpad}
-                          </Button>
-                          <Button
-                              variant="destructive"
-                              size="sm"
-                              className="w-full"
-                              onClick={handleClearScratchpad}
-                              disabled={isLoadingDoc || !!activeDoc}
-                          >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              {readerDict.clearScratchpad}
-                          </Button>
+                  {(isLoadingDoc || isEpubLoading || isRenderingPdfPage) && ttsAreaState === 'hidden' && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
+                      <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                      <p className="ml-3">{readerDict.loadingContent}</p>
+                    </div>
+                  )}
+                  {docErrorMessage && !activeDoc && (
+                    <div className="absolute inset-x-0 top-4 mx-auto w-fit max-w-md bg-destructive/10 border border-destructive text-destructive p-3 rounded-md shadow-lg z-20 flex items-start gap-2">
+                      <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="font-medium text-sm">{readerDict.docDisplayIssue}</p>
+                        <p className="text-xs">{docErrorMessage}</p>
+                        <Button variant="ghost" size="sm" className="text-xs h-auto p-1 mt-1 text-destructive hover:bg-destructive/20" onClick={() => setDocErrorMessage(null)}>{readerDict.dismiss}</Button>
+                      </div>
+                    </div>
+                  )}
 
-                          {activeDoc?.type === 'pdf' && !isPdfTextView && pdfTotalPages > 0 && (
-                            <>
-                              <Separator/>
-                              <div className="flex items-center justify-between">
-                                <Button onClick={() => navigatePdf('prev')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum <= 1} size="icon" variant="outline" aria-label="Previous Page"><ChevronLeft className="h-4 w-4"/></Button>
-                                <Button variant="ghost" className="h-9 tabular-nums" onClick={() => openJumpDialog('pdf', currentPdfPageNum, pdfTotalPages)}>
-                                    {currentPdfPageNum} / {pdfTotalPages}
-                                </Button>
-                                <Button onClick={() => navigatePdf('next')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum >= pdfTotalPages} size="icon" variant="outline" aria-label="Next Page"><ChevronRight className="h-4 w-4"/></Button>
-                              </div>
-                            </>
-                          )}
-                          {activeDoc?.type === 'epub' && (
-                             <>
-                              <Separator/>
-                              <div className="flex items-center justify-between">
-                                <Button onClick={() => navigateEpub('prev')} size="icon" variant="outline" disabled={isEpubLoading || isEpubPaginating} aria-label="Previous Page"><ChevronLeft className="h-4 w-4"/></Button>
-                                {isEpubPaginating ? (
-                                  <span className="text-sm text-muted-foreground px-2 flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> {readerDict.pageInfoLoading}</span>
-                                ) : epubTotalPages > 0 ? (
-                                  <Button variant="ghost" className="h-9 tabular-nums" onClick={() => openJumpDialog('epub', epubCurrentPageNum, epubTotalPages)}>
-                                      {epubCurrentPageNum} / {epubTotalPages}
-                                  </Button>
-                                ) : (
-                                  <span className="text-sm text-muted-foreground px-2">{readerDict.noPageInfo}</span>
-                                )}
-                                <Button onClick={() => navigateEpub('next')} size="icon" variant="outline" disabled={isEpubLoading || isEpubPaginating} aria-label="Next Page"><ChevronRight className="h-4 w-4"/></Button>
-                              </div>
-                            </>
-                          )}
-                          {showViewControls && (
-                            <>
-                              <Separator/>
-                              <div className="flex items-center gap-2">
-                                <Label className="flex-shrink-0 text-xs">Zoom</Label>
-                                <Slider value={[viewScale]} min={0.25} max={5} step={0.25} onValueChange={([val]) => handleViewScaleChange(val)} disabled={isRenderingPdfPage} />
-                              </div>
-                            </>
-                          )}
-                           {activeDoc?.type === 'pdf' && (
-                              <div className="pt-2">
-                                <Button 
-                                  variant="outline" 
-                                  size="sm"
-                                  className="w-full"
-                                  onClick={() => {
-                                    stopSpeech(true);
-                                    setIsPdfTextView(prev => !prev);
-                                  }}
-                                  disabled={isLoadingDoc || isRenderingPdfPage || !pdfTextContent}
-                                >
-                                 {isPdfTextView ? readerDict.switchToImageView : readerDict.switchToTextView}
-                                </Button>
-                              </div>
-                           )}
-                       </div>
-                    </PopoverContent>
-                  </Popover>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="icon" className="h-9 w-9">
-                      <Settings2 className="h-4 w-4" />
-                       <span className="sr-only">TTS Settings</span>
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-80" align="end">
-                     <PopoverClose className="absolute right-2 top-2 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
-                        <X className="h-4 w-4" />
-                        <span className="sr-only">Close</span>
-                      </PopoverClose>
-                     <div className="space-y-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="tts-engine">{readerDict.ttsEngine}</Label>
-                          <Select value={ttsSettings.engine} onValueChange={(v) => handleSettingChange('engine', v as 'local' | 'cloud')} disabled={isSpeaking}>
-                            <SelectTrigger id="tts-engine">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="local"><div className="flex items-center gap-1"><Smartphone className="h-4 w-4" />{readerDict.local}</div></SelectItem>
-                              <SelectItem value="cloud"><div className="flex items-center gap-1"><CloudIcon className="h-4 w-4" />{readerDict.cloud}</div></SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        {ttsSettings.engine === 'local' && (
-                          <div className="space-y-2">
-                            <Label htmlFor="tts-voice">{readerDict.voiceLocal}</Label>
-                            <Select value={ttsSettings.voiceURI || ""} onValueChange={(v) => handleSettingChange('voiceURI', v)} disabled={isSpeaking || availableVoices.length === 0}>
-                              <SelectTrigger id="tts-voice">
-                                <SelectValue placeholder={availableVoices.length > 0 ? readerDict.selectVoice : readerDict.noLocalVoices} />
-                              </SelectTrigger>
-                              <SelectContent className="max-h-60">
-                                {availableVoices.length === 0 ? (
-                                  <SelectItem value="no-voices" disabled>{readerDict.noLocalVoices}</SelectItem>
-                                ) : (
-                                  Object.entries(groupedLocalVoices).map(([lang, voices]) => (
-                                    <SelectGroup key={lang}>
-                                      <SelectLabel>{lang}</SelectLabel>
-                                      {voices.map(voice => (
-                                        <SelectItem key={voice.voiceURI} value={voice.voiceURI}>{voice.name}</SelectItem>
-                                      ))}
-                                    </SelectGroup>
-                                  ))
-                                )}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        )}
-                        {ttsSettings.engine === 'cloud' && (
-                          <>
-                            <div className="space-y-2">
-                                <Label htmlFor="cloud-tts-language">{readerDict.languageCloud}</Label>
-                                <Select value={ttsSettings.language} onValueChange={(v) => handleSettingChange('language', v as string)} disabled={isSpeaking}>
-                                    <SelectTrigger id="cloud-tts-language"><SelectValue placeholder={readerDict.selectLanguage} /></SelectTrigger>
-                                    <SelectContent className="max-h-60">
-                                        {Object.entries(edgeTTSLanguageVoices).map(([locale, { language }]) => (
-                                            <SelectItem key={locale} value={locale}>{language} ({locale})</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="cloud-tts-voice">{readerDict.voiceCloud}</Label>
-                                <Select value={ttsSettings.cloudVoiceId || ""} onValueChange={(v) => handleSettingChange('cloudVoiceId', v)} disabled={isSpeaking || !ttsSettings.language}>
-                                    <SelectTrigger id="cloud-tts-voice"><SelectValue placeholder={readerDict.selectVoice} /></SelectTrigger>
-                                    <SelectContent className="max-h-60">
-                                        {(edgeTTSLanguageVoices[ttsSettings.language]?.voices || []).map(voice => (
-                                            <SelectItem key={voice.id} value={voice.id}>{voice.name}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                          </>
-                        )}
-                        <div className="space-y-2">
-                          <Label htmlFor="tts-rate">{readerDict.rate.replace('{rate}', ttsSettings.rate.toFixed(1))}</Label>
-                          <Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isSpeaking} />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="tts-pitch">{readerDict.pitch.replace('{pitch}', ttsSettings.pitch.toFixed(1))}</Label>
-                          <Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isSpeaking} />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="tts-font-size" className="text-sm">{readerDict.fontSize.replace('{size}', ttsTextSize.toString())}</Label>
-                          <Slider
-                            id="tts-font-size"
-                            min={10}
-                            max={32}
-                            step={1}
-                            value={[ttsTextSize]}
-                            onValueChange={([v]) => setTtsTextSize(v)}
+                  <div
+                      className="w-full h-full p-2 md:p-4 flex flex-col items-start justify-start overflow-auto"
+                      style={{
+                        transform: `scale(${viewScale})`,
+                        transformOrigin: 'top left',
+                        transition: 'transform 0.2s ease-out'
+                      }}
+                    >
+                      {!activeDoc && !isLoadingDoc && !docErrorMessage && (
+                        <div className="w-full h-full">
+                          <Textarea
+                            ref={mainTextAreaRef}
+                            className="w-full h-full min-h-[200px] whitespace-pre-wrap select-text text-sm resize-none"
+                            value={scratchpadText}
+                            onChange={(e) => setScratchpadText(e.target.value)}
+                            placeholder={readerDict.scratchpadPlaceholder}
                           />
                         </div>
+                      )}
+                      {activeDoc?.type === 'pdf' && isPdfTextView && (
+                        <div className="w-full h-full px-3 py-2 text-sm">
+                          {renderedTextWithoutAnnotations}
+                        </div>
+                      )}
+                      {activeDoc?.type === 'pdf' && !isPdfTextView && (
+                        <div className="w-full text-center space-y-4">
+                          {pdfPageImage && <NextImage src={pdfPageImage} alt={`Page ${currentPdfPageNum}`} width={0} height={0} style={{ width: 'auto', height: 'auto', maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} className="shadow-lg border rounded-md" />}
+                        </div>
+                      )}
+                      <div id="epub-container" className={cn("w-full h-full flex flex-col items-center", activeDoc?.type !== 'epub' && "hidden")}>
+                        <div
+                          key={docId || 'epub-placeholder'}
+                          id="epub-viewer"
+                          ref={epubViewerRef}
+                          className="w-full flex-grow"
+                        />
                       </div>
-                  </PopoverContent>
-                </Popover>
-              </div>
+                      {activeDoc?.type === 'txt' && (
+                        <div className="w-full h-full px-3 py-2 text-sm">
+                          {renderedTextWithoutAnnotations}
+                        </div>
+                      )}
+                      {activeDoc?.type === 'image' && displayedImageSrc && (
+                        <div className="w-full text-center space-y-4">
+                          <NextImage src={displayedImageSrc} alt={activeDoc.title || 'Uploaded Image'} width={800} height={600} style={{ objectFit: 'contain' }} className="max-w-full max-h-[calc(100%-4rem)] shadow-lg border rounded-md inline-block" data-ai-hint="illustration abstract" />
+                        </div>
+                      )}
+                      {activeDoc?.type === 'mobi' && (<div className="p-4 bg-background rounded-md shadow-inner text-center h-full flex flex-col justify-center items-center"> <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-2" /> <p className="font-semibold">MOBI Not Supported</p> <p className="text-sm text-muted-foreground">Please convert to EPUB or PDF.</p> </div>)}
+                    </div>
+                  </CardContent>
+              </Card>
             </div>
-          </Card>
-        </div>
+            
+            <div
+                className={cn(
+                    "flex-shrink-0 flex flex-col min-h-0 shadow-inner relative transition-all duration-300",
+                    ttsAreaState === 'hidden' && 'h-0 opacity-0 invisible',
+                    ttsAreaState === 'caption' && 'h-[5rem] mt-2',
+                    ttsAreaState === 'fullscreen' && 'h-full'
+                )}
+            >
+                <Card className="flex-grow flex flex-col min-h-0">
+                    <CardContent className="flex-grow p-2 overflow-auto">
+                        <div className="w-full h-full whitespace-pre-wrap select-text overflow-y-auto" style={{ fontSize: `${ttsTextSize}px` }}>
+                            {isEditingTtsText ? (
+                                <Textarea
+                                value={currentTextForTTS}
+                                onChange={(e) => setCurrentTextForTTS(e.target.value)}
+                                className="w-full h-full resize-none bg-background text-foreground"
+                                autoFocus
+                                />
+                            ) : (
+                                ttsTextWithAnnotations
+                            )}
+                        </div>
+                    </CardContent>
+                    <div className="flex flex-row items-center justify-between p-2 rounded-b-lg border-t bg-background/80 backdrop-blur-sm">
+                    <h3 className="text-sm font-medium flex items-center ml-2">
+                        <FileText className="mr-2 h-4 w-4" />
+                        {readerDict.ttsCurrentText}
+                    </h3>
+                    <div className="flex items-center gap-1 flex-wrap justify-end">
+                        <Button 
+                            onClick={playPauseSpeech} 
+                            disabled={mainButtonState.disabled || isEditingTtsText} 
+                            variant={mainButtonState.variant} 
+                            size="sm"
+                            className="h-9"
+                        >
+                            {mainButtonState.icon} {mainButtonState.text}
+                        </Button>
+                        <Button onClick={handleFavoriteSelection} variant="outline" size="icon" className="h-9 w-9" title={readerDict.favorite} disabled={isEditingTtsText}>
+                            <Star className="h-4 w-4" />
+                        </Button>
+                        <Button 
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                            const selection = getSelectedText();
+                            if (selection.text.trim()) {
+                                speakTextOnce(selection.text);
+                            } else {
+                                toast({ title: readerDict.noSelection, description: readerDict.selectToRepeat });
+                            }
+                            }}
+                            variant="outline" 
+                            size="icon" 
+                            className="h-9 w-9"
+                            disabled={isLoadingTTS || isEditingTtsText}
+                            title={readerDict.repeat}
+                        > 
+                            <Repeat className="h-4 w-4" />
+                        </Button>
+                        <Button
+                            onClick={handleToggleTtsArea}
+                            size="icon"
+                            variant="outline"
+                            className="h-9 w-9"
+                            title={getTtsAreaTitle()}
+                        >
+                           {getTtsAreaIcon()}
+                        </Button>
+                        <Button
+                            onClick={handleOpenAnnotationDialog}
+                            size="icon"
+                            variant="outline"
+                            className="h-9 w-9"
+                            title={readerDict.addAnnotation}
+                            disabled={isEditingTtsText}
+                        >
+                            <MessageSquarePlus className="h-4 w-4" />
+                        </Button>
+                        <Button
+                            onClick={handleEditTtsText}
+                            size="icon"
+                            variant={isEditingTtsText ? "default" : "outline"}
+                            className="h-9 w-9"
+                            title={isEditingTtsText ? "Confirm Changes" : "Edit TTS Text"}
+                        >
+                            {isEditingTtsText ? <Check className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
+                        </Button>
+                        {(showOcrButtonForPdfPage || showOcrButtonForImage || showOcrButtonForEpubPage) && (
+                            <Button
+                            onClick={handlePerformOcr}
+                            disabled={isPerformingOcr || isEditingTtsText}
+                            size="icon"
+                            variant="outline"
+                            className="h-9 w-9"
+                            title={activeDoc?.type === 'image' ? readerDict.ocrImage : readerDict.ocrPage}
+                            >
+                            {isPerformingOcr ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanText className="h-4 w-4" />}
+                            </Button>
+                        )}
+                        <Popover>
+                            <PopoverTrigger asChild>
+                            <Button variant="outline" size="icon" className="h-9 w-9" title="Document Actions">
+                                <BookOpen className="h-4 w-4" />
+                                <span className="sr-only">Document Actions</span>
+                            </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-80" align="end">
+                            <PopoverClose className="absolute right-2 top-2 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
+                                <X className="h-4 w-4" />
+                                <span className="sr-only">Close</span>
+                            </PopoverClose>
+                            <div className="space-y-4">
+                                <div className="space-y-1">
+                                    <p className="text-sm font-medium truncate">{activeDoc?.title || readerDict.scratchpad}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                    {activeDoc ? `${readerDict.docType.replace('{type}', activeDoc.type?.toUpperCase() || '')}` : readerDict.customInput}
+                                    </p>
+                                </div>
+                                <Button variant="outline" size="sm" className="w-full" onClick={handleSwitchToScratchpad} disabled={isLoadingDoc}>
+                                    <Edit className="mr-2 h-4 w-4" />
+                                    {readerDict.switchToScratchpad}
+                                </Button>
+                                <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    className="w-full"
+                                    onClick={handleClearScratchpad}
+                                    disabled={isLoadingDoc || !!activeDoc}
+                                >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    {readerDict.clearScratchpad}
+                                </Button>
 
-        <AlertDialog open={jumpDialogInfo.open} onOpenChange={(isOpen) => !isOpen && handleCancelJump()}>
+                                {activeDoc?.type === 'pdf' && !isPdfTextView && pdfTotalPages > 0 && (
+                                    <>
+                                    <Separator/>
+                                    <div className="flex items-center justify-between">
+                                        <Button onClick={() => navigatePdf('prev')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum <= 1} size="icon" variant="outline" aria-label="Previous Page"><ChevronLeft className="h-4 w-4"/></Button>
+                                        <Button variant="ghost" className="h-9 tabular-nums" onClick={() => openJumpDialog('pdf', currentPdfPageNum, pdfTotalPages)}>
+                                            {currentPdfPageNum} / {pdfTotalPages}
+                                        </Button>
+                                        <Button onClick={() => navigatePdf('next')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum >= pdfTotalPages} size="icon" variant="outline" aria-label="Next Page"><ChevronRight className="h-4 w-4"/></Button>
+                                    </div>
+                                    </>
+                                )}
+                                {activeDoc?.type === 'epub' && (
+                                    <>
+                                    <Separator/>
+                                    <div className="flex items-center justify-between">
+                                        <Button onClick={() => navigateEpub('prev')} size="icon" variant="outline" disabled={isEpubLoading || isEpubPaginating} aria-label="Previous Page"><ChevronLeft className="h-4 w-4"/></Button>
+                                        {isEpubPaginating ? (
+                                        <span className="text-sm text-muted-foreground px-2 flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> {readerDict.pageInfoLoading}</span>
+                                        ) : epubTotalPages > 0 ? (
+                                        <Button variant="ghost" className="h-9 tabular-nums" onClick={() => openJumpDialog('epub', epubCurrentPageNum, epubTotalPages)}>
+                                            {epubCurrentPageNum} / {epubTotalPages}
+                                        </Button>
+                                        ) : (
+                                        <span className="text-sm text-muted-foreground px-2">{readerDict.noPageInfo}</span>
+                                        )}
+                                        <Button onClick={() => navigateEpub('next')} size="icon" variant="outline" disabled={isEpubLoading || isEpubPaginating} aria-label="Next Page"><ChevronRight className="h-4 w-4"/></Button>
+                                    </div>
+                                    </>
+                                )}
+                                {showViewControls && (
+                                    <>
+                                    <Separator/>
+                                    <div className="flex items-center gap-2">
+                                        <Label className="flex-shrink-0 text-xs">Zoom</Label>
+                                        <Slider value={[viewScale]} min={0.25} max={5} step={0.25} onValueChange={([val]) => handleViewScaleChange(val)} disabled={isRenderingPdfPage} />
+                                    </div>
+                                    </>
+                                )}
+                                {activeDoc?.type === 'pdf' && (
+                                    <div className="pt-2">
+                                        <Button 
+                                        variant="outline" 
+                                        size="sm"
+                                        className="w-full"
+                                        onClick={() => {
+                                            stopSpeech(true);
+                                            setIsPdfTextView(prev => !prev);
+                                        }}
+                                        disabled={isLoadingDoc || isRenderingPdfPage || !pdfTextContent}
+                                        >
+                                        {isPdfTextView ? readerDict.switchToImageView : readerDict.switchToTextView}
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
+                            </PopoverContent>
+                        </Popover>
+                        <Popover>
+                        <PopoverTrigger asChild>
+                            <Button variant="outline" size="icon" className="h-9 w-9">
+                            <Settings2 className="h-4 w-4" />
+                            <span className="sr-only">TTS Settings</span>
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-80" align="end">
+                            <PopoverClose className="absolute right-2 top-2 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
+                                <X className="h-4 w-4" />
+                                <span className="sr-only">Close</span>
+                            </PopoverClose>
+                            <div className="space-y-4">
+                                <div className="space-y-2">
+                                <Label htmlFor="tts-engine">{readerDict.ttsEngine}</Label>
+                                <Select value={ttsSettings.engine} onValueChange={(v) => handleSettingChange('engine', v as 'local' | 'cloud')} disabled={isSpeaking}>
+                                    <SelectTrigger id="tts-engine">
+                                    <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                    <SelectItem value="local"><div className="flex items-center gap-1"><Smartphone className="h-4 w-4" />{readerDict.local}</div></SelectItem>
+                                    <SelectItem value="cloud"><div className="flex items-center gap-1"><CloudIcon className="h-4 w-4" />{readerDict.cloud}</div></SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                </div>
+                                {ttsSettings.engine === 'local' && (
+                                <div className="space-y-2">
+                                    <Label htmlFor="tts-voice">{readerDict.voiceLocal}</Label>
+                                    <Select value={ttsSettings.voiceURI || ""} onValueChange={(v) => handleSettingChange('voiceURI', v)} disabled={isSpeaking || availableVoices.length === 0}>
+                                    <SelectTrigger id="tts-voice">
+                                        <SelectValue placeholder={availableVoices.length > 0 ? readerDict.selectVoice : readerDict.noLocalVoices} />
+                                    </SelectTrigger>
+                                    <SelectContent className="max-h-60">
+                                        {availableVoices.length === 0 ? (
+                                        <SelectItem value="no-voices" disabled>{readerDict.noLocalVoices}</SelectItem>
+                                        ) : (
+                                        Object.entries(groupedLocalVoices).map(([lang, voices]) => (
+                                            <SelectGroup key={lang}>
+                                            <SelectLabel>{lang}</SelectLabel>
+                                            {voices.map(voice => (
+                                                <SelectItem key={voice.voiceURI} value={voice.voiceURI}>{voice.name}</SelectItem>
+                                            ))}
+                                            </SelectGroup>
+                                        ))
+                                        )}
+                                    </SelectContent>
+                                    </Select>
+                                </div>
+                                )}
+                                {ttsSettings.engine === 'cloud' && (
+                                <>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="cloud-tts-language">{readerDict.languageCloud}</Label>
+                                        <Select value={ttsSettings.language} onValueChange={(v) => handleSettingChange('language', v as string)} disabled={isSpeaking}>
+                                            <SelectTrigger id="cloud-tts-language"><SelectValue placeholder={readerDict.selectLanguage} /></SelectTrigger>
+                                            <SelectContent className="max-h-60">
+                                                {Object.entries(edgeTTSLanguageVoices).map(([locale, { language }]) => (
+                                                    <SelectItem key={locale} value={locale}>{language} ({locale})</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="cloud-tts-voice">{readerDict.voiceCloud}</Label>
+                                        <Select value={ttsSettings.cloudVoiceId || ""} onValueChange={(v) => handleSettingChange('cloudVoiceId', v)} disabled={isSpeaking || !ttsSettings.language}>
+                                            <SelectTrigger id="cloud-tts-voice"><SelectValue placeholder={readerDict.selectVoice} /></SelectTrigger>
+                                            <SelectContent className="max-h-60">
+                                                {(edgeTTSLanguageVoices[ttsSettings.language]?.voices || []).map(voice => (
+                                                    <SelectItem key={voice.id} value={voice.id}>{voice.name}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </>
+                                )}
+                                <div className="space-y-2">
+                                <Label htmlFor="tts-rate">{readerDict.rate.replace('{rate}', ttsSettings.rate.toFixed(1))}</Label>
+                                <Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isSpeaking} />
+                                </div>
+                                <div className="space-y-2">
+                                <Label htmlFor="tts-pitch">{readerDict.pitch.replace('{pitch}', ttsSettings.pitch.toFixed(1))}</Label>
+                                <Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isSpeaking} />
+                                </div>
+                                <div className="space-y-2">
+                                <Label htmlFor="tts-font-size" className="text-sm">{readerDict.fontSize.replace('{size}', ttsTextSize.toString())}</Label>
+                                <Slider
+                                    id="tts-font-size"
+                                    min={10}
+                                    max={32}
+                                    step={1}
+                                    value={[ttsTextSize]}
+                                    onValueChange={([v]) => setTtsTextSize(v)}
+                                />
+                                </div>
+                            </div>
+                        </PopoverContent>
+                        </Popover>
+                    </div>
+                    </div>
+                </Card>
+            </div>
+          </div>
+      </div>
+
+      <AlertDialog open={jumpDialogInfo.open} onOpenChange={(isOpen) => !isOpen && handleCancelJump()}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>{readerDict.jumpDialogTitle}</AlertDialogTitle>
@@ -2154,7 +2194,6 @@ const ttsTextWithAnnotations = useMemo(() => {
               </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-      </div>
     </>
   );
 }
