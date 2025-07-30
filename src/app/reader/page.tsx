@@ -22,7 +22,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, Play, Pause, Smartphone, Cloud as CloudIcon, Star, AlertTriangle, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, BookOpen, Settings2, FileText, ScanText, Trash2, Edit, Repeat, X, CaseSensitive, MessageSquarePlus, ImagePlus, FileImage, Pencil, Expand, Shrink, Menu, Check, Settings } from 'lucide-react';
+import { Loader2, Play, Pause, Smartphone, Cloud as CloudIcon, Star, AlertTriangle, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, BookOpen, Settings2, FileText, ScanText, Trash2, Edit, Repeat, X, CaseSensitive, MessageSquarePlus, ImagePlus, FileImage, Pencil, Expand, Shrink, Menu, Check, Settings, FileEdit } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -1896,21 +1896,7 @@ const ttsTextWithAnnotations = useMemo(() => {
                                 {activeDoc ? `${readerDict.docType.replace('{type}', activeDoc.type?.toUpperCase() || '')}` : readerDict.customInput}
                                 </p>
                             </div>
-                            <Button variant="outline" size="sm" className="w-full" onClick={handleSwitchToScratchpad} disabled={isLoadingDoc}>
-                                <Edit className="mr-2 h-4 w-4" />
-                                {readerDict.switchToScratchpad}
-                            </Button>
-                            <Button
-                                variant="destructive"
-                                size="sm"
-                                className="w-full"
-                                onClick={handleClearScratchpad}
-                                disabled={isLoadingDoc || !!activeDoc}
-                            >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                {readerDict.clearScratchpad}
-                            </Button>
-
+                            
                             {activeDoc?.type === 'pdf' && !isPdfTextView && pdfTotalPages > 0 && (
                                 <>
                                 <Separator/>
@@ -1967,6 +1953,30 @@ const ttsTextWithAnnotations = useMemo(() => {
                                 </div>
                             )}
                         </div>
+                        </PopoverContent>
+                    </Popover>
+                    <Popover>
+                        <PopoverTrigger asChild>
+                            <Button variant="outline" size="icon" className="h-9 w-9" title="Scratchpad Actions">
+                                <FileEdit className="h-4 w-4" />
+                                <span className="sr-only">Scratchpad Actions</span>
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-2 space-y-2">
+                             <Button variant="outline" size="sm" className="w-full justify-start" onClick={handleSwitchToScratchpad} disabled={isLoadingDoc}>
+                                <Edit className="mr-2 h-4 w-4" />
+                                {readerDict.switchToScratchpad}
+                            </Button>
+                            <Button
+                                variant="destructive"
+                                size="sm"
+                                className="w-full justify-start"
+                                onClick={handleClearScratchpad}
+                                disabled={isLoadingDoc || !!activeDoc}
+                            >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                {readerDict.clearScratchpad}
+                            </Button>
                         </PopoverContent>
                     </Popover>
                     <Popover>
