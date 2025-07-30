@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef, useMemo, useContext } from 'react';
@@ -692,9 +693,7 @@ const ttsTextWithAnnotations = useMemo(() => {
                   console.error("Error processing EPUB:", e);
                   setDocErrorMessage(`Error processing EPUB: ${e.message}`);
               } finally {
-                  if (isMountedRef.current) {
-                    setIsEpubLoading(false);
-                  }
+                  if (isMountedRef.current) setIsEpubLoading(false);
               }
               setIsLoadingDoc(false);
               break;
@@ -1364,24 +1363,23 @@ const ttsTextWithAnnotations = useMemo(() => {
     const isContentLoading = isLoadingDoc || isEpubLoading || (activeDoc?.type === 'pdf' && !isPdfTextView && isRenderingPdfPage);
 
     if (isContentLoading) {
-      return { text: readerDict.loading, icon: <Loader2 className="mr-1 h-4 w-4 animate-spin" />, disabled: true, variant: "outline" as const };
+      return { text: readerDict.loading, icon: <Loader2 className="h-4 w-4 animate-spin" />, disabled: true, variant: "outline" as const, title: readerDict.loading };
     }
     if (isLoadingTTS && speechOrigin === 'main') {
-      return { text: readerDict.loading, icon: <Loader2 className="mr-1 h-4 w-4 animate-spin" />, disabled: true, variant: "outline" as const };
+      return { text: readerDict.loading, icon: <Loader2 className="h-4 w-4 animate-spin" />, disabled: true, variant: "outline" as const, title: readerDict.loading };
     }
 
     if (isSpeaking && speechOrigin === 'main') {
       return isPaused 
-        ? { text: readerDict.resume, icon: <Play className="mr-1 h-4 w-4" />, disabled: false, variant: "default" as const } 
-        : { text: readerDict.pause, icon: <Pause className="mr-1 h-4 w-4" />, disabled: false, variant: "outline" as const };
+        ? { text: readerDict.resume, icon: <Play className="h-4 w-4" />, disabled: false, variant: "default" as const, title: readerDict.resume } 
+        : { text: readerDict.pause, icon: <Pause className="h-4 w-4" />, disabled: false, variant: "outline" as const, title: readerDict.pause };
     }
     
-    // Check if there's a text selection to determine button text
     if (typeof window !== 'undefined' && window.getSelection()?.toString().trim().length) {
-      return { text: readerDict.playSelection, icon: <Play className="mr-1 h-4 w-4" />, disabled: false, variant: "default" as const }
+      return { text: readerDict.playSelection, icon: <Play className="h-4 w-4" />, disabled: false, variant: "default" as const, title: readerDict.playSelection }
     }
     
-    return { text: readerDict.playText, icon: <Play className="mr-1 h-4 w-4" />, disabled: false, variant: "default" as const };
+    return { text: readerDict.playText, icon: <Play className="h-4 w-4" />, disabled: false, variant: "default" as const, title: readerDict.playText };
   };
 
   const openJumpDialog = (type: 'pdf' | 'epub', currentPage: number, totalPages: number) => {
@@ -1812,10 +1810,11 @@ const ttsTextWithAnnotations = useMemo(() => {
                         onClick={playPauseSpeech} 
                         disabled={mainButtonState.disabled || isEditingTtsText} 
                         variant={mainButtonState.variant} 
-                        size="sm"
-                        className="h-9"
+                        size="icon"
+                        className="h-9 w-9"
+                        title={mainButtonState.title}
                     >
-                        {mainButtonState.icon} {mainButtonState.text}
+                        {mainButtonState.icon}
                     </Button>
                     <Button onClick={handleFavoriteSelection} variant="outline" size="icon" className="h-9 w-9" title={readerDict.favorite} disabled={isEditingTtsText}>
                         <Star className="h-4 w-4" />
