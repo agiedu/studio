@@ -1,7 +1,9 @@
+
 import type { Metadata } from 'next';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import { ClientProviders } from '@/components/app/ClientProviders';
+
 
 export const metadata: Metadata = {
   title: 'MangaTalk',
