@@ -78,7 +78,6 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const segmentIndexRef = useRef(0);
   const mediaObjectUrlRef = useRef<string | null>(null);
   const isPlayingRef = useRef(false);
-  const localSpeechIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && !audioPlayerRef.current) {
@@ -90,11 +89,6 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     isPlayingRef.current = false;
     speechQueueRef.current = [];
     segmentIndexRef.current = 0;
-
-    if (localSpeechIntervalRef.current) {
-        clearInterval(localSpeechIntervalRef.current);
-        localSpeechIntervalRef.current = null;
-    }
 
     if (utteranceRef.current) {
       utteranceRef.current.onend = null;
@@ -150,11 +144,6 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!isPlayingRef.current) {
         stop();
         return;
-    }
-    
-    if (localSpeechIntervalRef.current) {
-      clearInterval(localSpeechIntervalRef.current);
-      localSpeechIntervalRef.current = null;
     }
 
     if (speechQueueRef.current.length === 0) {
@@ -214,6 +203,13 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (voice) utterance.voice = voice;
       }
       
+      utterance.onend = () => {
+          if (utteranceRef.current === utterance && isPlayingRef.current) {
+              segmentIndexRef.current++;
+              speakNextSegment();
+          }
+      };
+
       utterance.onerror = (event) => {
           if(utteranceRef.current === utterance && event.error !== 'canceled' && event.error !== 'interrupted' && isPlayingRef.current) {
               console.error('SpeechSynthesis Error:', event);
@@ -226,15 +222,6 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setIsLoading(false);
       window.speechSynthesis.speak(utterance);
       
-      localSpeechIntervalRef.current = setInterval(() => {
-        if (!window.speechSynthesis.speaking && isPlayingRef.current) {
-          if(localSpeechIntervalRef.current) clearInterval(localSpeechIntervalRef.current);
-          localSpeechIntervalRef.current = null;
-          segmentIndexRef.current++;
-          speakNextSegment();
-        }
-      }, 250);
-
     } else {
       try {
         const result = await getCloudSpeech(cleanedText, currentPart.settings.language, currentPart.settings.cloudVoiceId);
@@ -549,4 +536,3 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   return <PlaybackContext.Provider value={value}>{children}</PlaybackContext.Provider>;
 };
-
