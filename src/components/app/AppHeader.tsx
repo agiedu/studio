@@ -118,7 +118,7 @@ export function AppHeader() {
             <h1 className="text-xl md:text-2xl font-bold font-headline text-primary">MangaTalk</h1>
           </Link>
           {isMobile === false && (
-            <nav className="flex items-center gap-1 md:gap-2">
+            <nav className="hidden md:flex items-center gap-1 md:gap-2">
                 {navLinks}
             </nav>
           )}
@@ -137,14 +137,14 @@ export function AppHeader() {
                   <SheetHeader>
                     <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
                   </SheetHeader>
-                  <nav className="flex flex-col gap-2">
+                  <nav className="flex flex-col gap-2 pt-4">
                       {navLinks}
                   </nav>
               </SheetContent>
             </Sheet>
           )}
 
-          {user && (
+          {user && !isMobile && (
               <Button variant="ghost" size="sm" onClick={handleLogout}>
                   <LogOut className="mr-1 h-4 w-4" /> 
                   <span className={cn(isMobile && "hidden")}>{dictionary.nav.logout}</span>
