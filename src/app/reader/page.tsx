@@ -236,8 +236,7 @@ function ReaderPageComponent({ docId, isMobile }: { docId: string | null; isMobi
 const sortedAnnotations = useMemo(() => {
     const allAnnotations: Annotation[] = activeDoc?.annotations || scratchpadAnnotations;
     
-    const isPaginatedImageView = activeDoc?.type === 'pdf' && !isPdfTextView;
-    if (isPaginatedImageView) {
+    if (activeDoc?.type === 'pdf' && !isPdfTextView) {
         const pageNum = currentPdfPageNum;
         return allAnnotations
             .filter(ann => ann.pageNumber === pageNum)
@@ -260,51 +259,41 @@ const sortedAnnotations = useMemo(() => {
 
 
 const getCharPosition = (container: HTMLElement, charIndex: number): { top: number, left: number } | null => {
-    if (charIndex < 0 || !container) return null;
+    if (!container || charIndex < 0) return null;
 
     const range = document.createRange();
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+    let currentNode: Node | null = null;
     let currentOffset = 0;
-    let targetNode: Node | null = null;
-    let targetOffset = -1;
 
-    function findPosition(node: Node) {
-        if (targetNode) return; // Stop if we've found it
-
-        if (node.nodeType === Node.TEXT_NODE) {
-            const textNode = node as Text;
-            const nodeLength = textNode.length;
-            if (currentOffset + nodeLength >= charIndex) {
-                targetNode = node;
-                targetOffset = charIndex - currentOffset;
-            } else {
-                currentOffset += nodeLength;
+    while ((currentNode = walker.nextNode())) {
+        const nodeLength = currentNode.textContent?.length || 0;
+        if (currentOffset + nodeLength >= charIndex) {
+            const finalCharIndexInNode = charIndex - currentOffset;
+             if (finalCharIndexInNode < 0 || finalCharIndexInNode > nodeLength) {
+                // This case should ideally not be hit with correct logic, but it's a safeguard.
+                console.error(`Calculated invalid index ${finalCharIndexInNode} for node with length ${nodeLength}`);
+                return null;
             }
-        } else if (node.nodeType === Node.ELEMENT_NODE) {
-            for (let i = 0; i < node.childNodes.length; i++) {
-                findPosition(node.childNodes[i]);
+
+            try {
+                range.setStart(currentNode, finalCharIndexInNode);
+                range.collapse(true);
+                const rect = range.getBoundingClientRect();
+                const containerRect = container.getBoundingClientRect();
+                return {
+                    top: rect.top - containerRect.top + container.scrollTop,
+                    left: rect.left - containerRect.left + container.scrollLeft,
+                };
+            } catch (e) {
+                console.error(`Error setting range for charIndex ${charIndex}:`, e);
+                return null; // Gracefully fail for this annotation
             }
         }
+        currentOffset += nodeLength;
     }
 
-    findPosition(container);
-    
-    if (targetNode && targetOffset !== -1) {
-        try {
-            range.setStart(targetNode, targetOffset);
-            range.collapse(true);
-            const rect = range.getBoundingClientRect();
-            const containerRect = container.getBoundingClientRect();
-            return {
-                top: rect.top - containerRect.top + container.scrollTop,
-                left: rect.left - containerRect.left + container.scrollLeft
-            };
-        } catch (e) {
-             console.error(`Error setting range in getCharPosition for charIndex ${charIndex}:`, e);
-             return null;
-        }
-    }
-    
-    return null;
+    return null; // charIndex is out of bounds
 };
 
 const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: React.RefObject<HTMLElement>, annotations: Annotation[], text: string }) => {
@@ -1912,16 +1901,18 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
                     >
                         {isEditingTtsText ? <Check className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
                     </Button>
-                    {(activeDoc?.type === 'pdf' && !isPdfTextView && pdfPageImage && !isRenderingPdfPage && !pdfPageIsTextBased) || (activeDoc?.type === 'image' && displayedImageSrc && !isLoadingDoc && !isPerformingOcr) || (activeDoc?.type === 'epub' && epubPageIsImage && !isLoadingDoc && !isPerformingOcr) && (
+                    {((activeDoc?.type === 'pdf' && !isPdfTextView && pdfPageImage && !isRenderingPdfPage && !pdfPageIsTextBased) || 
+                      (activeDoc?.type === 'image' && displayedImageSrc && !isLoadingDoc) || 
+                      (activeDoc?.type === 'epub' && epubPageIsImage && !isLoadingDoc)) && (
                         <Button
-                        onClick={handlePerformOcr}
-                        disabled={isPerformingOcr || isEditingTtsText}
-                        size="icon"
-                        variant="outline"
-                        className="h-9 w-9"
-                        title={activeDoc?.type === 'image' ? readerDict.ocrImage : readerDict.ocrPage}
+                            onClick={handlePerformOcr}
+                            disabled={isPerformingOcr || isEditingTtsText}
+                            size="icon"
+                            variant="outline"
+                            className="h-9 w-9"
+                            title={activeDoc?.type === 'image' ? readerDict.ocrImage : readerDict.ocrPage}
                         >
-                        {isPerformingOcr ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanText className="h-4 w-4" />}
+                            {isPerformingOcr ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanText className="h-4 w-4" />}
                         </Button>
                     )}
                     <Popover>
@@ -2290,4 +2281,3 @@ export default function ReaderPage() {
     )
 }
 
-    
