@@ -10,8 +10,6 @@ import ePub from 'epubjs';
 import type Book from 'epubjs/types/book';
 import type Rendition from 'epubjs/types/rendition';
 import type { Locations } from 'epubjs/types/locations';
-import dynamic from 'next/dynamic';
-
 
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -46,7 +44,6 @@ import {
   PopoverTrigger,
   PopoverClose,
 } from "@/components/ui/popover";
-
 
 import { getCloudSpeech, performOCR } from '@/app/actions';
 import * as LocalStorageService from '@/lib/localStorageService';
@@ -129,7 +126,8 @@ const HighlightableContent = React.forwardRef<HTMLDivElement, {
 HighlightableContent.displayName = 'HighlightableContent';
 
 
-function ReaderPageContent({ isMobile }: { isMobile: boolean | undefined }) {
+function ReaderPageComponent() {
+  const isMobile = useIsMobile();
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -2281,17 +2279,11 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
   );
 }
 
-const DynamicReaderPageContent = dynamic(() => Promise.resolve(ReaderPageContent), {
-  ssr: false,
-  loading: () => <div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>,
-});
-
 
 export default function ReaderPage() {
-    const isMobile = useIsMobile();
     return (
         <AuthGuard>
-            <DynamicReaderPageContent isMobile={isMobile} />
+            <ReaderPageComponent />
         </AuthGuard>
     )
 }
