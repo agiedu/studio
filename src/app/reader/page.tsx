@@ -133,13 +133,12 @@ function ReaderPageContent({ isMobile }: { isMobile: boolean | undefined }) {
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const docId = searchParams.get('docId');
-
   const { locale } = useContext(LanguageContext);
   const dictionary = getDictionary(locale);
   const commonDict = dictionary.common;
   const readerDict = dictionary.reader;
   const favDict = dictionary.favorites;
+  const docId = searchParams.get('docId');
 
   const [activeDoc, setActiveDoc] = useState<ActiveMangaDocument | null>(null);
   const [isLoadingDoc, setIsLoadingDoc] = useState(true);
@@ -2289,10 +2288,9 @@ const DynamicReaderPageContent = dynamic(() => Promise.resolve(ReaderPageContent
 
 
 export default function ReaderPage() {
-    const isMobile = useIsMobile();
     return (
         <AuthGuard>
-            <DynamicReaderPageContent isMobile={isMobile} />
+            <DynamicReaderPageContent />
         </AuthGuard>
     )
 }
