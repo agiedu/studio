@@ -2288,9 +2288,10 @@ const DynamicReaderPageContent = dynamic(() => Promise.resolve(ReaderPageContent
 
 
 export default function ReaderPage() {
+    const isMobile = useIsMobile();
     return (
         <AuthGuard>
-            <DynamicReaderPageContent />
+            <DynamicReaderPageContent isMobile={isMobile} />
         </AuthGuard>
     )
 }
