@@ -236,72 +236,82 @@ function ReaderPageComponent({ docId, isMobile }: { docId: string | null; isMobi
 const sortedAnnotations = useMemo(() => {
     const allAnnotations: Annotation[] = activeDoc?.annotations || scratchpadAnnotations;
     
-    // For paginated views (PDF image mode), filter by the current page number.
-    const isPaginatedView = activeDoc?.type === 'pdf' && !isPdfTextView;
-    if (isPaginatedView) {
+    // For paginated image views (PDF image mode), filter strictly by the current page number.
+    const isPaginatedImageView = activeDoc?.type === 'pdf' && !isPdfTextView;
+    if (isPaginatedImageView) {
         const pageNum = currentPdfPageNum;
         return allAnnotations
             .filter(ann => ann.pageNumber === pageNum)
             .sort((a, b) => a.startIndex - b.startIndex);
     }
     
-    // For text-based views, filter by checking if the annotation's text exists in the current view's text.
-    // This ensures annotations from other parts of a large document don't bleed over.
+    // For all text-based views (Scratchpad, TXT, EPUB, PDF text-view),
+    // filter by checking if the annotation's specific instance (text + startIndex)
+    // exists in the current view's text content.
     const currentText = currentTextForTTS;
     if (currentText) {
         return allAnnotations
-            .filter(ann => currentText.includes(ann.targetText))
+            .filter(ann => {
+                // Check if the text at the annotation's saved start index matches the annotation's text.
+                // This ensures we are targeting the exact instance, not just any identical text.
+                const expectedText = currentText.substring(ann.startIndex, ann.startIndex + ann.targetText.length);
+                return expectedText === ann.targetText;
+            })
             .sort((a, b) => a.startIndex - b.startIndex);
     }
 
-    // Default to an empty array if no context is matched.
     return [];
 
 }, [activeDoc, scratchpadAnnotations, currentTextForTTS, currentPdfPageNum, isPdfTextView]);
 
 
 const getCharPosition = (container: HTMLElement, charIndex: number): { top: number, left: number } | null => {
-  const range = document.createRange();
-  let walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
-  let currentNode: Node | null = null;
-  let currentOffset = 0;
+    if (charIndex < 0) return null;
 
-  while ((currentNode = walker.nextNode())) {
-      const nodeText = currentNode.textContent || "";
-      const nodeLength = nodeText.length;
-      
-      if (currentOffset + nodeLength >= charIndex) {
-          range.setStart(currentNode, charIndex - currentOffset);
-          const rect = range.getBoundingClientRect();
-          const containerRect = container.getBoundingClientRect();
-          return {
-              top: rect.top - containerRect.top + container.scrollTop,
-              left: rect.left - containerRect.left + container.scrollLeft
-          };
-      }
-      currentOffset += nodeLength;
-  }
-  return null;
+    const range = document.createRange();
+    const walker = document.createTreeWalker(container, Node.TEXT_NODE, null);
+    let currentNode: Node | null = null;
+    let currentOffset = 0;
+
+    while ((currentNode = walker.nextNode())) {
+        const nodeText = currentNode.textContent || "";
+        const nodeLength = nodeText.length;
+
+        if (currentOffset + nodeLength >= charIndex) {
+            try {
+                range.setStart(currentNode, charIndex - currentOffset);
+                range.collapse(true); // Collapse the range to the start point
+                const rect = range.getBoundingClientRect();
+                const containerRect = container.getBoundingClientRect();
+                return {
+                    top: rect.top - containerRect.top + container.scrollTop,
+                    left: rect.left - containerRect.left + container.scrollLeft
+                };
+            } catch (e) {
+                console.error("Error setting range in getCharPosition:", e);
+                return null; // A node might not support the range operation
+            }
+        }
+        currentOffset += nodeLength;
+    }
+    return null; // charIndex is out of bounds
 };
 
 const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: React.RefObject<HTMLElement>, annotations: Annotation[], text: string }) => {
-    const [positions, setPositions] = useState<Record<string, { top: number, left: number }>>({});
+    const [positions, setPositions] = useState<Record<string, { top: number, left: number } | null>>({});
 
     useEffect(() => {
         if (containerRef.current && annotations.length > 0 && text) {
-            const newPositions: Record<string, { top: number, left: number }> = {};
+            const newPositions: Record<string, { top: number, left: number } | null> = {};
             annotations.forEach(ann => {
-                // Ensure we find the annotation in the *current* text context
-                const posInCurrentText = text.indexOf(ann.targetText);
-                if (posInCurrentText !== -1) {
-                    const finalCharIndex = posInCurrentText + ann.targetText.length - 1;
-                    const pos = getCharPosition(containerRef.current!, finalCharIndex);
-                    if (pos) {
-                        newPositions[ann.id] = pos;
-                    }
-                }
+                // The `sortedAnnotations` logic already ensures this annotation belongs here.
+                // We directly use the `startIndex` for positioning.
+                const finalCharIndex = ann.startIndex + ann.targetText.length - 1;
+                newPositions[ann.id] = getCharPosition(containerRef.current!, finalCharIndex);
             });
             setPositions(newPositions);
+        } else if (annotations.length === 0) {
+            setPositions({}); // Clear positions if no annotations
         }
     }, [annotations, containerRef, text]);
 
@@ -1607,7 +1617,7 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
   const mainContent = useMemo(() => {
     if (!activeDoc) {
         return (
-            <div className="w-full h-full">
+            <div className="w-full h-full relative">
                 <Textarea
                     ref={mainTextAreaRef}
                     className="w-full h-full min-h-[200px] whitespace-pre-wrap select-text text-sm resize-none"
@@ -1615,6 +1625,9 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
                     onChange={(e) => setScratchpadText(e.target.value)}
                     placeholder={readerDict.scratchpadPlaceholder}
                 />
+                 <div className="absolute inset-0 pointer-events-none">
+                     <AnnotationMarkers containerRef={mainTextAreaRef} annotations={sortedAnnotations} text={scratchpadText} />
+                 </div>
             </div>
         );
     }
