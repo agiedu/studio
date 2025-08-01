@@ -143,8 +143,8 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const onPlaybackEndRef = useRef<() => void>();
 
   const speakNextSegment = useCallback(async () => {
-    if (!isPlayingRef.current) {
-        stop();
+    if (!isPlayingRef.current || isPausedRef.current) {
+        if (!isPlayingRef.current) stop();
         return;
     }
 
@@ -384,9 +384,12 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           window.speechSynthesis.resume();
       } else if (audioPlayerRef.current?.paused) {
           audioPlayerRef.current.play().catch(() => stop());
+      } else {
+        // This case handles when cloud TTS was paused, and we need to resume the sequence
+        speakNextSegment();
       }
     }
-  }, [currentItem, videoPlayer, stop]);
+  }, [currentItem, videoPlayer, stop, speakNextSegment]);
 
   const handleSeek = (value: number) => {
     const player = currentItem?.type === 'media_favorite' 
@@ -543,3 +546,5 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   return <PlaybackContext.Provider value={value}>{children}</PlaybackContext.Provider>;
 };
+
+    
