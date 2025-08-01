@@ -88,6 +88,47 @@ type SelectionForAnnotation = {
 } | null;
 
 
+// A new component to render text with highlighting capabilities.
+const HighlightableContent = React.forwardRef<HTMLDivElement, {
+    text: string;
+    textSegments: string[];
+    highlightedSegmentIndex: number;
+    isSpeaking: boolean;
+    isPaused: boolean;
+    className?: string;
+}>(({ text, textSegments, highlightedSegmentIndex, isSpeaking, isPaused, className }, ref) => {
+    if (!text) return null;
+
+    let content;
+    if (isSpeaking || isPaused) {
+        if (highlightedSegmentIndex < 0 || !textSegments[highlightedSegmentIndex]) {
+            content = <>{text}</>;
+        } else {
+            const preText = textSegments.slice(0, highlightedSegmentIndex).join('');
+            const highlightedText = textSegments[highlightedSegmentIndex];
+            const postText = textSegments.slice(highlightedSegmentIndex + 1).join('');
+            content = (
+                <>
+                    {preText}
+                    <span className="text-green-600 bg-green-600/10">{highlightedText}</span>
+                    {postText}
+                </>
+            );
+        }
+    } else {
+        content = <>{text}</>;
+    }
+
+    return (
+        <div ref={ref} className={cn("relative w-full h-full", className)}>
+            <div className="w-full h-full whitespace-pre-wrap select-text">
+                {content}
+            </div>
+        </div>
+    );
+});
+HighlightableContent.displayName = 'HighlightableContent';
+
 
 function ReaderPageContent() {
   const { toast } = useToast();
@@ -101,6 +142,7 @@ function ReaderPageContent() {
   const readerDict = dictionary.reader;
   const favDict = dictionary.favorites;
 
+  const isMobile = useIsMobile();
   const [activeDoc, setActiveDoc] = useState<ActiveMangaDocument | null>(null);
   const [isLoadingDoc, setIsLoadingDoc] = useState(true);
   const [docErrorMessage, setDocErrorMessage] = useState<string | null>(null);
@@ -307,71 +349,6 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
         </>
     );
 };
-
-
-const renderedTextWithoutAnnotations = useMemo(() => {
-  const text = currentTextForTTS;
-  if (!text) return null;
-  
-  return (
-    <div ref={mainHighlightedContentRef} className="relative w-full h-full">
-      <div className="w-full h-full whitespace-pre-wrap select-text">
-        {text}
-      </div>
-    </div>
-  );
-
-}, [currentTextForTTS]);
-
-
-const speakingViewContent = useMemo(() => {
-    const textToRender = currentTextForTTS;
-    if (!textToRender) return null;
-
-    let content;
-    if (isSpeaking || isPaused) {
-        if (highlightedSegmentIndex < 0 || !textSegments[highlightedSegmentIndex]) {
-            content = <>{textToRender}</>;
-        } else {
-            const preText = textSegments.slice(0, highlightedSegmentIndex).join('');
-            const highlightedText = textSegments[highlightedSegmentIndex];
-            const postText = textSegments.slice(highlightedSegmentIndex + 1).join('');
-            content = (
-                <>
-                    {preText}
-                    <span className="text-green-600">{highlightedText}</span>
-                    {postText}
-                </>
-            );
-        }
-    } else {
-        content = <>{textToRender}</>;
-    }
-    
-    return (
-        <div className="whitespace-pre-wrap">
-            {content}
-        </div>
-    );
-}, [isSpeaking, isPaused, highlightedSegmentIndex, textSegments, currentTextForTTS]);
-
-
-const ttsTextWithAnnotations = useMemo(() => {
-    const text = currentTextForTTS;
-    if (!text) return null;
-
-    return (
-        <div ref={ttsBoxHighlightedContentRef} className="relative w-full h-full">
-            <div className={cn("w-full h-full whitespace-pre-wrap select-text")}>
-               {isSpeaking || isPaused ? speakingViewContent : text}
-            </div>
-            {/* Markers are only rendered in the TTS box */}
-            <AnnotationMarkers containerRef={ttsBoxHighlightedContentRef} annotations={sortedAnnotations} text={text} />
-        </div>
-    );
-}, [currentTextForTTS, sortedAnnotations, speakingViewContent, isSpeaking, isPaused]);
-
-
 
   const getSelectedText = useCallback((): { text: string; startIndex: number | null } => {
     if (typeof window === 'undefined') {
@@ -1666,6 +1643,115 @@ const ttsTextWithAnnotations = useMemo(() => {
   const showViewControls = !activeDoc || (activeDoc?.type && ['pdf', 'image', 'epub', 'txt'].includes(activeDoc.type));
   const groupedLocalVoices = groupVoicesByLanguage(availableVoices);
 
+  const mainContent = useMemo(() => {
+    if (!activeDoc) {
+        // Scratchpad view
+        return (
+            <div className="w-full h-full">
+                <Textarea
+                    ref={mainTextAreaRef}
+                    className="w-full h-full min-h-[200px] whitespace-pre-wrap select-text text-sm resize-none"
+                    value={scratchpadText}
+                    onChange={(e) => setScratchpadText(e.target.value)}
+                    placeholder={readerDict.scratchpadPlaceholder}
+                />
+            </div>
+        );
+    }
+
+    if (activeDoc.type === 'pdf' && isPdfTextView) {
+        return (
+             <div className="w-full h-full px-3 py-2 text-sm">
+                <HighlightableContent
+                    ref={mainHighlightedContentRef}
+                    text={currentTextForTTS}
+                    textSegments={textSegments}
+                    highlightedSegmentIndex={highlightedSegmentIndex}
+                    isSpeaking={isSpeaking}
+                    isPaused={isPaused}
+                />
+            </div>
+        );
+    }
+
+    if (activeDoc.type === 'pdf' && !isPdfTextView) {
+        // PDF Image View
+        return (
+            <div className="w-full text-center space-y-4">
+                {pdfPageImage && (
+                    <NextImage
+                        src={pdfPageImage}
+                        alt={`Page ${currentPdfPageNum}`}
+                        width={0}
+                        height={0}
+                        style={{ width: 'auto', height: 'auto', maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }}
+                        className="shadow-lg border rounded-md"
+                    />
+                )}
+            </div>
+        );
+    }
+    
+    if (activeDoc.type === 'epub') {
+        // EPUB View
+        return (
+             <div id="epub-container" className="w-full h-full flex flex-col items-center">
+                <div
+                    key={docId || 'epub-placeholder'}
+                    id="epub-viewer"
+                    ref={epubViewerRef}
+                    className="w-full flex-grow"
+                />
+            </div>
+        );
+    }
+
+    if (activeDoc.type === 'txt') {
+        return (
+            <div className="w-full h-full px-3 py-2 text-sm">
+                <HighlightableContent
+                    ref={mainHighlightedContentRef}
+                    text={currentTextForTTS}
+                    textSegments={textSegments}
+                    highlightedSegmentIndex={highlightedSegmentIndex}
+                    isSpeaking={isSpeaking}
+                    isPaused={isPaused}
+                />
+            </div>
+        );
+    }
+
+    if (activeDoc.type === 'image') {
+        // Image View
+        return (
+            <div className="w-full text-center space-y-4">
+                {displayedImageSrc && (
+                    <NextImage
+                        src={displayedImageSrc}
+                        alt={activeDoc.title || 'Uploaded Image'}
+                        width={800}
+                        height={600}
+                        style={{ objectFit: 'contain' }}
+                        className="max-w-full max-h-[calc(100%-4rem)] shadow-lg border rounded-md inline-block"
+                        data-ai-hint="illustration abstract"
+                    />
+                )}
+            </div>
+        );
+    }
+
+    if (activeDoc.type === 'mobi') {
+        return (
+            <div className="p-4 bg-background rounded-md shadow-inner text-center h-full flex flex-col justify-center items-center">
+                <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-2" />
+                <p className="font-semibold">MOBI Not Supported</p>
+                <p className="text-sm text-muted-foreground">Please convert to EPUB or PDF.</p>
+            </div>
+        );
+    }
+
+    return null;
+  }, [activeDoc, scratchpadText, isPdfTextView, pdfPageImage, currentPdfPageNum, displayedImageSrc, docId, epubViewerRef, currentTextForTTS, textSegments, highlightedSegmentIndex, isSpeaking, isPaused, readerDict.scratchpadPlaceholder]);
 
   return (
     <>
@@ -1709,46 +1795,7 @@ const ttsTextWithAnnotations = useMemo(() => {
                       transition: 'transform 0.2s ease-out'
                     }}
                   >
-                    {!activeDoc && !isLoadingDoc && !docErrorMessage && (
-                      <div className="w-full h-full">
-                        <Textarea
-                          ref={mainTextAreaRef}
-                          className="w-full h-full min-h-[200px] whitespace-pre-wrap select-text text-sm resize-none"
-                          value={scratchpadText}
-                          onChange={(e) => setScratchpadText(e.target.value)}
-                          placeholder={readerDict.scratchpadPlaceholder}
-                        />
-                      </div>
-                    )}
-                    {activeDoc?.type === 'pdf' && isPdfTextView && (
-                      <div className="w-full h-full px-3 py-2 text-sm">
-                        {renderedTextWithoutAnnotations}
-                      </div>
-                    )}
-                    {activeDoc?.type === 'pdf' && !isPdfTextView && (
-                      <div className="w-full text-center space-y-4">
-                        {pdfPageImage && <NextImage src={pdfPageImage} alt={`Page ${currentPdfPageNum}`} width={0} height={0} style={{ width: 'auto', height: 'auto', maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} className="shadow-lg border rounded-md" />}
-                      </div>
-                    )}
-                    <div id="epub-container" className={cn("w-full h-full flex flex-col items-center", activeDoc?.type !== 'epub' && "hidden")}>
-                      <div
-                        key={docId || 'epub-placeholder'}
-                        id="epub-viewer"
-                        ref={epubViewerRef}
-                        className="w-full flex-grow"
-                      />
-                    </div>
-                    {activeDoc?.type === 'txt' && (
-                      <div className="w-full h-full px-3 py-2 text-sm">
-                        {renderedTextWithoutAnnotations}
-                      </div>
-                    )}
-                    {activeDoc?.type === 'image' && displayedImageSrc && (
-                      <div className="w-full text-center space-y-4">
-                        <NextImage src={displayedImageSrc} alt={activeDoc.title || 'Uploaded Image'} width={800} height={600} style={{ objectFit: 'contain' }} className="max-w-full max-h-[calc(100%-4rem)] shadow-lg border rounded-md inline-block" data-ai-hint="illustration abstract" />
-                      </div>
-                    )}
-                    {activeDoc?.type === 'mobi' && (<div className="p-4 bg-background rounded-md shadow-inner text-center h-full flex flex-col justify-center items-center"> <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-2" /> <p className="font-semibold">MOBI Not Supported</p> <p className="text-sm text-muted-foreground">Please convert to EPUB or PDF.</p> </div>)}
+                   {mainContent}
                   </div>
                 </CardContent>
             </Card>
@@ -1773,7 +1820,14 @@ const ttsTextWithAnnotations = useMemo(() => {
                             autoFocus
                             />
                         ) : (
-                            ttsTextWithAnnotations
+                             <HighlightableContent
+                                ref={ttsBoxHighlightedContentRef}
+                                text={currentTextForTTS}
+                                textSegments={textSegments}
+                                highlightedSegmentIndex={highlightedSegmentIndex}
+                                isSpeaking={isSpeaking}
+                                isPaused={isPaused}
+                            />
                         )}
                     </div>
                 </CardContent>
@@ -2243,3 +2297,4 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
+
