@@ -234,33 +234,30 @@ function ReaderPageComponent({ docId, isMobile }: { docId: string | null; isMobi
   
   
 const sortedAnnotations = useMemo(() => {
-    let allAnnotations: Annotation[];
-    let pageNum: number | undefined = undefined;
-
-    if (activeDoc) {
-        allAnnotations = activeDoc.annotations || [];
-        if (activeDoc.type === 'pdf') {
-          pageNum = currentPdfPageNum;
-        } else if (activeDoc.type === 'epub') {
-          pageNum = epubCurrentPageNum;
-        }
-    } else {
-        allAnnotations = scratchpadAnnotations;
-    }
+    const allAnnotations: Annotation[] = activeDoc?.annotations || scratchpadAnnotations;
     
-    const isStrictlyPaginatedView = activeDoc?.type === 'pdf' && !isPdfTextView;
-
-    if (isStrictlyPaginatedView && pageNum !== undefined) {
+    // For paginated views (PDF image mode), filter by the current page number.
+    const isPaginatedView = activeDoc?.type === 'pdf' && !isPdfTextView;
+    if (isPaginatedView) {
+        const pageNum = currentPdfPageNum;
         return allAnnotations
             .filter(ann => ann.pageNumber === pageNum)
             .sort((a, b) => a.startIndex - b.startIndex);
-    } else {
+    }
+    
+    // For text-based views, filter by checking if the annotation's text exists in the current view's text.
+    // This ensures annotations from other parts of a large document don't bleed over.
+    const currentText = currentTextForTTS;
+    if (currentText) {
         return allAnnotations
-            .filter(ann => ann.targetText && currentTextForTTS && currentTextForTTS.includes(ann.targetText))
+            .filter(ann => currentText.includes(ann.targetText))
             .sort((a, b) => a.startIndex - b.startIndex);
     }
 
-}, [activeDoc, scratchpadAnnotations, currentTextForTTS, currentPdfPageNum, isPdfTextView, epubCurrentPageNum]);
+    // Default to an empty array if no context is matched.
+    return [];
+
+}, [activeDoc, scratchpadAnnotations, currentTextForTTS, currentPdfPageNum, isPdfTextView]);
 
 
 const getCharPosition = (container: HTMLElement, charIndex: number): { top: number, left: number } | null => {
@@ -294,10 +291,10 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
         if (containerRef.current && annotations.length > 0 && text) {
             const newPositions: Record<string, { top: number, left: number }> = {};
             annotations.forEach(ann => {
-                if (text.includes(ann.targetText)) {
-                    const posInCurrentText = text.indexOf(ann.targetText, ann.startIndex);
-                    const finalCharIndex = (posInCurrentText !== -1 ? posInCurrentText : ann.startIndex) + ann.targetText.length - 1;
-
+                // Ensure we find the annotation in the *current* text context
+                const posInCurrentText = text.indexOf(ann.targetText);
+                if (posInCurrentText !== -1) {
+                    const finalCharIndex = posInCurrentText + ann.targetText.length - 1;
                     const pos = getCharPosition(containerRef.current!, finalCharIndex);
                     if (pos) {
                         newPositions[ann.id] = pos;
@@ -319,7 +316,7 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
                 return (
                     <sup
                         key={annotation.id}
-                        className="absolute w-4 h-4 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs leading-none cursor-pointer"
+                        className="absolute w-4 h-4 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs leading-none cursor-pointer z-10"
                         style={{ top: pos.top, left: pos.left, transform: 'translate(0, -50%)' }}
                         onClick={(e) => { e.stopPropagation(); setViewingAnnotation(annotation); }}
                     >
