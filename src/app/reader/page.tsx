@@ -126,16 +126,14 @@ const HighlightableContent = React.forwardRef<HTMLDivElement, {
 HighlightableContent.displayName = 'HighlightableContent';
 
 
-function ReaderPageComponent({ isMobile }: { isMobile: boolean | undefined }) {
+function ReaderPageComponent({ docId, isMobile }: { docId: string | null; isMobile: boolean | undefined }) {
   const { toast } = useToast();
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { locale } = useContext(LanguageContext);
   const dictionary = getDictionary(locale);
   const commonDict = dictionary.common;
   const readerDict = dictionary.reader;
   const favDict = dictionary.favorites;
-  const docId = searchParams.get('docId');
 
   const [activeDoc, setActiveDoc] = useState<ActiveMangaDocument | null>(null);
   const [isLoadingDoc, setIsLoadingDoc] = useState(true);
@@ -2281,11 +2279,12 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
 
 export default function ReaderPage() {
     const isMobile = useIsMobile();
+    const searchParams = useSearchParams();
+    const docId = searchParams.get('docId');
+
     return (
         <AuthGuard>
-            <ReaderPageComponent isMobile={isMobile} />
+            <ReaderPageComponent docId={docId} isMobile={isMobile} />
         </AuthGuard>
     )
 }
-
-    
