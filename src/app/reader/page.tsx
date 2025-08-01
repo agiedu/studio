@@ -236,7 +236,6 @@ function ReaderPageComponent({ docId, isMobile }: { docId: string | null; isMobi
 const sortedAnnotations = useMemo(() => {
     const allAnnotations: Annotation[] = activeDoc?.annotations || scratchpadAnnotations;
     
-    // For paginated image views (PDF image mode), filter strictly by the current page number.
     const isPaginatedImageView = activeDoc?.type === 'pdf' && !isPdfTextView;
     if (isPaginatedImageView) {
         const pageNum = currentPdfPageNum;
@@ -261,7 +260,7 @@ const sortedAnnotations = useMemo(() => {
 
 
 const getCharPosition = (container: HTMLElement, charIndex: number): { top: number, left: number } | null => {
-    if (charIndex < 0) return null;
+    if (charIndex < 0 || !container) return null;
 
     const range = document.createRange();
     const walker = document.createTreeWalker(container, Node.TEXT_NODE, null);
@@ -278,7 +277,8 @@ const getCharPosition = (container: HTMLElement, charIndex: number): { top: numb
             if (finalCharIndexInNode > nodeLength) {
                 // This can happen with complex highlighting where text is fragmented.
                 // We skip this node and let the loop find the correct one.
-                continue; 
+                currentOffset += nodeLength;
+                continue;
             }
 
             try {
