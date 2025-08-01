@@ -233,31 +233,6 @@ function ReaderPageComponent({ docId, isMobile }: { docId: string | null; isMobi
   }, [currentTextForTTS]);
   
   
-const sortedAnnotations = useMemo(() => {
-    const allAnnotations: Annotation[] = activeDoc?.annotations || scratchpadAnnotations;
-    
-    if (activeDoc?.type === 'pdf' && !isPdfTextView) {
-        const pageNum = currentPdfPageNum;
-        return allAnnotations
-            .filter(ann => ann.pageNumber === pageNum)
-            .sort((a, b) => a.startIndex - b.startIndex);
-    }
-    
-    const currentText = activeDoc ? currentTextForTTS : scratchpadText;
-    if (currentText) {
-        return allAnnotations
-            .filter(ann => {
-                const expectedText = currentText.substring(ann.startIndex, ann.startIndex + ann.targetText.length);
-                return expectedText === ann.targetText;
-            })
-            .sort((a, b) => a.startIndex - b.startIndex);
-    }
-
-    return [];
-
-}, [activeDoc, scratchpadText, scratchpadAnnotations, currentTextForTTS, currentPdfPageNum, isPdfTextView]);
-
-
 const getCharPosition = (container: HTMLElement, charIndex: number): { top: number, left: number } | null => {
     if (!container || charIndex < 0) return null;
 
@@ -270,9 +245,11 @@ const getCharPosition = (container: HTMLElement, charIndex: number): { top: numb
         const nodeLength = currentNode.textContent?.length || 0;
         if (currentOffset + nodeLength >= charIndex) {
             const finalCharIndexInNode = charIndex - currentOffset;
-             if (finalCharIndexInNode < 0 || finalCharIndexInNode > nodeLength) {
-                // This case should ideally not be hit with correct logic, but it's a safeguard.
+
+            // This is the fix: ensure the calculated index is not out of bounds for the current node.
+            if (finalCharIndexInNode < 0 || finalCharIndexInNode > nodeLength) {
                 console.error(`Calculated invalid index ${finalCharIndexInNode} for node with length ${nodeLength}`);
+                // This annotation can't be placed, return null to avoid a crash.
                 return null;
             }
 
@@ -303,6 +280,7 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
         if (containerRef.current && annotations.length > 0 && text) {
             const newPositions: Record<string, { top: number, left: number } | null> = {};
             annotations.forEach(ann => {
+                // Use the end of the target text for positioning the marker
                 const finalCharIndex = ann.startIndex + ann.targetText.length - 1;
                 newPositions[ann.id] = getCharPosition(containerRef.current!, finalCharIndex);
             });
@@ -310,7 +288,7 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
         } else if (annotations.length === 0) {
             setPositions({}); // Clear positions if no annotations
         }
-    }, [annotations, containerRef, text]);
+    }, [annotations, containerRef, text]); // Rerun when text changes to re-evaluate positions
 
     if (annotations.length === 0) return null;
 
@@ -335,7 +313,34 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
     );
 };
 
-  const getSelectedText = useCallback((): { text: string; startIndex: number | null } => {
+const sortedAnnotations = useMemo(() => {
+    const allAnnotations: Annotation[] = activeDoc?.annotations || scratchpadAnnotations;
+    
+    if (activeDoc?.type === 'pdf' && !isPdfTextView) {
+        const pageNum = currentPdfPageNum;
+        return allAnnotations
+            .filter(ann => ann.pageNumber === pageNum)
+            .sort((a, b) => a.startIndex - b.startIndex);
+    }
+    
+    // For text views (PDF text, EPUB, TXT, Scratchpad)
+    const currentText = activeDoc ? currentTextForTTS : scratchpadText;
+    if (currentText) {
+        return allAnnotations
+            // This is the fix: check both text and the exact start index.
+            .filter(ann => {
+                const expectedText = currentText.substring(ann.startIndex, ann.startIndex + ann.targetText.length);
+                return expectedText === ann.targetText;
+            })
+            .sort((a, b) => a.startIndex - b.startIndex);
+    }
+
+    return [];
+
+}, [activeDoc, scratchpadText, scratchpadAnnotations, currentTextForTTS, currentPdfPageNum, isPdfTextView]);
+
+
+const getSelectedText = useCallback((): { text: string; startIndex: number | null } => {
     if (typeof window === 'undefined') {
         return { text: '', startIndex: null };
     }
@@ -2032,7 +2037,7 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
                         <div className="space-y-4">
                             <div className="space-y-2">
                             <Label htmlFor="tts-engine">{readerDict.ttsEngine}</Label>
-                            <Select value={ttsSettings.engine} onValueChange={(v) => handleSettingChange('engine', v as 'local' | 'cloud')} disabled={isSpeaking}>
+                            <Select value={ttsSettings.engine} onValueChange={(v) => handleSettingChange('engine', v as 'local' | 'cloud')} disabled={isSpeaking && !isPaused}>
                                 <SelectTrigger id="tts-engine">
                                 <SelectValue />
                                 </SelectTrigger>
@@ -2045,7 +2050,7 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
                             {ttsSettings.engine === 'local' && (
                             <div className="space-y-2">
                                 <Label htmlFor="tts-voice">{readerDict.voiceLocal}</Label>
-                                <Select value={ttsSettings.voiceURI || ""} onValueChange={(v) => handleSettingChange('voiceURI', v)} disabled={isSpeaking || availableVoices.length === 0}>
+                                <Select value={ttsSettings.voiceURI || ""} onValueChange={(v) => handleSettingChange('voiceURI', v)} disabled={(isSpeaking && !isPaused) || availableVoices.length === 0}>
                                 <SelectTrigger id="tts-voice">
                                     <SelectValue placeholder={availableVoices.length > 0 ? readerDict.selectVoice : readerDict.noLocalVoices} />
                                 </SelectTrigger>
@@ -2070,7 +2075,7 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
                             <>
                                 <div className="space-y-2">
                                     <Label htmlFor="cloud-tts-language">{readerDict.languageCloud}</Label>
-                                    <Select value={ttsSettings.language} onValueChange={(v) => handleSettingChange('language', v as string)} disabled={isSpeaking}>
+                                    <Select value={ttsSettings.language} onValueChange={(v) => handleSettingChange('language', v as string)} disabled={isSpeaking && !isPaused}>
                                         <SelectTrigger id="cloud-tts-language"><SelectValue placeholder={readerDict.selectLanguage} /></SelectTrigger>
                                         <SelectContent className="max-h-60">
                                             {Object.entries(edgeTTSLanguageVoices).map(([locale, { language }]) => (
@@ -2081,7 +2086,7 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="cloud-tts-voice">{readerDict.voiceCloud}</Label>
-                                    <Select value={ttsSettings.cloudVoiceId || ""} onValueChange={(v) => handleSettingChange('cloudVoiceId', v)} disabled={isSpeaking || !ttsSettings.language}>
+                                    <Select value={ttsSettings.cloudVoiceId || ""} onValueChange={(v) => handleSettingChange('cloudVoiceId', v)} disabled={(isSpeaking && !isPaused) || !ttsSettings.language}>
                                         <SelectTrigger id="cloud-tts-voice"><SelectValue placeholder={readerDict.selectVoice} /></SelectTrigger>
                                         <SelectContent className="max-h-60">
                                             {(edgeTTSLanguageVoices[ttsSettings.language]?.voices || []).map(voice => (
@@ -2094,11 +2099,11 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
                             )}
                             <div className="space-y-2">
                             <Label htmlFor="tts-rate">{readerDict.rate.replace('{rate}', ttsSettings.rate.toFixed(1))}</Label>
-                            <Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isSpeaking} />
+                            <Slider id="tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isSpeaking && !isPaused} />
                             </div>
                             <div className="space-y-2">
                             <Label htmlFor="tts-pitch">{readerDict.pitch.replace('{pitch}', ttsSettings.pitch.toFixed(1))}</Label>
-                            <Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isSpeaking} />
+                            <Slider id="tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isSpeaking && !isPaused} />
                             </div>
                             <div className="space-y-2">
                             <Label htmlFor="tts-font-size" className="text-sm">{readerDict.fontSize.replace('{size}', ttsTextSize.toString())}</Label>
@@ -2280,4 +2285,5 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
+
 
