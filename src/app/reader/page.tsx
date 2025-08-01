@@ -9,17 +9,16 @@ import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist/types/src/displa
 import ePub from 'epubjs';
 import type Book from 'epubjs/types/book';
 import type Rendition from 'epubjs/types/rendition';
-import type { Locations } from 'epubjs/types/locations';
 
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, Play, Pause, Smartphone, Cloud as CloudIcon, Star, AlertTriangle, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, BookOpen, Settings2, FileText, ScanText, Trash2, Edit, Repeat, X, CaseSensitive, MessageSquarePlus, ImagePlus, FileImage, Pencil, Expand, Shrink, Menu, Check, Settings, FileEdit } from 'lucide-react';
+import { Loader2, Play, Pause, Smartphone, Cloud as CloudIcon, Star, AlertTriangle, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, BookOpen, Settings2, FileText, ScanText, Trash2, Edit, Repeat, X, MessageSquarePlus, ImagePlus, Pencil, Expand, Shrink, Menu, Check, Settings, FileEdit } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -58,7 +57,6 @@ import { getDictionary } from '@/lib/i18n';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { AnimatePresence, motion } from 'framer-motion';
 
-const PDF_DEFAULT_SCALE = 1.0;
 const PUNCTUATION_REGEX = /[.,?!,。？！，、\n\r"“„”'‘’`*_{}\[\]()#&@:;~<>/\\|\-—–^%$《》]/g;
 
 type SpeechOrigin = 'main' | 'repeat' | null;
@@ -77,14 +75,12 @@ const groupVoicesByLanguage = (voices: TTSVoice[]) => {
   }, {} as Record<string, TTSVoice[]>);
 };
 
-// Define a type for the locked selection to ensure type safety
 type SelectionForAnnotation = {
   text: string;
-  startIndex: number; // Optional because not all contexts (like scratchpad) have a page number
+  startIndex: number;
 } | null;
 
 
-// A new component to render text with highlighting capabilities.
 const HighlightableContent = React.forwardRef<HTMLDivElement, {
     text: string;
     textSegments: string[];
@@ -166,8 +162,8 @@ function ReaderPageComponent({ docId, isMobile }: { docId: string | null; isMobi
   const [displayedImageSrc, setDisplayedImageSrc] = useState<string | null>(null);
   const currentImageObjectUrlRef = useRef<string | null>(null);
   
-  const [scratchpadText, setScratchpadText] = useState<string>(LocalStorageService.loadScratchpadText());
-  const [scratchpadAnnotations, setScratchpadAnnotations] = useState<Annotation[]>(LocalStorageService.loadScratchpadAnnotations());
+  const [scratchpadText, setScratchpadText] = useState<string>('');
+  const [scratchpadAnnotations, setScratchpadAnnotations] = useState<Annotation[]>([]);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
   const [isPerformingOcr, setIsPerformingOcr] = useState(false);
@@ -195,7 +191,6 @@ function ReaderPageComponent({ docId, isMobile }: { docId: string | null; isMobi
   const isSpeakingRef = useRef(false);
   const segmentIndexRef = useRef(0);
   
-  // This state "locks in" the selection when the user decides to create an annotation.
   const [selectionForAnnotation, setSelectionForAnnotation] = useState<SelectionForAnnotation>(null);
 
   const mainTextAreaRef = useRef<HTMLTextAreaElement | null>(null); 
@@ -211,7 +206,7 @@ function ReaderPageComponent({ docId, isMobile }: { docId: string | null; isMobi
 
   const [annotationDialog, setAnnotationDialog] = useState({
     open: false,
-    id: null as string | null, // Add id for editing
+    id: null as string | null,
     note: '',
     imageDataUrl: '',
     isSaving: false,
@@ -251,18 +246,13 @@ const sortedAnnotations = useMemo(() => {
         allAnnotations = scratchpadAnnotations;
     }
     
-    // Only PDF Image view is strictly paginated. EPUB, PDF Text, TXT, and Scratchpad are continuous text flows.
     const isStrictlyPaginatedView = activeDoc?.type === 'pdf' && !isPdfTextView;
 
     if (isStrictlyPaginatedView && pageNum !== undefined) {
-        // For PDF image view, filter by the exact page number.
         return allAnnotations
             .filter(ann => ann.pageNumber === pageNum)
             .sort((a, b) => a.startIndex - b.startIndex);
     } else {
-        // For all other views (EPUB, PDF text, TXT, Scratchpad), filter annotations
-        // based on whether their target text actually exists in the current text block.
-        // This is the most reliable way to anchor annotations to text, not pages.
         return allAnnotations
             .filter(ann => ann.targetText && currentTextForTTS && currentTextForTTS.includes(ann.targetText))
             .sort((a, b) => a.startIndex - b.startIndex);
@@ -302,10 +292,7 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
         if (containerRef.current && annotations.length > 0 && text) {
             const newPositions: Record<string, { top: number, left: number }> = {};
             annotations.forEach(ann => {
-                // Ensure the annotation's target text is actually in the current text before calculating position
                 if (text.includes(ann.targetText)) {
-                    // Use the annotation's own startIndex, which should be relative to the *full* document text.
-                    // Let's find its position within the *current* text view.
                     const posInCurrentText = text.indexOf(ann.targetText, ann.startIndex);
                     const finalCharIndex = (posInCurrentText !== -1 ? posInCurrentText : ann.startIndex) + ann.targetText.length - 1;
 
@@ -317,7 +304,7 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
             });
             setPositions(newPositions);
         }
-    }, [annotations, containerRef, text]); // Re-calculate when text or annotations change
+    }, [annotations, containerRef, text]);
 
     if (annotations.length === 0) return null;
 
@@ -392,14 +379,13 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
       if (details) return details;
     }
     
-    // Fallback for EPUB iframe
     if (activeDoc?.type === 'epub' && epubRenditionRef.current) {
         try {
             const epubWindow = epubRenditionRef.current.getContents()?.[0]?.window;
             if (epubWindow && epubWindow.getSelection()?.toString()) {
                 const epubSelection = epubWindow.getSelection();
                 if(epubSelection) {
-                  return { text: epubSelection.toString(), startIndex: null }; // startIndex is hard for iframes
+                  return { text: epubSelection.toString(), startIndex: null };
                 }
             }
         } catch (e) { console.warn("Could not get selection from EPUB iframe", e); }
@@ -641,7 +627,6 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
                           LocalStorageService.saveCurrentEpubCfiForDoc(currentDocId, location.start.cfi);
                       }
 
-                      // Update page number based on new location
                       if (epubBookRef.current.locations.length() > 0) {
                           const percentage = epubBookRef.current.locations.percentageFromCfi(location.start.cfi);
                           const total = epubTotalPages || epubBookRef.current.locations.length();
@@ -1419,7 +1404,6 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
       return;
     }
 
-    // CRITICAL: Lock the selection info into state here
     setSelectionForAnnotation({
         text: selectionInfo.text,
         startIndex: selectionInfo.startIndex
@@ -1482,7 +1466,7 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
         const updatedDoc = { ...activeDoc, annotations: updatedAnnotations };
         await IndexedDBService.saveDocument(updatedDoc);
         setActiveDoc(updatedDoc);
-      } else { // Scratchpad
+      } else {
         let updatedAnnotations;
         if (id) {
           updatedAnnotations = scratchpadAnnotations.map(ann => ann.id === id ? newOrUpdatedAnnotation : ann);
@@ -1496,7 +1480,7 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
       toast({ variant: 'destructive', title: readerDict.failedToSave, description: readerDict.failedToSaveDesc.replace('{message}', e.message) });
     } finally {
       setAnnotationDialog({ open: false, id: null, note: '', imageDataUrl: '', isSaving: false });
-      setSelectionForAnnotation(null); // Clear the locked selection after saving
+      setSelectionForAnnotation(null);
     }
   };
   
@@ -1511,7 +1495,7 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
             const updatedDoc = { ...activeDoc, annotations: updatedAnnotations };
             await IndexedDBService.saveDocument(updatedDoc);
             setActiveDoc(updatedDoc);
-        } else { // Scratchpad
+        } else {
             const updatedAnnotations = scratchpadAnnotations.filter(a => a.id !== annotationId);
             setScratchpadAnnotations(updatedAnnotations);
         }
@@ -1520,7 +1504,7 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
     } catch (e: any) {
         toast({ variant: 'destructive', title: readerDict.failedToDelete, description: readerDict.failedToDeleteDesc.replace('{message}', e.message) });
     } finally {
-        setAnnotationToDelete(null); // Close the dialog
+        setAnnotationToDelete(null);
     }
   };
 
@@ -1562,7 +1546,6 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
     }
 
     if (isEditingTtsText) {
-        // This is the "Confirm" action
         if (activeDoc) {
             let updatedDoc = { ...activeDoc };
             let docNeedsSave = false;
@@ -1578,7 +1561,6 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
                 updatedDoc.ocrTextPerPage[pageNum] = currentTextForTTS;
                 docNeedsSave = true;
             } else if (updatedDoc.type === 'txt' || (updatedDoc.type === 'pdf' && isPdfTextView)) {
-                // For plain text docs, we overwrite the fileData
                 const encoder = new TextEncoder();
                 updatedDoc.fileData = encoder.encode(currentTextForTTS);
                 docNeedsSave = true;
@@ -1587,7 +1569,7 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
             if (docNeedsSave) {
                 try {
                     await IndexedDBService.saveDocument(updatedDoc);
-                    setActiveDoc(updatedDoc); // Update state to reflect saved changes
+                    setActiveDoc(updatedDoc);
                     toast({ title: "Changes Saved", description: "Your edits have been saved to the local database." });
                 } catch (e: any) {
                     toast({ variant: "destructive", title: "Save Error", description: `Could not save changes: ${e.message}` });
@@ -1621,23 +1603,10 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
   const showInitialLoader = isLoadingDoc && !activeDoc && !docErrorMessage;
   const showDocumentError = docErrorMessage && !activeDoc;
   
-  if (showInitialLoader) { 
-    return <div className="flex items-center justify-center h-full flex-grow"><Loader2 className="h-12 w-12 animate-spin text-primary" /><p className="ml-4 text-lg">{readerDict.loadingDocument}</p></div>; 
-  }
-  if (showDocumentError) { 
-    return <div className="flex flex-col items-center justify-center h-full flex-grow p-4 text-center"> <AlertTriangle className="h-12 w-12 text-destructive mb-4" /> <h2 className="text-xl font-semibold mb-2">{readerDict.docErrorTitle}</h2> <p className="text-muted-foreground mb-4">{docErrorMessage}</p> <Button onClick={() => router.push('/library')}>{readerDict.goToLibrary}</Button> </div>; 
-  }
-  
-  const showOcrButtonForPdfPage = activeDoc?.type === 'pdf' && !isPdfTextView && pdfPageImage && !isRenderingPdfPage && !isLoadingDoc && !pdfPageIsTextBased;
-  const showOcrButtonForImage = activeDoc?.type === 'image' && displayedImageSrc && !isLoadingDoc && !isPerformingOcr;
-  const showOcrButtonForEpubPage = activeDoc?.type === 'epub' && epubPageIsImage && !isLoadingDoc && !isPerformingOcr;
-
-  const showViewControls = !activeDoc || (activeDoc?.type && ['pdf', 'image', 'epub', 'txt'].includes(activeDoc.type));
   const groupedLocalVoices = groupVoicesByLanguage(availableVoices);
 
   const mainContent = useMemo(() => {
     if (!activeDoc) {
-        // Scratchpad view
         return (
             <div className="w-full h-full">
                 <Textarea
@@ -1667,7 +1636,6 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
     }
 
     if (activeDoc.type === 'pdf' && !isPdfTextView) {
-        // PDF Image View
         return (
             <div className="w-full text-center space-y-4">
                 {pdfPageImage && (
@@ -1685,7 +1653,6 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
     }
     
     if (activeDoc.type === 'epub') {
-        // EPUB View
         return (
              <div id="epub-container" className="w-full h-full flex flex-col items-center">
                 <div
@@ -1714,7 +1681,6 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
     }
 
     if (activeDoc.type === 'image') {
-        // Image View
         return (
             <div className="w-full text-center space-y-4">
                 {displayedImageSrc && (
@@ -1745,6 +1711,11 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
     return null;
   }, [activeDoc, scratchpadText, isPdfTextView, pdfPageImage, currentPdfPageNum, displayedImageSrc, docId, epubViewerRef, currentTextForTTS, textSegments, highlightedSegmentIndex, isSpeaking, isPaused, readerDict.scratchpadPlaceholder]);
 
+  // Main Return Logic: Unconditional hooks followed by conditional rendering.
+  if (showInitialLoader) { 
+    return <div className="flex items-center justify-center h-full flex-grow"><Loader2 className="h-12 w-12 animate-spin text-primary" /><p className="ml-4 text-lg">{readerDict.loadingDocument}</p></div>; 
+  }
+  
   return (
     <>
       <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)] overflow-hidden relative">
@@ -1755,7 +1726,7 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
             <Card className={cn(
                 "flex-grow flex flex-col min-h-0 shadow-inner relative transition-all duration-300",
                 ttsAreaState === 'hidden' && 'h-full',
-                ttsAreaState === 'caption' && 'h-[calc(100%-6rem)]', // Adjust height for caption
+                ttsAreaState === 'caption' && 'h-[calc(100%-6rem)]',
                 ttsAreaState === 'fullscreen' && 'h-0 opacity-0 invisible'
             )}>
                 <CardContent
@@ -1768,7 +1739,7 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
                     <p className="ml-3">{readerDict.loadingContent}</p>
                   </div>
                 )}
-                {docErrorMessage && !activeDoc && (
+                {showDocumentError && (
                   <div className="absolute inset-x-0 top-4 mx-auto w-fit max-w-md bg-destructive/10 border border-destructive text-destructive p-3 rounded-md shadow-lg z-20 flex items-start gap-2">
                     <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
                     <div>
@@ -1911,7 +1882,7 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
                     >
                         {isEditingTtsText ? <Check className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
                     </Button>
-                    {(showOcrButtonForPdfPage || showOcrButtonForImage || showOcrButtonForEpubPage) && (
+                    {(activeDoc?.type === 'pdf' && !isPdfTextView && pdfPageImage && !isRenderingPdfPage && !pdfPageIsTextBased) || (activeDoc?.type === 'image' && displayedImageSrc && !isLoadingDoc && !isPerformingOcr) || (activeDoc?.type === 'epub' && epubPageIsImage && !isLoadingDoc && !isPerformingOcr) && (
                         <Button
                         onClick={handlePerformOcr}
                         disabled={isPerformingOcr || isEditingTtsText}
@@ -1973,7 +1944,7 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
                                 </div>
                                 </>
                             )}
-                            {showViewControls && (
+                            {(!activeDoc || (activeDoc?.type && ['pdf', 'image', 'epub', 'txt'].includes(activeDoc.type))) && (
                                 <>
                                 <Separator/>
                                 <div className="flex items-center gap-2">
@@ -2159,7 +2130,7 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
           onOpenChange={(isOpen) => {
             if (!isOpen) {
               setAnnotationDialog((p) => ({ ...p, open: false }));
-              setSelectionForAnnotation(null); // Clear locked selection on dialog close
+              setSelectionForAnnotation(null);
             }
           }}
         >
@@ -2278,9 +2249,9 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
 
 
 export default function ReaderPage() {
-    const isMobile = useIsMobile();
     const searchParams = useSearchParams();
     const docId = searchParams.get('docId');
+    const isMobile = useIsMobile();
 
     return (
         <AuthGuard>
