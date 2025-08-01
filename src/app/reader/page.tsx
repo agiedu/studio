@@ -88,8 +88,9 @@ const HighlightableContent = React.forwardRef<HTMLDivElement, {
     isSpeaking: boolean;
     isPaused: boolean;
     className?: string;
-}>(({ text, textSegments, highlightedSegmentIndex, isSpeaking, isPaused, className }, ref) => {
-    if (!text) return null;
+    children?: React.ReactNode;
+}>(({ text, textSegments, highlightedSegmentIndex, isSpeaking, isPaused, className, children }, ref) => {
+    if (!text) return <div ref={ref} className={cn("relative w-full h-full", className)}>{children}</div>;
 
     let content;
     if (isSpeaking || isPaused) {
@@ -116,6 +117,7 @@ const HighlightableContent = React.forwardRef<HTMLDivElement, {
             <div className="w-full h-full whitespace-pre-wrap select-text">
                 {content}
             </div>
+            {children}
         </div>
     );
 });
@@ -1630,7 +1632,9 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
                     highlightedSegmentIndex={highlightedSegmentIndex}
                     isSpeaking={isSpeaking}
                     isPaused={isPaused}
-                />
+                >
+                    <AnnotationMarkers containerRef={mainHighlightedContentRef} annotations={sortedAnnotations} text={currentTextForTTS} />
+                </HighlightableContent>
             </div>
         );
     }
@@ -1675,7 +1679,9 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
                     highlightedSegmentIndex={highlightedSegmentIndex}
                     isSpeaking={isSpeaking}
                     isPaused={isPaused}
-                />
+                >
+                    <AnnotationMarkers containerRef={mainHighlightedContentRef} annotations={sortedAnnotations} text={currentTextForTTS} />
+                </HighlightableContent>
             </div>
         );
     }
@@ -1709,9 +1715,9 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
     }
 
     return null;
-  }, [activeDoc, scratchpadText, isPdfTextView, pdfPageImage, currentPdfPageNum, displayedImageSrc, docId, epubViewerRef, currentTextForTTS, textSegments, highlightedSegmentIndex, isSpeaking, isPaused, readerDict.scratchpadPlaceholder]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeDoc, scratchpadText, isPdfTextView, pdfPageImage, currentPdfPageNum, displayedImageSrc, docId, epubViewerRef, currentTextForTTS, textSegments, highlightedSegmentIndex, isSpeaking, isPaused, readerDict.scratchpadPlaceholder, sortedAnnotations]);
 
-  // Main Return Logic: Unconditional hooks followed by conditional rendering.
   if (showInitialLoader) { 
     return <div className="flex items-center justify-center h-full flex-grow"><Loader2 className="h-12 w-12 animate-spin text-primary" /><p className="ml-4 text-lg">{readerDict.loadingDocument}</p></div>; 
   }
@@ -1790,7 +1796,9 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
                                 highlightedSegmentIndex={highlightedSegmentIndex}
                                 isSpeaking={isSpeaking}
                                 isPaused={isPaused}
-                            />
+                            >
+                               <AnnotationMarkers containerRef={ttsBoxHighlightedContentRef} annotations={sortedAnnotations} text={currentTextForTTS} />
+                            </HighlightableContent>
                         )}
                     </div>
                 </CardContent>
@@ -2259,3 +2267,5 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
+
+    
