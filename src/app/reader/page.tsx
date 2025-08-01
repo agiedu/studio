@@ -129,8 +129,7 @@ const HighlightableContent = React.forwardRef<HTMLDivElement, {
 HighlightableContent.displayName = 'HighlightableContent';
 
 
-function ReaderPageContent() {
-  const isMobile = useIsMobile();
+function ReaderPageContent({ isMobile }: { isMobile: boolean | undefined }) {
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -2290,9 +2289,13 @@ const DynamicReaderPageContent = dynamic(() => Promise.resolve(ReaderPageContent
 
 
 export default function ReaderPage() {
+    const isMobile = useIsMobile();
     return (
         <AuthGuard>
-            <DynamicReaderPageContent />
+            <DynamicReaderPageContent isMobile={isMobile} />
         </AuthGuard>
     )
 }
+
+
+    
