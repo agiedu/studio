@@ -133,7 +133,6 @@ function ReaderPageContent() {
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const isMobile = useIsMobile();
   const docId = searchParams.get('docId');
 
   const { locale } = useContext(LanguageContext);
@@ -142,6 +141,7 @@ function ReaderPageContent() {
   const readerDict = dictionary.reader;
   const favDict = dictionary.favorites;
 
+  const isMobile = useIsMobile();
   const [activeDoc, setActiveDoc] = useState<ActiveMangaDocument | null>(null);
   const [isLoadingDoc, setIsLoadingDoc] = useState(true);
   const [docErrorMessage, setDocErrorMessage] = useState<string | null>(null);
