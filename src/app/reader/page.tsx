@@ -1,5 +1,5 @@
 
-"use client";
+'use client';
 
 import React, { useState, useEffect, useCallback, useRef, useMemo, useContext } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -245,15 +245,10 @@ const sortedAnnotations = useMemo(() => {
             .sort((a, b) => a.startIndex - b.startIndex);
     }
     
-    // For all text-based views (Scratchpad, TXT, EPUB, PDF text-view),
-    // filter by checking if the annotation's specific instance (text + startIndex)
-    // exists in the current view's text content.
-    const currentText = currentTextForTTS;
+    const currentText = activeDoc ? currentTextForTTS : scratchpadText;
     if (currentText) {
         return allAnnotations
             .filter(ann => {
-                // Check if the text at the annotation's saved start index matches the annotation's text.
-                // This ensures we are targeting the exact instance, not just any identical text.
                 const expectedText = currentText.substring(ann.startIndex, ann.startIndex + ann.targetText.length);
                 return expectedText === ann.targetText;
             })
@@ -262,7 +257,7 @@ const sortedAnnotations = useMemo(() => {
 
     return [];
 
-}, [activeDoc, scratchpadAnnotations, currentTextForTTS, currentPdfPageNum, isPdfTextView]);
+}, [activeDoc, scratchpadText, scratchpadAnnotations, currentTextForTTS, currentPdfPageNum, isPdfTextView]);
 
 
 const getCharPosition = (container: HTMLElement, charIndex: number): { top: number, left: number } | null => {
@@ -276,11 +271,19 @@ const getCharPosition = (container: HTMLElement, charIndex: number): { top: numb
     while ((currentNode = walker.nextNode())) {
         const nodeText = currentNode.textContent || "";
         const nodeLength = nodeText.length;
+        const finalCharIndexInNode = charIndex - currentOffset;
 
         if (currentOffset + nodeLength >= charIndex) {
+            // Boundary check to prevent the "no child at offset" error
+            if (finalCharIndexInNode > nodeLength) {
+                // This can happen with complex highlighting where text is fragmented.
+                // We skip this node and let the loop find the correct one.
+                continue; 
+            }
+
             try {
-                range.setStart(currentNode, charIndex - currentOffset);
-                range.collapse(true); // Collapse the range to the start point
+                range.setStart(currentNode, finalCharIndexInNode);
+                range.collapse(true);
                 const rect = range.getBoundingClientRect();
                 const containerRect = container.getBoundingClientRect();
                 return {
@@ -288,8 +291,8 @@ const getCharPosition = (container: HTMLElement, charIndex: number): { top: numb
                     left: rect.left - containerRect.left + container.scrollLeft
                 };
             } catch (e) {
-                console.error("Error setting range in getCharPosition:", e);
-                return null; // A node might not support the range operation
+                console.error(`Error setting range in getCharPosition for charIndex ${charIndex}:`, e);
+                return null;
             }
         }
         currentOffset += nodeLength;
@@ -304,8 +307,6 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
         if (containerRef.current && annotations.length > 0 && text) {
             const newPositions: Record<string, { top: number, left: number } | null> = {};
             annotations.forEach(ann => {
-                // The `sortedAnnotations` logic already ensures this annotation belongs here.
-                // We directly use the `startIndex` for positioning.
                 const finalCharIndex = ann.startIndex + ann.targetText.length - 1;
                 newPositions[ann.id] = getCharPosition(containerRef.current!, finalCharIndex);
             });
@@ -1622,7 +1623,10 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
                     ref={mainTextAreaRef}
                     className="w-full h-full min-h-[200px] whitespace-pre-wrap select-text text-sm resize-none"
                     value={scratchpadText}
-                    onChange={(e) => setScratchpadText(e.target.value)}
+                    onChange={(e) => {
+                      setScratchpadText(e.target.value);
+                      setCurrentTextForTTS(e.target.value);
+                    }}
                     placeholder={readerDict.scratchpadPlaceholder}
                 />
                  <div className="absolute inset-0 pointer-events-none">
