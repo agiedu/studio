@@ -78,6 +78,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const segmentIndexRef = useRef(0);
   const mediaObjectUrlRef = useRef<string | null>(null);
   const isPlayingRef = useRef(false);
+  const isPausedRef = useRef(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && !audioPlayerRef.current) {
@@ -87,6 +88,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const stop = useCallback((resetPlayerState = true) => {
     isPlayingRef.current = false;
+    isPausedRef.current = false;
     speechQueueRef.current = [];
     segmentIndexRef.current = 0;
 
@@ -204,7 +206,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
       
       utterance.onend = () => {
-          if (utteranceRef.current === utterance && isPlayingRef.current) {
+          if (utteranceRef.current === utterance && isPlayingRef.current && !isPausedRef.current) {
               segmentIndexRef.current++;
               speakNextSegment();
           }
@@ -268,6 +270,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     stop(false);
     
     isPlayingRef.current = true;
+    isPausedRef.current = false;
     
     setIsPlaying(true);
     setIsPaused(false);
@@ -350,7 +353,8 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [onPlaybackEnd]);
   
   const pause = useCallback(() => {
-    if (!isPlayingRef.current || isPaused) return;
+    if (!isPlayingRef.current || isPausedRef.current) return;
+    isPausedRef.current = true;
     setIsPaused(true);
     if (typeof window !== 'undefined' && window.speechSynthesis.speaking) {
         window.speechSynthesis.pause();
@@ -359,27 +363,30 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     videoPlayer?.pause();
 
     if (typeof navigator !== 'undefined' && navigator.mediaSession) navigator.mediaSession.playbackState = 'paused';
-  }, [isPaused, videoPlayer]);
+  }, [videoPlayer]);
 
   const resume = useCallback(() => {
-    if (!isPlayingRef.current || !isPaused) return;
+    if (!isPlayingRef.current || !isPausedRef.current) return;
+    isPausedRef.current = false;
     setIsPaused(false);
     if (typeof navigator !== 'undefined' && navigator.mediaSession) navigator.mediaSession.playbackState = 'playing';
 
-    if (currentItem?.type === 'media_favorite') {
-      const player = currentItem.item.type === 'video' ? videoPlayer : audioPlayerRef.current;
+    const currentItemType = currentItem?.type;
+    const currentMediaType = (currentItem?.type === 'media_favorite') ? currentItem.item.type : null;
+
+    if (currentItemType === 'media_favorite') {
+      const player = currentMediaType === 'video' ? videoPlayer : audioPlayerRef.current;
       if(player?.paused) {
           player.play().catch(() => stop());
       }
     } else {
       if (window.speechSynthesis.paused) {
           window.speechSynthesis.resume();
-      }
-      if (audioPlayerRef.current?.paused) {
+      } else if (audioPlayerRef.current?.paused) {
           audioPlayerRef.current.play().catch(() => stop());
       }
     }
-  }, [isPaused, currentItem, videoPlayer, stop]);
+  }, [currentItem, videoPlayer, stop]);
 
   const handleSeek = (value: number) => {
     const player = currentItem?.type === 'media_favorite' 
@@ -453,7 +460,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const ttsAudioPlayer = audioPlayerRef.current; 
     const handleTtsEnded = () => {
-        if(isPlayingRef.current) {
+        if(isPlayingRef.current && !isPausedRef.current) {
             segmentIndexRef.current++;
             speakNextSegment();
         }
