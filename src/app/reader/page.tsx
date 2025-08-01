@@ -263,41 +263,48 @@ const getCharPosition = (container: HTMLElement, charIndex: number): { top: numb
     if (charIndex < 0 || !container) return null;
 
     const range = document.createRange();
-    const walker = document.createTreeWalker(container, Node.TEXT_NODE, null);
-    let currentNode: Node | null = null;
     let currentOffset = 0;
+    let targetNode: Node | null = null;
+    let targetOffset = -1;
 
-    while ((currentNode = walker.nextNode())) {
-        const nodeText = currentNode.textContent || "";
-        const nodeLength = nodeText.length;
-        const finalCharIndexInNode = charIndex - currentOffset;
+    function findPosition(node: Node) {
+        if (targetNode) return; // Stop if we've found it
 
-        if (currentOffset + nodeLength >= charIndex) {
-            // Boundary check to prevent the "no child at offset" error
-            if (finalCharIndexInNode > nodeLength) {
-                // This can happen with complex highlighting where text is fragmented.
-                // We skip this node and let the loop find the correct one.
+        if (node.nodeType === Node.TEXT_NODE) {
+            const textNode = node as Text;
+            const nodeLength = textNode.length;
+            if (currentOffset + nodeLength >= charIndex) {
+                targetNode = node;
+                targetOffset = charIndex - currentOffset;
+            } else {
                 currentOffset += nodeLength;
-                continue;
             }
-
-            try {
-                range.setStart(currentNode, finalCharIndexInNode);
-                range.collapse(true);
-                const rect = range.getBoundingClientRect();
-                const containerRect = container.getBoundingClientRect();
-                return {
-                    top: rect.top - containerRect.top + container.scrollTop,
-                    left: rect.left - containerRect.left + container.scrollLeft
-                };
-            } catch (e) {
-                console.error(`Error setting range in getCharPosition for charIndex ${charIndex}:`, e);
-                return null;
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+            for (let i = 0; i < node.childNodes.length; i++) {
+                findPosition(node.childNodes[i]);
             }
         }
-        currentOffset += nodeLength;
     }
-    return null; // charIndex is out of bounds
+
+    findPosition(container);
+    
+    if (targetNode && targetOffset !== -1) {
+        try {
+            range.setStart(targetNode, targetOffset);
+            range.collapse(true);
+            const rect = range.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+            return {
+                top: rect.top - containerRect.top + container.scrollTop,
+                left: rect.left - containerRect.left + container.scrollLeft
+            };
+        } catch (e) {
+             console.error(`Error setting range in getCharPosition for charIndex ${charIndex}:`, e);
+             return null;
+        }
+    }
+    
+    return null;
 };
 
 const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: React.RefObject<HTMLElement>, annotations: Annotation[], text: string }) => {
@@ -1797,6 +1804,7 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
                     <div className="w-full h-full whitespace-pre-wrap select-text overflow-y-auto" style={{ fontSize: `${ttsTextSize}px` }}>
                         {isEditingTtsText ? (
                             <Textarea
+                            ref={ttsBoxTextAreaRef}
                             value={currentTextForTTS}
                             onChange={(e) => setCurrentTextForTTS(e.target.value)}
                             className="w-full h-full resize-none bg-background text-foreground"
