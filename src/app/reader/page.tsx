@@ -126,8 +126,7 @@ const HighlightableContent = React.forwardRef<HTMLDivElement, {
 HighlightableContent.displayName = 'HighlightableContent';
 
 
-function ReaderPageComponent() {
-  const isMobile = useIsMobile();
+function ReaderPageComponent({ isMobile }: { isMobile: boolean | undefined }) {
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -2281,9 +2280,12 @@ const AnnotationMarkers = ({ containerRef, annotations, text }: { containerRef: 
 
 
 export default function ReaderPage() {
+    const isMobile = useIsMobile();
     return (
         <AuthGuard>
-            <ReaderPageComponent />
+            <ReaderPageComponent isMobile={isMobile} />
         </AuthGuard>
     )
 }
+
+    
