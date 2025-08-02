@@ -6,7 +6,6 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import NextImage from 'next/image';
 import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist/types/src/display/api';
-import ePub from 'epubjs';
 import type Book from 'epubjs/types/book';
 import type Rendition from 'epubjs/types/rendition';
 
@@ -18,7 +17,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, Play, Pause, Smartphone, Cloud as CloudIcon, Star, AlertTriangle, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, BookOpen, Settings2, FileText, ScanText, Trash2, Edit, Repeat, X, MessageSquarePlus, ImagePlus, Pencil, Expand, Shrink, Menu, Check, Settings, FileEdit } from 'lucide-react';
+import { Loader2, Play, Pause, Smartphone, Cloud as CloudIcon, Star, AlertTriangle, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, BookOpen, Settings2, FileText, ScanText, Trash2, Edit, Repeat, X, MessageSquarePlus, ImagePlus, Pencil, Expand, Shrink, Menu, Check, Settings, FileEdit, ListTree } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -159,6 +158,8 @@ function ReaderPageComponent({ docId, isMobile }: { docId: string | null; isMobi
   const [epubCurrentPageNum, setEpubCurrentPageNum] = useState(1);
   const [isEpubPaginating, setIsEpubPaginating] = useState(true);
   const [isEpubReadyForJumping, setIsEpubReadyForJumping] = useState(false);
+  const [epubToc, setEpubToc] = useState<any[]>([]); // For EPUB table of contents
+  const [isTocOpen, setIsTocOpen] = useState(false);
 
 
   const [txtContent, setTxtContent] = useState<string>("");
@@ -602,14 +603,19 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
               setIsEpubReadyForJumping(false);
 
               try {
+                  const ePub = (await import('epubjs')).default;
                   const book = ePub(doc.fileData);
                   epubBookRef.current = book;
             
                   if (isStale) return;
-                  if (!epubViewerRef.current) throw new Error("EPUB viewer element not ready.");
-            
-                  const rendition = book.renderTo(epubViewerRef.current, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
+                  
+                  const rendition = book.renderTo("epub-viewer", { width: "100%", height: "100%", flow: "paginated", spread: "none" });
                   epubRenditionRef.current = rendition;
+
+                  rendition.on('displayed', () => {
+                     const toc = book.navigation.toc;
+                     if(isMountedRef.current) setEpubToc(toc);
+                  });
 
                   const generateEpubPagination = async (b: Book) => {
                       if (!isMountedRef.current || isStale) return;
@@ -1609,6 +1615,14 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
     if (ttsAreaState === 'fullscreen') return readerDict.shrinkTTS;
     return readerDict.expandTTS;
   };
+
+  const handleTocItemClick = (href: string) => {
+    if (epubRenditionRef.current) {
+      stopSpeech(true);
+      epubRenditionRef.current.display(href);
+      setIsTocOpen(false); // Close TOC after navigation
+    }
+  };
   
   const mainButtonState = getMainButtonState();
   
@@ -1673,28 +1687,12 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
     }
     
     if (activeDoc.type === 'epub') {
-      // For EPUB, we now render the text content in a HighlightableContent component
-      // to enable consistent highlighting and selection features.
-      // The original epub-viewer div is now hidden and used only for navigation.
       return (
           <>
               <div 
-                  id="epub-viewer" 
-                  ref={epubViewerRef} 
-                  className="hidden" // This view is now hidden, used for control only
+                  id="epub-viewer"
+                  className="w-full h-full"
               />
-              <div className="w-full h-full px-3 py-2 text-sm">
-                  <HighlightableContent
-                      ref={mainHighlightedContentRef}
-                      text={currentTextForTTS}
-                      textSegments={textSegments}
-                      highlightedSegmentIndex={highlightedSegmentIndex}
-                      isSpeaking={isSpeaking}
-                      isPaused={isPaused}
-                  >
-                      <AnnotationMarkers containerRef={mainHighlightedContentRef} annotations={sortedAnnotations} text={currentTextForTTS} />
-                  </HighlightableContent>
-              </div>
           </>
       );
   }
@@ -1746,7 +1744,7 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
 
     return null;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeDoc, scratchpadText, isPdfTextView, pdfPageImage, currentPdfPageNum, displayedImageSrc, docId, epubViewerRef, currentTextForTTS, textSegments, highlightedSegmentIndex, isSpeaking, isPaused, readerDict.scratchpadPlaceholder, sortedAnnotations]);
+  }, [activeDoc, scratchpadText, isPdfTextView, pdfPageImage, currentPdfPageNum, displayedImageSrc, docId, currentTextForTTS, textSegments, highlightedSegmentIndex, isSpeaking, isPaused, readerDict.scratchpadPlaceholder, sortedAnnotations]);
 
   if (showInitialLoader) { 
     return <div className="flex items-center justify-center h-full flex-grow"><Loader2 className="h-12 w-12 animate-spin text-primary" /><p className="ml-4 text-lg">{readerDict.loadingDocument}</p></div>; 
@@ -1787,6 +1785,7 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
                 )}
 
                 <div
+                    id="main-content-viewer"
                     className="w-full h-full p-2 md:p-4 flex flex-col items-start justify-start overflow-auto"
                     style={{
                       transform: `scale(${viewScale})`,
@@ -1935,6 +1934,37 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
                             {isPerformingOcr ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanText className="h-4 w-4" />}
                         </Button>
                     )}
+                    {activeDoc?.type === 'epub' && epubToc.length > 0 && (
+                        <Popover open={isTocOpen} onOpenChange={setIsTocOpen}>
+                            <PopoverTrigger asChild>
+                                <Button variant="outline" size="icon" className="h-9 w-9" title="Table of Contents">
+                                    <ListTree className="h-4 w-4" />
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-80 p-0" align="end">
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle>{readerDict.docTitle}: {activeDoc.title}</CardTitle>
+                                    </CardHeader>
+                                    <CardContent className="max-h-80 overflow-y-auto">
+                                        <ul className="space-y-1">
+                                            {epubToc.map((item, index) => (
+                                                <li key={index}>
+                                                    <Button
+                                                        variant="link"
+                                                        className="p-0 h-auto text-left whitespace-normal"
+                                                        onClick={() => handleTocItemClick(item.href)}
+                                                    >
+                                                        {item.label.trim()}
+                                                    </Button>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </CardContent>
+                                </Card>
+                            </PopoverContent>
+                        </Popover>
+                    )}
                     <Popover>
                         <PopoverTrigger asChild>
                         <Button variant="outline" size="icon" className="h-9 w-9" title="Document Actions">
@@ -1985,7 +2015,7 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
                                 </div>
                                 </>
                             )}
-                            {(!activeDoc || (activeDoc?.type && ['pdf', 'image', 'epub', 'txt'].includes(activeDoc.type))) && (
+                            {(!activeDoc || (activeDoc?.type && ['pdf', 'image', 'epub'].includes(activeDoc.type))) && (
                                 <>
                                 <Separator/>
                                 <div className="flex items-center gap-2">
@@ -2166,7 +2196,7 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
           </AlertDialogContent>
         </AlertDialog>
 
-        <AlertDialog
+        <Dialog
           open={annotationDialog.open}
           onOpenChange={(isOpen) => {
             if (!isOpen) {
@@ -2175,7 +2205,7 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
             }
           }}
         >
-          <AlertDialogContent>
+          <DialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>{annotationDialog.id ? readerDict.editAnnotationTitle : readerDict.addAnnotationTitle}</AlertDialogTitle>
               <AlertDialogDescription>
@@ -2220,15 +2250,15 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
                 </div>
               )}
             </div>
-            <AlertDialogFooter>
-              <AlertDialogCancel>{commonDict.cancel}</AlertDialogCancel>
-              <AlertDialogAction onClick={handleSaveAnnotation} disabled={annotationDialog.isSaving}>
+            <DialogFooter>
+               <DialogClose asChild><Button variant="outline">{commonDict.cancel}</Button></DialogClose>
+              <Button onClick={handleSaveAnnotation} disabled={annotationDialog.isSaving}>
                 {annotationDialog.isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {readerDict.save}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={!!viewingAnnotation} onOpenChange={(isOpen) => !isOpen && setViewingAnnotation(null)}>
           <DialogContent className="max-w-md">
@@ -2300,6 +2330,7 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
+
 
 
 
