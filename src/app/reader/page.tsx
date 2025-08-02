@@ -1673,17 +1673,31 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
     }
     
     if (activeDoc.type === 'epub') {
-        return (
-             <div id="epub-container" className="w-full h-full flex flex-col items-center">
-                <div
-                    key={docId || 'epub-placeholder'}
-                    id="epub-viewer"
-                    ref={epubViewerRef}
-                    className="w-full flex-grow"
-                />
-            </div>
-        );
-    }
+      // For EPUB, we now render the text content in a HighlightableContent component
+      // to enable consistent highlighting and selection features.
+      // The original epub-viewer div is now hidden and used only for navigation.
+      return (
+          <>
+              <div 
+                  id="epub-viewer" 
+                  ref={epubViewerRef} 
+                  className="hidden" // This view is now hidden, used for control only
+              />
+              <div className="w-full h-full px-3 py-2 text-sm">
+                  <HighlightableContent
+                      ref={mainHighlightedContentRef}
+                      text={currentTextForTTS}
+                      textSegments={textSegments}
+                      highlightedSegmentIndex={highlightedSegmentIndex}
+                      isSpeaking={isSpeaking}
+                      isPaused={isPaused}
+                  >
+                      <AnnotationMarkers containerRef={mainHighlightedContentRef} annotations={sortedAnnotations} text={currentTextForTTS} />
+                  </HighlightableContent>
+              </div>
+          </>
+      );
+  }
 
     if (activeDoc.type === 'txt') {
         return (
@@ -2286,6 +2300,7 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
+
 
 
 
