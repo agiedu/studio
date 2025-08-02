@@ -8,6 +8,7 @@ import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist/types/src/display/api';
 import type Book from 'epubjs/types/book';
 import type Rendition from 'epubjs/types/rendition';
+import { AnimatePresence, motion } from 'framer-motion';
 
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -33,6 +34,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogFooter,
+  DialogTitle,
   DialogDescription,
   DialogClose,
 } from "@/components/ui/dialog";
@@ -54,7 +56,6 @@ import { edgeTTSLanguageVoices } from '@/lib/edge-tts-voices';
 import { LanguageContext } from '@/context/LanguageContext';
 import { getDictionary } from '@/lib/i18n';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { AnimatePresence, motion } from 'framer-motion';
 
 const PUNCTUATION_REGEX = /[.,?!,。？！，、\n\r"“„”'‘’`*_{}\[\]()#&@:;~<>/\\|\-—–^%$《》]/g;
 
@@ -2331,9 +2332,3 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
-
-
-
-
-
-
