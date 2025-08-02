@@ -36,6 +36,7 @@ import {
   DialogTitle,
   DialogFooter,
   DialogDescription,
+  DialogClose,
 } from "@/components/ui/dialog";
 import {
   Popover,
@@ -2285,5 +2286,6 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
+
 
 
