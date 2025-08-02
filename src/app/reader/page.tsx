@@ -13,7 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Separator } from '@/components/ui/separator';
@@ -32,7 +32,6 @@ import {
   Dialog,
   DialogContent,
   DialogHeader,
-  DialogTitle,
   DialogFooter,
   DialogDescription,
   DialogClose,
@@ -608,7 +607,8 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
                   epubBookRef.current = book;
             
                   if (isStale) return;
-                  
+                  if (!epubViewerRef.current) throw new Error("EPUB viewer element not ready.");
+            
                   const rendition = book.renderTo("epub-viewer", { width: "100%", height: "100%", flow: "paginated", spread: "none" });
                   epubRenditionRef.current = rendition;
 
@@ -1691,6 +1691,7 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
           <>
               <div 
                   id="epub-viewer"
+                  ref={epubViewerRef}
                   className="w-full h-full"
               />
           </>
@@ -2206,12 +2207,12 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
           }}
         >
           <DialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>{annotationDialog.id ? readerDict.editAnnotationTitle : readerDict.addAnnotationTitle}</AlertDialogTitle>
-              <AlertDialogDescription>
+            <DialogHeader>
+              <DialogTitle>{annotationDialog.id ? readerDict.editAnnotationTitle : readerDict.addAnnotationTitle}</DialogTitle>
+              <DialogDescription>
                 {readerDict.addAnnotationDescription}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
+              </DialogDescription>
+            </DialogHeader>
             <div className="space-y-4 py-2">
               <div className="space-y-2">
                 <Label htmlFor="annotation-note">{readerDict.yourNote}</Label>
@@ -2330,6 +2331,7 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
+
 
 
 
