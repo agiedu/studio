@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { useToast } from '@/hooks/use-toast';
 import { Play, Trash2, Loader2, Pause, Smartphone, Cloud as CloudIcon, Info, Star, Repeat1, ListOrdered, SkipBack, SkipForward, Settings, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
 import * as LocalStorage from '@/lib/localStorageService';
-import type { FavoriteItem, TTSVoice } from '@/types';
+import type { FavoriteItem, TTSVoice, PlaybackMode } from '@/types';
 import { format } from 'date-fns';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select';
@@ -119,7 +119,7 @@ function FavoritesPageContent() {
   
   const handlePlayPauseFavorite = (item: FavoriteItem) => {
     if (currentItem?.item.id === item.id && currentItem?.type === 'favorite') {
-        if (isPaused) {
+        if (isPlaying && isPaused) {
             resume();
         } else if (isPlaying) {
             pause();
@@ -296,7 +296,7 @@ function FavoritesPageContent() {
                               <RadioGroup
                                 value={playbackMode}
                                 onValueChange={(v) => {
-                                  setPlaybackMode(v as 'default' | 'loop-single' | 'sequential');
+                                  setPlaybackMode(v as PlaybackMode);
                                 }}
                                 className="flex items-center gap-4 mt-2"
                               >

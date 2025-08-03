@@ -146,3 +146,5 @@ export interface MangaDocumentDisplayInfo {
   createdAt: number;
   numPages?: number;
 }
+
+export type PlaybackMode = 'default' | 'loop-single' | 'sequential';
