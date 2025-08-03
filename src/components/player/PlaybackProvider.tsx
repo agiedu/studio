@@ -139,6 +139,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
     if (typeof navigator !== 'undefined' && navigator.mediaSession) {
         navigator.mediaSession.playbackState = 'none';
+        navigator.mediaSession.metadata = null;
     }
   }, [videoPlayer]);
 
@@ -293,6 +294,13 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
 
         setCurrentText(item.item.name);
+        if (typeof navigator !== 'undefined' && navigator.mediaSession) {
+            navigator.mediaSession.metadata = new MediaMetadata({
+              title: item.item.name,
+              artist: item.item.sourceDocumentName || 'MangaTalk',
+              album: 'Media Favorites',
+            });
+        }
         const blob = new Blob([item.item.fileData], { type: item.item.originalType });
         const url = URL.createObjectURL(blob);
         mediaObjectUrlRef.current = url;
@@ -415,26 +423,34 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const hasNext = useCallback(() => {
+      const mode = currentItem?.type === 'favorite' ? LocalStorage.loadFavoritesPlaybackMode()
+                 : currentItem?.type === 'note_favorite' ? LocalStorage.loadNotesPlaybackMode()
+                 : currentItem?.type === 'media_favorite' ? LocalStorage.loadMediaPlaybackMode()
+                 : 'default';
+      if (mode === 'sequential' && playlist.length > 0) return true;
       return currentIndex > -1 && currentIndex < playlist.length - 1;
-  }, [currentIndex, playlist.length]);
+  }, [currentIndex, playlist.length, currentItem]);
 
   const hasPrevious = useCallback(() => {
+      const mode = currentItem?.type === 'favorite' ? LocalStorage.loadFavoritesPlaybackMode()
+                 : currentItem?.type === 'note_favorite' ? LocalStorage.loadNotesPlaybackMode()
+                 : currentItem?.type === 'media_favorite' ? LocalStorage.loadMediaPlaybackMode()
+                 : 'default';
+      if (mode === 'sequential' && playlist.length > 0) return true;
       return currentIndex > 0;
-  }, [currentIndex]);
+  }, [currentIndex, currentItem, playlist.length]);
 
   const next = useCallback(() => {
     if (hasNext()) {
-        const nextIndex = currentIndex + 1;
+        const nextIndex = (currentIndex + 1) % playlist.length;
         const nextItem = playlist[nextIndex];
         play(nextItem, playlist, nextIndex);
-    } else if (playbackMode === 'sequential' && playlist.length > 0) {
-        play(playlist[0], playlist, 0);
     }
-  }, [currentIndex, hasNext, playlist, play, playbackMode]);
+  }, [currentIndex, hasNext, playlist, play]);
 
   const previous = useCallback(() => {
     if (hasPrevious()) {
-        const prevIndex = currentIndex - 1;
+        const prevIndex = (currentIndex - 1 + playlist.length) % playlist.length;
         const prevItem = playlist[prevIndex];
         play(prevItem, playlist, prevIndex);
     }
@@ -558,3 +574,5 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   return <PlaybackContext.Provider value={value}>{children}</PlaybackContext.Provider>;
 };
+
+    
