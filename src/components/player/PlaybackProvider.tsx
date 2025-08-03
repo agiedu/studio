@@ -95,8 +95,8 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (utteranceRef.current) {
       utteranceRef.current.onend = null;
       utteranceRef.current.onerror = null;
-      utteranceRef.current = null;
     }
+    utteranceRef.current = null;
     if (typeof window !== 'undefined' && window.speechSynthesis) {
         if(window.speechSynthesis.speaking || window.speechSynthesis.pending) {
             window.speechSynthesis.cancel();
@@ -354,42 +354,50 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   
   const pause = useCallback(() => {
     if (!isPlayingRef.current || isPausedRef.current) return;
+    
     isPausedRef.current = true;
     setIsPaused(true);
-    if (typeof window !== 'undefined' && window.speechSynthesis.speaking) {
+    
+    if (utteranceRef.current && window.speechSynthesis.speaking) {
         window.speechSynthesis.pause();
     }
+    
     audioPlayerRef.current?.pause();
     videoPlayer?.pause();
 
-    if (typeof navigator !== 'undefined' && navigator.mediaSession) navigator.mediaSession.playbackState = 'paused';
+    if (typeof navigator !== 'undefined' && navigator.mediaSession) {
+        navigator.mediaSession.playbackState = 'paused';
+    }
   }, [videoPlayer]);
 
   const resume = useCallback(() => {
     if (!isPlayingRef.current || !isPausedRef.current) return;
+
     isPausedRef.current = false;
     setIsPaused(false);
-    if (typeof navigator !== 'undefined' && navigator.mediaSession) navigator.mediaSession.playbackState = 'playing';
-
-    const currentItemType = currentItem?.type;
-    const currentMediaType = (currentItem?.type === 'media_favorite') ? currentItem.item.type : null;
-
-    if (currentItemType === 'media_favorite') {
-      const player = currentMediaType === 'video' ? videoPlayer : audioPlayerRef.current;
-      if(player?.paused) {
-          player.play().catch(() => stop());
-      }
-    } else {
-      if (window.speechSynthesis.paused) {
-          window.speechSynthesis.resume();
-      } else if (audioPlayerRef.current?.paused) {
-          audioPlayerRef.current.play().catch(() => stop());
-      } else {
-        // This case handles when cloud TTS was paused, and we need to resume the sequence
-        speakNextSegment();
-      }
+    
+    if (typeof navigator !== 'undefined' && navigator.mediaSession) {
+        navigator.mediaSession.playbackState = 'playing';
     }
-  }, [currentItem, videoPlayer, stop, speakNextSegment]);
+
+    if (currentItem?.type === 'media_favorite') {
+        const player = currentItem.item.type === 'video' ? videoPlayer : audioPlayerRef.current;
+        if (player?.paused) {
+            player.play().catch(() => stop());
+        }
+    } else if (utteranceRef.current) {
+        // Handle local TTS
+        if (window.speechSynthesis.paused) {
+            window.speechSynthesis.resume();
+        }
+    } else if (audioPlayerRef.current?.paused) {
+        // Handle cloud TTS
+        audioPlayerRef.current.play().catch(() => stop());
+    } else {
+        // Fallback for cases where state might be inconsistent
+        speakNextSegment();
+    }
+}, [currentItem, videoPlayer, stop, speakNextSegment]);
 
   const handleSeek = (value: number) => {
     const player = currentItem?.type === 'media_favorite' 
