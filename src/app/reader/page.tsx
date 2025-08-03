@@ -1946,6 +1946,10 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
                             </PopoverTrigger>
                             <PopoverContent className="w-80 p-0" align="end">
                                 <Card>
+                                    <PopoverClose className="absolute right-2 top-2 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
+                                        <X className="h-4 w-4" />
+                                        <span className="sr-only">Close</span>
+                                    </PopoverClose>
                                     <CardHeader>
                                         <CardTitle>{readerDict.docTitle}: {activeDoc.title}</CardTitle>
                                     </CardHeader>
@@ -1955,7 +1959,7 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
                                                 <li key={index}>
                                                     <Button
                                                         variant="link"
-                                                        className="p-0 h-auto text-left whitespace-normal"
+                                                        className="p-0 h-auto text-left whitespace-normal text-blue-600"
                                                         onClick={() => handleTocItemClick(item.href)}
                                                     >
                                                         {item.label.trim()}
