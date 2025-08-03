@@ -228,7 +228,7 @@ function LibraryPageContent() {
                 ref={fileInputRef}
                 id="doc-upload-library"
                 type="file"
-                accept="application/epub+zip,application/pdf,text/plain,image/*"
+                accept="application/epub+zip,application/pdf,text/plain,image/*,application/x-mobipocket-ebook"
                 onChange={handleFileUpload}
                 disabled={isUploading || isLoading}
               />
@@ -335,3 +335,5 @@ export default function LibraryPage() {
         </AuthGuard>
     )
 }
+
+    

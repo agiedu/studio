@@ -148,3 +148,5 @@ export interface MangaDocumentDisplayInfo {
 }
 
 export type PlaybackMode = 'default' | 'loop-single' | 'sequential';
+
+    

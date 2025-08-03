@@ -4,11 +4,12 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo, useContext } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import NextImage from 'next/image';
-import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist';
+import { AnimatePresence, motion } from 'framer-motion';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist/types/src/display/api';
+import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist';
+// Use dynamic imports for epubjs types to avoid build issues
 import type Book from 'epubjs/types/book';
 import type Rendition from 'epubjs/types/rendition';
-import { AnimatePresence, motion } from 'framer-motion';
 
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -603,8 +604,8 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
               setIsEpubReadyForJumping(false);
 
               try {
-                  const ePub = (await import('epubjs')).default;
-                  const book = ePub(doc.fileData);
+                  const ePubModule = await import('epubjs');
+                  const book = ePubModule.default(doc.fileData);
                   epubBookRef.current = book;
             
                   if (isStale) return;
@@ -613,7 +614,7 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
                   const rendition = book.renderTo("epub-viewer", { width: "100%", height: "100%", flow: "paginated", spread: "none" });
                   epubRenditionRef.current = rendition;
 
-                  rendition.on('displayed', () => {
+                  rendition.on('displayed', (view: any) => {
                      const toc = book.navigation.toc;
                      if(isMountedRef.current) setEpubToc(toc);
                   });
@@ -1738,8 +1739,8 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
         return (
             <div className="p-4 bg-background rounded-md shadow-inner text-center h-full flex flex-col justify-center items-center">
                 <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-2" />
-                <p className="font-semibold">MOBI Not Supported</p>
-                <p className="text-sm text-muted-foreground">Please convert to EPUB or PDF.</p>
+                <p className="font-semibold">{readerDict.mobiNotSupported}</p>
+                <p className="text-sm text-muted-foreground">{readerDict.mobiNotSupportedDesc}</p>
             </div>
         );
     }
@@ -2332,3 +2333,5 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
+
+    
