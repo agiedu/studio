@@ -1637,19 +1637,17 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
     if (!activeDoc) {
         return (
             <div className="w-full h-full relative">
-                <Textarea
-                    ref={mainTextAreaRef}
-                    className="w-full h-full min-h-[200px] whitespace-pre-wrap select-text text-sm resize-none"
-                    value={scratchpadText}
-                    onChange={(e) => {
-                      setScratchpadText(e.target.value);
-                      setCurrentTextForTTS(e.target.value);
-                    }}
-                    placeholder={readerDict.scratchpadPlaceholder}
-                />
-                 <div className="absolute inset-0 pointer-events-none">
-                     <AnnotationMarkers containerRef={mainTextAreaRef} annotations={sortedAnnotations} text={scratchpadText} />
-                 </div>
+                <HighlightableContent
+                    ref={mainHighlightedContentRef}
+                    text={scratchpadText}
+                    textSegments={textSegments}
+                    highlightedSegmentIndex={highlightedSegmentIndex}
+                    isSpeaking={isSpeaking}
+                    isPaused={isPaused}
+                    className="w-full h-full min-h-[200px] whitespace-pre-wrap select-text text-sm p-2"
+                >
+                     <AnnotationMarkers containerRef={mainHighlightedContentRef} annotations={sortedAnnotations} text={scratchpadText} />
+                </HighlightableContent>
             </div>
         );
     }
