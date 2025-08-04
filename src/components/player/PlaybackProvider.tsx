@@ -395,23 +395,19 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (currentItemType === 'media_favorite') {
         const player = currentItem.item.type === 'video' ? videoPlayer : audioPlayerRef.current;
         player?.play().catch(() => stop());
-    } else if (currentItemType === 'favorite' || currentItemType === 'note_favorite') {
+    } else { // Handle all TTS types (favorite, note_favorite)
         const currentSettings = speechQueueRef.current[0]?.settings;
         if (currentSettings?.engine === 'local') {
-            if (window.speechSynthesis.paused) {
+            if (typeof window !== 'undefined' && window.speechSynthesis.paused) {
                 window.speechSynthesis.resume();
-            } else {
-                speakNextSegment();
             }
         } else { // Cloud TTS
             if (audioPlayerRef.current?.paused) {
-                audioPlayerRef.current.play().catch(() => stop());
-            } else {
-                 speakNextSegment();
+                audioPlayerRef.current?.play().catch(() => stop());
             }
         }
     }
-}, [currentItem, videoPlayer, stop, speakNextSegment]);
+  }, [currentItem, videoPlayer, stop]);
 
   const handleSeek = (value: number) => {
     const player = currentItem?.type === 'media_favorite' 
@@ -576,5 +572,3 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   return <PlaybackContext.Provider value={value}>{children}</PlaybackContext.Provider>;
 };
-
-    
