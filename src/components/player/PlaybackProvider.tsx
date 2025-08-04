@@ -146,9 +146,12 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const onPlaybackEndRef = useRef<() => void>();
 
   const speakNextSegment = useCallback(async () => {
-    if (!isPlayingRef.current || isPausedRef.current) {
-        if (!isPlayingRef.current) stop();
-        return;
+    if (!isPlayingRef.current) {
+      if (!isPausedRef.current) stop();
+      return;
+    }
+     if (isPausedRef.current) {
+      return;
     }
 
     if (speechQueueRef.current.length === 0) {
@@ -402,14 +405,19 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (currentSettings?.engine === 'local') {
             if (window.speechSynthesis.paused) {
                 window.speechSynthesis.resume();
+            } else if (!window.speechSynthesis.speaking) {
+                // Handle cases where speech was interrupted, not just paused
+                speakNextSegment();
             }
         } else { // Cloud TTS
             if (audioPlayerRef.current?.paused) {
                 audioPlayerRef.current.play().catch(() => stop());
+            } else if (!audioPlayerRef.current?.src) {
+                 speakNextSegment();
             }
         }
     }
-}, [currentItem, videoPlayer, stop]);
+}, [currentItem, videoPlayer, stop, speakNextSegment]);
 
   const handleSeek = (value: number) => {
     const player = currentItem?.type === 'media_favorite' 
