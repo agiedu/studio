@@ -1943,7 +1943,7 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
                                 </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-80 p-0" align="end">
-                                <Card className="bg-white">
+                                <Card className="bg-background">
                                     <PopoverClose className="absolute right-2 top-2 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
                                         <X className="h-4 w-4" />
                                         <span className="sr-only">Close</span>
@@ -1995,7 +1995,7 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
                                 <Separator/>
                                 <div className="flex items-center justify-between">
                                     <Button onClick={() => navigatePdf('prev')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum <= 1} size="icon" variant="outline" aria-label="Previous Page"><ChevronLeft className="h-4 w-4"/></Button>
-                                    <Button variant="ghost" className="h-9 tabular-nums" onClick={() => openJumpDialog('pdf', currentPdfPageNum, pdfTotalPages)}>
+                                    <Button variant="ghost" className="h-9 tabular-nums bg-yellow-200 hover:bg-yellow-300" onClick={() => openJumpDialog('pdf', currentPdfPageNum, pdfTotalPages)}>
                                         {currentPdfPageNum} / {pdfTotalPages}
                                     </Button>
                                     <Button onClick={() => navigatePdf('next')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum >= pdfTotalPages} size="icon" variant="outline" aria-label="Next Page"><ChevronRight className="h-4 w-4"/></Button>
@@ -2010,7 +2010,7 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
                                     {isEpubPaginating ? (
                                     <span className="text-sm text-muted-foreground px-2 flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> {readerDict.pageInfoLoading}</span>
                                     ) : epubTotalPages > 0 ? (
-                                    <Button variant="ghost" className="h-9 tabular-nums" onClick={() => openJumpDialog('epub', epubCurrentPageNum, epubTotalPages)}>
+                                    <Button variant="ghost" className="h-9 tabular-nums bg-yellow-200 hover:bg-yellow-300" onClick={() => openJumpDialog('epub', epubCurrentPageNum, epubTotalPages)}>
                                         {epubCurrentPageNum} / {epubTotalPages}
                                     </Button>
                                     ) : (
