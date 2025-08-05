@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useContext } from 'react';
@@ -294,7 +293,7 @@ function NotesFavoritesPageContent() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
             <div>
                 <Label htmlFor={`${panelType}-tts-engine`}>{favDict.ttsEngine}</Label>
-                <Select value={settings.engine} onValueChange={(v) => handlePanelChange('engine', v as 'local' | 'cloud')} disabled={isPlaying}>
+                <Select value={settings.engine} onValueChange={(v) => handlePanelChange('engine', v as 'local' | 'cloud')} disabled={isPlaying &amp;&amp; !isPaused}>
                     <SelectTrigger id={`${panelType}-tts-engine`}><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="local"><div className="flex items-center gap-1"><Smartphone className="h-4 w-4" />{favDict.localEngine}</div></SelectItem>
@@ -310,7 +309,7 @@ function NotesFavoritesPageContent() {
                 <Select
                     value={settings.voiceURI || ""}
                     onValueChange={(v) => handlePanelChange('voiceURI', v)}
-                    disabled={isPlaying || availableVoices.length === 0}
+                    disabled={(isPlaying &amp;&amp; !isPaused) || availableVoices.length === 0}
                 >
                     <SelectTrigger id={`${panelType}-tts-voice`}><SelectValue placeholder={availableVoices.length > 0 ? favDict.selectVoice : favDict.noLocalVoices} /></SelectTrigger>
                     <SelectContent className="max-h-60">
@@ -335,7 +334,7 @@ function NotesFavoritesPageContent() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
                 <div>
                     <Label htmlFor={`${panelType}-cloud-tts-language`}>{favDict.languageCloud}</Label>
-                    <Select value={settings.language} onValueChange={(v) => handlePanelChange('language', v as string)} disabled={isPlaying}>
+                    <Select value={settings.language} onValueChange={(v) => handlePanelChange('language', v as string)} disabled={isPlaying &amp;&amp; !isPaused}>
                         <SelectTrigger id={`${panelType}-cloud-tts-language`}><SelectValue placeholder={favDict.selectLanguage} /></SelectTrigger>
                         <SelectContent className="max-h-60">
                             {Object.entries(edgeTTSLanguageVoices).map(([locale, { language }]) => (
@@ -346,7 +345,7 @@ function NotesFavoritesPageContent() {
                 </div>
                 <div>
                     <Label htmlFor={`${panelType}-cloud-tts-voice`}>{favDict.voiceCloud}</Label>
-                    <Select value={settings.cloudVoiceId || ""} onValueChange={(v) => handlePanelChange('cloudVoiceId', v)} disabled={isPlaying || !settings.language}>
+                    <Select value={settings.cloudVoiceId || ""} onValueChange={(v) => handlePanelChange('cloudVoiceId', v)} disabled={(isPlaying &amp;&amp; !isPaused) || !settings.language}>
                         <SelectTrigger id={`${panelType}-cloud-tts-voice`}><SelectValue placeholder={favDict.selectVoice} /></SelectTrigger>
                         <SelectContent className="max-h-60">
                             {(edgeTTSLanguageVoices[settings.language]?.voices || []).map(voice => (
@@ -360,11 +359,11 @@ function NotesFavoritesPageContent() {
 
         <div className="space-y-2 mb-3">
             <Label htmlFor={`${panelType}-tts-rate`}>{commonDict.rate}: {settings.rate.toFixed(1)}</Label>
-            <Slider id={`${panelType}-tts-rate`} min={0.5} max={2} step={0.1} value={[settings.rate]} onValueChange={([v]) => handlePanelChange('rate', v)} disabled={isPlaying}/>
+            <Slider id={`${panelType}-tts-rate`} min={0.5} max={2} step={0.1} value={[settings.rate]} onValueChange={([v]) => handlePanelChange('rate', v)} disabled={isPlaying &amp;&amp; !isPaused}/>
         </div>
         <div className="space-y-2">
             <Label htmlFor={`${panelType}-tts-pitch`}>{commonDict.pitch}: {settings.pitch.toFixed(1)}</Label>
-            <Slider id={`${panelType}-tts-pitch`} min={0} max={2} step={0.1} value={[settings.pitch]} onValueChange={([v]) => handlePanelChange('pitch', v)} disabled={isPlaying}/>
+            <Slider id={`${panelType}-tts-pitch`} min={0} max={2} step={0.1} value={[settings.pitch]} onValueChange={([v]) => handlePanelChange('pitch', v)} disabled={isPlaying &amp;&amp; !isPaused}/>
         </div>
       </div>
     );
@@ -431,7 +430,7 @@ function NotesFavoritesPageContent() {
             <div className="flex items-center justify-center gap-4 my-4 p-2 rounded-lg bg-muted/50">
                 <Button variant="ghost" size="icon" onClick={previous} disabled={!hasPrevious() || isLoading}><SkipBack className="h-5 w-5"/></Button>
                 <Button variant="ghost" size="icon" onClick={handleGlobalPlayPause} disabled={isLoading || favoriteNotes.length === 0}>
-                {isLoading ? <Loader2 className="h-6 w-6 animate-spin"/> : isPlaying && !isPaused ? <Pause className="h-6 w-6"/> : <Play className="h-6 w-6"/>}
+                {isLoading ? <Loader2 className="h-6 w-6 animate-spin"/> : isPlaying &amp;&amp; !isPaused ? <Pause className="h-6 w-6"/> : <Play className="h-6 w-6"/>}
                 </Button>
                 <Button variant="ghost" size="icon" onClick={next} disabled={!hasNext() || isLoading}><SkipForward className="h-5 w-5"/></Button>
             </div>
@@ -519,7 +518,7 @@ function NotesFavoritesPageContent() {
                             <div className="flex gap-2 self-end sm:self-center">
                             <Button 
                                 size="sm" 
-                                variant={isCurrentlyPlayingThisItem && !isPaused ? "outline" : "default"}
+                                variant={isCurrentlyPlayingThisItem &amp;&amp; !isPaused ? "outline" : "default"}
                                 onClick={() => handlePlayPauseNote(item)} 
                                 disabled={(isLoading && !isCurrentlyPlayingThisItem) || !hasContentToPlay}
                                 className="w-[80px] h-8 text-xs"
