@@ -316,7 +316,7 @@ function FavoritesPageContent() {
                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
                               <div>
                                   <Label htmlFor="fav-tts-engine">{favDict.ttsEngine}</Label>
-                                  <Select value={ttsSettings.engine} onValueChange={(v) => handleSettingChange('engine', v as 'local' | 'cloud')} disabled={isPlaying &amp;&amp; !isPaused}>
+                                  <Select value={ttsSettings.engine} onValueChange={(v) => handleSettingChange('engine', v as 'local' | 'cloud')} disabled={isPlaying && !isPaused}>
                                       <SelectTrigger id="fav-tts-engine"><SelectValue /></SelectTrigger>
                                       <SelectContent>
                                       <SelectItem value="local"><div className="flex items-center gap-1"><Smartphone className="h-4 w-4" />{favDict.localEngine}</div></SelectItem>
@@ -331,7 +331,7 @@ function FavoritesPageContent() {
                                   <Select
                                       value={ttsSettings.voiceURI || ""}
                                       onValueChange={(v) => handleSettingChange('voiceURI', v)}
-                                      disabled={(isPlaying &amp;&amp; !isPaused) || availableVoices.length === 0}
+                                      disabled={(isPlaying && !isPaused) || availableVoices.length === 0}
                                   >
                                       <SelectTrigger id="fav-tts-voice"><SelectValue placeholder={availableVoices.length > 0 ? favDict.selectVoice : favDict.noLocalVoices} /></SelectTrigger>
                                       <SelectContent className="max-h-60">
@@ -356,7 +356,7 @@ function FavoritesPageContent() {
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
                                   <div>
                                       <Label htmlFor="fav-cloud-tts-language">{favDict.languageCloud}</Label>
-                                      <Select value={ttsSettings.language} onValueChange={(v) => handleSettingChange('language', v as string)} disabled={isPlaying &amp;&amp; !isPaused}>
+                                      <Select value={ttsSettings.language} onValueChange={(v) => handleSettingChange('language', v as string)} disabled={isPlaying && !isPaused}>
                                           <SelectTrigger id="fav-cloud-tts-language"><SelectValue placeholder={favDict.selectLanguage} /></SelectTrigger>
                                           <SelectContent className="max-h-60">
                                               {Object.entries(edgeTTSLanguageVoices).map(([locale, { language }]) => (
@@ -367,7 +367,7 @@ function FavoritesPageContent() {
                                   </div>
                                   <div>
                                       <Label htmlFor="fav-cloud-tts-voice">{favDict.voiceCloud}</Label>
-                                      <Select value={ttsSettings.cloudVoiceId || ""} onValueChange={(v) => handleSettingChange('cloudVoiceId', v)} disabled={(isPlaying &amp;&amp; !isPaused) || !ttsSettings.language}>
+                                      <Select value={ttsSettings.cloudVoiceId || ""} onValueChange={(v) => handleSettingChange('cloudVoiceId', v)} disabled={(isPlaying && !isPaused) || !ttsSettings.language}>
                                           <SelectTrigger id="fav-cloud-tts-voice"><SelectValue placeholder={favDict.selectVoice} /></SelectTrigger>
                                           <SelectContent className="max-h-60">
                                               {(edgeTTSLanguageVoices[ttsSettings.language]?.voices || []).map(voice => (
@@ -380,11 +380,11 @@ function FavoritesPageContent() {
                           )}
                           <div className="space-y-2 mb-3">
                               <Label htmlFor="fav-tts-rate">{commonDict.rate}: {ttsSettings.rate.toFixed(1)}</Label>
-                              <Slider id="fav-tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isPlaying &amp;&amp; !isPaused}/>
+                              <Slider id="fav-tts-rate" min={0.5} max={2} step={0.1} value={[ttsSettings.rate]} onValueChange={([v]) => handleSettingChange('rate', v)} disabled={isPlaying && !isPaused}/>
                           </div>
                           <div className="space-y-2">
                               <Label htmlFor="fav-tts-pitch">{commonDict.pitch}: {ttsSettings.pitch.toFixed(1)}</Label>
-                              <Slider id="fav-tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isPlaying &amp;&amp; !isPaused}/>
+                              <Slider id="fav-tts-pitch" min={0} max={2} step={0.1} value={[ttsSettings.pitch]} onValueChange={([v]) => handleSettingChange('pitch', v)} disabled={isPlaying && !isPaused}/>
                           </div>
                         </div>
                     </SheetContent>
@@ -395,7 +395,7 @@ function FavoritesPageContent() {
              <div className="flex items-center justify-center gap-4 mb-4 p-2 rounded-lg bg-muted/50">
                <Button variant="ghost" size="icon" onClick={previous} disabled={!hasPrevious() || isLoading}><SkipBack className="h-5 w-5"/></Button>
                <Button variant="ghost" size="icon" onClick={handleGlobalPlayPause} disabled={isLoading || favoriteItems.length === 0}>
-                  {isLoading ? <Loader2 className="h-6 w-6 animate-spin"/> : isPlaying &amp;&amp; !isPaused ? <Pause className="h-6 w-6"/> : <Play className="h-6 w-6"/>}
+                  {isLoading ? <Loader2 className="h-6 w-6 animate-spin"/> : isPlaying && !isPaused ? <Pause className="h-6 w-6"/> : <Play className="h-6 w-6"/>}
                </Button>
                <Button variant="ghost" size="icon" onClick={next} disabled={!hasNext() || isLoading}><SkipForward className="h-5 w-5"/></Button>
             </div>
@@ -425,7 +425,7 @@ function FavoritesPageContent() {
                     <li key={item.id} className="p-3 border rounded-md flex flex-col justify-between gap-2 bg-card hover:shadow-md transition-shadow">
                         <div className="flex-grow space-y-2">
                             <p className="text-base font-medium whitespace-pre-wrap">
-                            {isCurrentlyPlaying &amp;&amp; currentText ? 
+                            {isCurrentlyPlaying && currentText ? 
                                 <span className="text-green-600">{`“${currentText}”`}</span>
                                 : 
                                 `"${item.text}"`
@@ -452,14 +452,14 @@ function FavoritesPageContent() {
                             <div className="flex gap-2 self-end sm:self-center flex-shrink-0">
                                 <Button 
                                 size="sm" 
-                                variant={isCurrentlyPlaying &amp;&amp; !isPaused ? "outline" : "default"}
+                                variant={isCurrentlyPlaying && !isPaused ? "outline" : "default"}
                                 onClick={() => handlePlayPauseFavorite(item)} 
-                                disabled={isLoading &amp;&amp; !isCurrentlyPlaying}
+                                disabled={isLoading && !isCurrentlyPlaying}
                                 className="w-[80px] h-8 text-xs"
                                 >
                                 {buttonIcon} {buttonText}
                                 </Button>
-                                <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setItemToDelete(item)} disabled={isLoading &amp;&amp; isCurrentlyPlaying} aria-label="Delete Favorite">
+                                <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setItemToDelete(item)} disabled={isLoading && isCurrentlyPlaying} aria-label="Delete Favorite">
                                 <Trash2 className="h-4 w-4 text-destructive" />
                                 </Button>
                             </div>
