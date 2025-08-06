@@ -34,7 +34,7 @@ const NOTE_FAVORITES_NOTE_TTS_SETTINGS_KEY = 'mangaTalk_noteFavsNoteTts_v1';
 const FAVORITES_PLAYBACK_MODE_KEY = 'mangaTalk_favoritesPlaybackMode_v1';
 const NOTES_PLAYBACK_MODE_KEY = 'mangaTalk_notesPlaybackMode_v1';
 const MEDIA_PLAYBACK_MODE_KEY = 'mangaTalk_mediaPlaybackMode_v1';
-const READING_AREA_BG_KEY = 'mangaTalk_readingAreaBg_v1';
+const READING_AREA_BG_KEY = 'mangaTalk_readingAreaBg_v2'; // Changed to v2 for new data type
 
 
 const ALL_USER_SPECIFIC_BASE_KEYS = [
@@ -100,14 +100,14 @@ export const removeAllDataForUser = (email: string): void => {
 // --- Reading Area Background ---
 export const loadReadingAreaBg = (): string => {
     const key = getUserKey(READING_AREA_BG_KEY);
-    if (!key) return 'bg-muted/20'; // Default color class
-    return safeLocalStorageGet<string>(key, 'bg-muted/20');
+    if (!key) return '#ffffff'; // Default to white color
+    return safeLocalStorageGet<string>(key, '#ffffff');
 };
 
-export const saveReadingAreaBg = (className: string): boolean => {
+export const saveReadingAreaBg = (color: string): boolean => {
     const key = getUserKey(READING_AREA_BG_KEY);
     if (!key) return false;
-    return safeLocalStorageSet(key, className);
+    return safeLocalStorageSet(key, color);
 };
 
 // --- PDF Page Index ---

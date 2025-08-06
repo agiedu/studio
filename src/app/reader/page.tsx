@@ -1761,19 +1761,17 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
     <>
       <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)] overflow-hidden relative">
          <div 
-            className={cn(
-              "flex-grow flex flex-col p-2 md:p-4 min-h-0 min-w-0",
-              readingAreaBg
-            )}
-            style={{ height: '100%' }}
+            className="flex-grow flex flex-col p-2 md:p-4 min-h-0 min-w-0"
+            style={{ height: '100%', backgroundColor: readingAreaBg }}
         >
-            <Card className={cn(
-                "flex-grow flex flex-col min-h-0 shadow-inner relative transition-all duration-300",
-                ttsAreaState === 'hidden' && 'h-full',
-                ttsAreaState === 'caption' && 'h-[calc(100%-6rem)]',
-                ttsAreaState === 'fullscreen' && 'h-0 opacity-0 invisible',
-                readingAreaBg
-            )}>
+            <Card className="flex-grow flex flex-col min-h-0 shadow-inner relative transition-all duration-300"
+                style={{
+                  height: ttsAreaState === 'hidden' ? '100%' : (ttsAreaState === 'caption' ? 'calc(100% - 6rem)' : '0'),
+                  opacity: ttsAreaState === 'fullscreen' ? 0 : 1,
+                  visibility: ttsAreaState === 'fullscreen' ? 'hidden' : 'visible',
+                  backgroundColor: readingAreaBg
+                }}
+            >
                 <CardContent
                   ref={scrollContainerRef}
                   className="flex-grow p-2 md:p-4 overflow-auto"
@@ -1818,7 +1816,7 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
                 ttsAreaState === 'fullscreen' ? "h-full bg-background/95 backdrop-blur-sm" : ""
             )}
         >
-            <Card className={cn("flex-grow flex flex-col min-h-0 h-full", readingAreaBg)}>
+            <Card className="flex-grow flex flex-col min-h-0 h-full" style={{ backgroundColor: readingAreaBg }}>
                 <CardContent className="flex-grow p-2 overflow-auto">
                     <div className="w-full h-full whitespace-pre-wrap select-text overflow-y-auto" style={{ fontSize: `${ttsTextSize}px` }}>
                         {isEditingTtsText ? (
@@ -2033,24 +2031,38 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
                             {(!activeDoc || (activeDoc?.type && ['pdf', 'image', 'epub'].includes(activeDoc.type))) && (
                                 <>
                                 <Separator/>
+                                <div className="space-y-2">
+                                  <Label className="flex items-center gap-2 text-xs"><Palette className="h-4 w-4"/> Background Color</Label>
+                                   <div className="flex items-center gap-2">
+                                        <input
+                                            type="color"
+                                            value={readingAreaBg}
+                                            onChange={(e) => setReadingAreaBg(e.target.value)}
+                                            className="w-8 h-8 p-0 border-none cursor-pointer"
+                                            title="Custom Color"
+                                        />
+                                        {[
+                                            { name: 'White', color: '#ffffff' },
+                                            { name: 'Beige', color: '#f5f5dc' },
+                                            { name: 'Slate', color: '#e2e8f0' },
+                                            { name: 'Mint', color: '#f0fdf4' },
+                                        ].map(({ name, color }) => (
+                                            <Button
+                                                key={color}
+                                                size="icon"
+                                                variant={readingAreaBg === color ? 'default' : 'outline'}
+                                                className="h-7 w-7 rounded-full"
+                                                style={{ backgroundColor: color }}
+                                                onClick={() => setReadingAreaBg(color)}
+                                                title={name}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                                 <Separator/>
                                 <div className="flex items-center gap-2">
                                     <Label className="flex-shrink-0 text-xs">Zoom</Label>
                                     <Slider value={[viewScale]} min={0.25} max={5} step={0.25} onValueChange={([val]) => handleViewScaleChange(val)} disabled={isRenderingPdfPage} />
-                                </div>
-                                <Separator/>
-                                <div className="space-y-2">
-                                  <Label className="flex items-center gap-2 text-xs"><Palette className="h-4 w-4"/> Background Color</Label>
-                                  <div className="flex items-center gap-2">
-                                    {['bg-white', 'bg-amber-50', 'bg-slate-200', 'bg-green-50'].map((colorClass) => (
-                                      <Button
-                                        key={colorClass}
-                                        size="icon"
-                                        variant={readingAreaBg === colorClass ? "default" : "outline"}
-                                        className={cn("h-7 w-7 rounded-full", colorClass)}
-                                        onClick={() => setReadingAreaBg(colorClass)}
-                                      />
-                                    ))}
-                                  </div>
                                 </div>
                                 </>
                             )}
