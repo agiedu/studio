@@ -1761,8 +1761,7 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
     <>
       <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)] overflow-hidden relative">
          <div 
-            className="flex-grow flex flex-col p-2 md:p-4 min-h-0 min-w-0"
-            style={{ height: '100%', backgroundColor: readingAreaBg }}
+            className="flex-grow flex flex-col p-2 md:p-4 min-h-0 min-w-0 h-full"
         >
             <Card className="flex-grow flex flex-col min-h-0 shadow-inner relative transition-all duration-300"
                 style={{
