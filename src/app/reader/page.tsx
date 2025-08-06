@@ -19,7 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, Play, Pause, Smartphone, Cloud as CloudIcon, Star, AlertTriangle, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, BookOpen, Settings2, FileText, ScanText, Trash2, Edit, Repeat, X, MessageSquarePlus, ImagePlus, Pencil, Expand, Shrink, Menu, Check, Settings, FileEdit, ListTree } from 'lucide-react';
+import { Loader2, Play, Pause, Smartphone, Cloud as CloudIcon, Star, AlertTriangle, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, BookOpen, Settings2, FileText, ScanText, Trash2, Edit, Repeat, X, MessageSquarePlus, ImagePlus, Pencil, Expand, Shrink, Menu, Check, Settings, FileEdit, ListTree, Palette } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -219,6 +219,12 @@ function ReaderPageComponent({ docId, isMobile }: { docId: string | null; isMobi
   const annotationImageInputRef = useRef<HTMLInputElement | null>(null);
   const [viewingAnnotation, setViewingAnnotation] = useState<Annotation | null>(null);
   const [annotationToDelete, setAnnotationToDelete] = useState<Annotation | null>(null);
+
+  const [readingAreaBg, setReadingAreaBg] = useState<string>(LocalStorageService.loadReadingAreaBg());
+
+  useEffect(() => {
+    LocalStorageService.saveReadingAreaBg(readingAreaBg);
+  }, [readingAreaBg]);
 
 
   const textSegments = useMemo(() => {
@@ -1755,14 +1761,18 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
     <>
       <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)] overflow-hidden relative">
          <div 
-            className="flex-grow flex flex-col bg-muted/20 p-2 md:p-4 min-h-0 min-w-0"
+            className={cn(
+              "flex-grow flex flex-col p-2 md:p-4 min-h-0 min-w-0",
+              readingAreaBg
+            )}
             style={{ height: '100%' }}
         >
             <Card className={cn(
                 "flex-grow flex flex-col min-h-0 shadow-inner relative transition-all duration-300",
                 ttsAreaState === 'hidden' && 'h-full',
                 ttsAreaState === 'caption' && 'h-[calc(100%-6rem)]',
-                ttsAreaState === 'fullscreen' && 'h-0 opacity-0 invisible'
+                ttsAreaState === 'fullscreen' && 'h-0 opacity-0 invisible',
+                readingAreaBg
             )}>
                 <CardContent
                   ref={scrollContainerRef}
@@ -1808,7 +1818,7 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
                 ttsAreaState === 'fullscreen' ? "h-full bg-background/95 backdrop-blur-sm" : ""
             )}
         >
-            <Card className="flex-grow flex flex-col min-h-0 h-full">
+            <Card className={cn("flex-grow flex flex-col min-h-0 h-full", readingAreaBg)}>
                 <CardContent className="flex-grow p-2 overflow-auto">
                     <div className="w-full h-full whitespace-pre-wrap select-text overflow-y-auto" style={{ fontSize: `${ttsTextSize}px` }}>
                         {isEditingTtsText ? (
@@ -1943,7 +1953,7 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
                                 </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-80 p-0" align="end">
-                                <Card className="bg-background">
+                                <Card className="bg-white">
                                     <PopoverClose className="absolute right-2 top-2 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
                                         <X className="h-4 w-4" />
                                         <span className="sr-only">Close</span>
@@ -2026,6 +2036,21 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
                                 <div className="flex items-center gap-2">
                                     <Label className="flex-shrink-0 text-xs">Zoom</Label>
                                     <Slider value={[viewScale]} min={0.25} max={5} step={0.25} onValueChange={([val]) => handleViewScaleChange(val)} disabled={isRenderingPdfPage} />
+                                </div>
+                                <Separator/>
+                                <div className="space-y-2">
+                                  <Label className="flex items-center gap-2 text-xs"><Palette className="h-4 w-4"/> Background Color</Label>
+                                  <div className="flex items-center gap-2">
+                                    {['bg-white', 'bg-amber-50', 'bg-slate-200', 'bg-green-50'].map((colorClass) => (
+                                      <Button
+                                        key={colorClass}
+                                        size="icon"
+                                        variant={readingAreaBg === colorClass ? "default" : "outline"}
+                                        className={cn("h-7 w-7 rounded-full", colorClass)}
+                                        onClick={() => setReadingAreaBg(colorClass)}
+                                      />
+                                    ))}
+                                  </div>
                                 </div>
                                 </>
                             )}
