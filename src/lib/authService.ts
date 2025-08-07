@@ -100,7 +100,7 @@ export const loginUser = (email: string, password: string): { success: boolean; 
   
   // Prevent admin login from the general user login page
   if (lowerCaseEmail === ADMIN_EMAIL) {
-    return { success: false, message: "Admin login is not allowed here. Please use the designated admin login page." };
+    return { success: false, message: "该账户无法登录" };
   }
 
   const attempts = getFailedAttempts();
