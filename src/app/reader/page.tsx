@@ -1805,7 +1805,7 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
             >
                 <CardContent
                   ref={scrollContainerRef}
-                  className="flex-grow p-2 md:p-4 overflow-auto"
+                  className="flex-grow p-2 md:p-4 overflow-auto relative"
                 >
                 {(isLoadingDoc || isEpubLoading || isRenderingPdfPage) && ttsAreaState === 'hidden' && (
                   <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
@@ -1823,21 +1823,26 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
                     </div>
                   </div>
                 )}
-
+                
                 <div
-                    id="main-content-viewer"
-                    className="w-full h-full p-2 md:p-4 flex flex-col items-start justify-start overflow-auto"
+                    className="w-full h-full p-2 md:p-4 flex flex-col items-start justify-start overflow-auto relative"
                     style={{
                       transform: `scale(${viewScale})`,
                       transformOrigin: 'top left',
                       transition: 'transform 0.2s ease-out'
                     }}
-                    onTouchStart={isMobile ? handleTouchStart : undefined}
-                    onTouchMove={isMobile ? handleTouchMove : undefined}
-                    onTouchEnd={isMobile ? handleTouchEnd : undefined}
                   >
                    {mainContent}
-                  </div>
+                   <div
+                    className={cn(
+                        "absolute inset-0 z-10",
+                        isMobile ? "pointer-events-auto" : "pointer-events-none"
+                    )}
+                    onTouchStart={handleTouchStart}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                    />
+                </div>
                 </CardContent>
             </Card>
         </div>
