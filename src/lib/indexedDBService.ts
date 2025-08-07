@@ -1,3 +1,4 @@
+
 // src/lib/indexedDBService.ts
 import type { StoredMangaDocument, StoredPdfDocument, MangaDocumentDisplayInfo, MediaFavoriteItem } from '@/types';
 import { saveDocumentMetadata } from './localStorageService';
@@ -108,38 +109,43 @@ export async function getAllDocuments(forceRefresh: boolean = false): Promise<St
     return isFetching;
   }
 
-  const db = await getDB();
-  isFetching = new Promise((resolve, reject) => {
-    const transaction = db.transaction(DOC_STORE_NAME, 'readonly');
-    const store = transaction.objectStore(DOC_STORE_NAME);
-    const request = store.getAll();
+  isFetching = new Promise(async (resolve, reject) => {
+    try {
+        const db = await getDB();
+        const transaction = db.transaction(DOC_STORE_NAME, 'readonly');
+        const store = transaction.objectStore(DOC_STORE_NAME);
+        const request = store.getAll();
 
-    request.onsuccess = () => {
-        const results = request.result as StoredMangaDocument[];
-        documentCache = results.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        request.onsuccess = () => {
+            const results = request.result as StoredMangaDocument[];
+            documentCache = results.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
-        const metadata: MangaDocumentDisplayInfo[] = documentCache.map(doc => {
-            const meta: MangaDocumentDisplayInfo = {
-                id: doc.id,
-                title: doc.title,
-                type: doc.type,
-                originalType: doc.originalType,
-                createdAt: doc.createdAt,
-            };
-            if (doc.type === 'pdf') {
-                meta.numPages = (doc as StoredPdfDocument).numPages;
-            }
-            return meta;
-        });
-        saveDocumentMetadata(metadata);
+            const metadata: MangaDocumentDisplayInfo[] = documentCache.map(doc => {
+                const meta: MangaDocumentDisplayInfo = {
+                    id: doc.id,
+                    title: doc.title,
+                    type: doc.type,
+                    originalType: doc.originalType,
+                    createdAt: doc.createdAt,
+                };
+                if (doc.type === 'pdf') {
+                    meta.numPages = (doc as StoredPdfDocument).numPages;
+                }
+                return meta;
+            });
+            saveDocumentMetadata(metadata);
 
+            isFetching = null;
+            resolve(documentCache);
+        };
+        request.onerror = () => {
+          isFetching = null;
+          reject(new Error(`Failed to get all documents: ${request.error?.message}`));
+        };
+    } catch (error) {
         isFetching = null;
-        resolve(documentCache);
-    };
-    request.onerror = () => {
-      isFetching = null;
-      reject(new Error(`Failed to get all documents: ${request.error?.message}`));
-    };
+        reject(error);
+    }
   });
   return isFetching;
 }

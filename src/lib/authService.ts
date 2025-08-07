@@ -1,7 +1,7 @@
 
 import type { User, FailedLoginAttempt } from '@/types';
 import bcrypt from 'bcryptjs';
-import { deleteDatabaseForUser } from '@/lib/indexedDBService';
+import { deleteDatabaseForUser, logoutAndClearPromises } from '@/lib/indexedDBService';
 import { removeAllDataForUser } from '@/lib/localStorageService';
 
 const USERS_KEY = 'mangaTalk_users';
@@ -35,15 +35,25 @@ const getUsers = (): User[] => {
     // Admin user exists, check if the current password is the old default or different from the new default.
     const currentAdminUser = users[adminUserIndex];
     const isOldDefault = bcrypt.compareSync('admin24678', currentAdminUser.passwordHash);
-    const isNotNewDefault = !bcrypt.compareSync(DEFAULT_ADMIN_PASSWORD, currentAdminUser.passwordHash);
+    
+    // Check if the current hash is different from the new default hash.
+    // This avoids rehashing if it's already correct.
+    let isDifferentFromNewDefault = true;
+    try {
+        isDifferentFromNewDefault = !bcrypt.compareSync(DEFAULT_ADMIN_PASSWORD, currentAdminUser.passwordHash);
+    } catch(e) {
+        // Old bcrypt hashes might throw an error with new salt, which also means it's different.
+        isDifferentFromNewDefault = true;
+    }
+
 
     // This logic ensures that if the admin password was changed *manually* to something else,
-    // it won't be overwritten. It only overwrites the old default password, or if for some reason
-    // the stored hash doesn't match the new default (e.g., after a code change).
-    if (isOldDefault || (currentAdminUser.passwordHash !== newAdminPasswordHash && !isKnownHash(currentAdminUser.passwordHash, users))) {
+    // it won't be overwritten. It only overwrites the old default password.
+    if (isOldDefault || isDifferentFromNewDefault) {
         // To be safer, we only update if the current password is the OLD default.
-        // A manual password change would result in a different hash.
-        if (bcrypt.compareSync('admin24678', currentAdminUser.passwordHash)) {
+        // A manual password change would result in a different hash that we don't want to overwrite.
+        // We add a check for the new default as well, in case a code change made it different.
+        if (isOldDefault) {
             users[adminUserIndex].passwordHash = newAdminPasswordHash;
             localStorage.setItem(USERS_KEY, JSON.stringify(users));
         }
@@ -52,18 +62,6 @@ const getUsers = (): User[] => {
   
   return users;
 };
-
-// Helper to check if a hash is a known (manually changed) hash vs a stale default
-function isKnownHash(hash: string, users: User[]): boolean {
-    // A simple heuristic: if it's not one of the default password hashes,
-    // we assume it was manually changed by the user.
-    const oldDefaultHash = users.find(u => u.email.toLowerCase() === ADMIN_EMAIL)?.passwordHash === bcrypt.hashSync('admin24678', 8);
-    const newDefaultHash = users.find(u => u.email.toLowerCase() === ADMIN_EMAIL)?.passwordHash === bcrypt.hashSync(DEFAULT_ADMIN_PASSWORD, 8);
-
-    // This is a simplification. A more robust system would track password change history.
-    // For this app's purpose, if it's not a known default, we treat it as intentional.
-    return !oldDefaultHash && !newDefaultHash;
-}
 
 
 const saveUsers = (users: User[]) => {
@@ -100,11 +98,9 @@ export const loginUser = (email: string, password: string, type: 'user' | 'admin
   const lowerCaseEmail = email.toLowerCase();
   const isAdminLoginAttempt = lowerCaseEmail === ADMIN_EMAIL;
 
-  // Prevent admin login from the general user login page
   if (type === 'user' && isAdminLoginAttempt) {
     return { success: false, message: "该账户无法登录" };
   }
-  // Prevent user login from the admin login page
   if (type === 'admin' && !isAdminLoginAttempt) {
     return { success: false, message: "该账户无法登录" };
   }
@@ -113,31 +109,26 @@ export const loginUser = (email: string, password: string, type: 'user' | 'admin
   const userAttempt = attempts[lowerCaseEmail];
   const now = Date.now();
 
-  // 1. Check if the user is currently locked out
   if (userAttempt && userAttempt.lockedUntil && now < userAttempt.lockedUntil) {
       const minutesRemaining = Math.ceil((userAttempt.lockedUntil - now) / (1000 * 60));
       return { success: false, message: `Account is locked. Please try again in ${minutesRemaining} minutes.` };
   }
 
-  // 2. Proceed with login attempt
   const users = getUsers();
   const user = users.find(u => u.email.toLowerCase() === lowerCaseEmail);
 
   if (!user || !user.passwordHash || !bcrypt.compareSync(password, user.passwordHash)) {
-    // 3. Handle failed login attempt
     let newAttemptCount = 1;
     if (userAttempt) {
-        // Reset attempts if the last attempt was outside the lockout period window
         const minutesSinceLastAttempt = (now - userAttempt.firstAttemptTimestamp) / (1000 * 60);
         if (minutesSinceLastAttempt > LOCKOUT_PERIOD_MINUTES) {
-            newAttemptCount = 1; // Reset counter
+            newAttemptCount = 1;
         } else {
             newAttemptCount = userAttempt.count + 1;
         }
     }
 
     if (newAttemptCount >= MAX_LOGIN_ATTEMPTS) {
-        // Lock the account
         attempts[lowerCaseEmail] = {
             count: newAttemptCount,
             firstAttemptTimestamp: userAttempt?.firstAttemptTimestamp || now,
@@ -146,7 +137,6 @@ export const loginUser = (email: string, password: string, type: 'user' | 'admin
         saveFailedAttempts(attempts);
         return { success: false, message: `Too many failed attempts. Account has been locked for ${LOCKOUT_DURATION_MINUTES} minutes.` };
     } else {
-        // Just record the failed attempt
         attempts[lowerCaseEmail] = {
             count: newAttemptCount,
             firstAttemptTimestamp: newAttemptCount === 1 ? now : userAttempt.firstAttemptTimestamp,
@@ -157,8 +147,7 @@ export const loginUser = (email: string, password: string, type: 'user' | 'admin
     return { success: false, message: `Invalid email or password. Attempt ${newAttemptCount} of ${MAX_LOGIN_ATTEMPTS}.` };
   }
   
-  // 4. Handle successful login
-  delete attempts[lowerCaseEmail]; // Clear failed attempts on success
+  delete attempts[lowerCaseEmail];
   saveFailedAttempts(attempts);
   
   localStorage.setItem(CURRENT_USER_KEY, JSON.stringify({ email: user.email }));
@@ -176,6 +165,8 @@ export const logout = () => {
   if (typeof window === 'undefined') return;
   localStorage.removeItem(CURRENT_USER_KEY);
   localStorage.removeItem(ADMIN_SESSION_KEY);
+  // This is the crucial fix: ensure all DB connections and caches are cleared on logout.
+  logoutAndClearPromises();
 };
 
 export const getCurrentUser = (): { email: string } | null => {
