@@ -1,4 +1,5 @@
 
+
 import type { User, FailedLoginAttempt } from '@/types';
 import bcrypt from 'bcryptjs';
 import { deleteDatabaseForUser, logoutAndClearPromises } from '@/lib/indexedDBService';
@@ -13,9 +14,9 @@ const ADMIN_EMAIL = 'laotouerle@outlook.com';
 const DEFAULT_ADMIN_PASSWORD = 'wvvCg95S$8Bvvw1!l0OD*,~-rtnnm@a`&8A4Z299';
 
 // --- Brute-force protection settings ---
-const MAX_LOGIN_ATTEMPTS = 3; // Max attempts before locking
-const LOCKOUT_PERIOD_MINUTES = 60; // How long to wait for attempts to reset
-const LOCKOUT_DURATION_MINUTES = 240; // How long an account is locked
+const MAX_LOGIN_ATTEMPTS = 5; 
+const LOCKOUT_PERIOD_MINUTES = 10;
+const LOCKOUT_DURATION_MINUTES = 30;
 
 // --- Helper Functions ---
 
@@ -25,31 +26,11 @@ const getUsers = (): User[] => {
   let users: User[] = usersJson ? JSON.parse(usersJson) : [];
 
   const adminUserIndex = users.findIndex(u => u.email.toLowerCase() === ADMIN_EMAIL);
-  const newAdminPasswordHash = bcrypt.hashSync(DEFAULT_ADMIN_PASSWORD, 8);
 
   if (adminUserIndex === -1) {
-    // Admin user doesn't exist, create it.
+    const newAdminPasswordHash = bcrypt.hashSync(DEFAULT_ADMIN_PASSWORD, 8);
     users.push({ email: ADMIN_EMAIL, passwordHash: newAdminPasswordHash });
     localStorage.setItem(USERS_KEY, JSON.stringify(users));
-  } else {
-    // Admin user exists, check if the current password is the old default or different from the new default.
-    const currentAdminUser = users[adminUserIndex];
-    
-    // Check if the current hash is different from the new default hash.
-    // This avoids rehashing if it's already correct.
-    let isDifferentFromNewDefault = true;
-    try {
-        isDifferentFromNewDefault = !bcrypt.compareSync(DEFAULT_ADMIN_PASSWORD, currentAdminUser.passwordHash);
-    } catch(e) {
-        // Old bcrypt hashes might throw an error with new salt, which also means it's different.
-        isDifferentFromNewDefault = true;
-    }
-
-
-    if (isDifferentFromNewDefault) {
-        users[adminUserIndex].passwordHash = newAdminPasswordHash;
-        localStorage.setItem(USERS_KEY, JSON.stringify(users));
-    }
   }
   
   return users;
@@ -101,7 +82,12 @@ export const loginUser = (email: string, password: string, type: 'user' | 'admin
   const userAttempt = attempts[lowerCaseEmail];
   const now = Date.now();
 
-  if (userAttempt && userAttempt.lockedUntil && now < userAttempt.lockedUntil) {
+  // For the admin account, clear any previous locks or failed attempts upon trying to log in again.
+  // This prevents the admin from being locked out due to password changes or other issues.
+  if (isAdminLoginAttempt && userAttempt) {
+      delete attempts[lowerCaseEmail];
+      saveFailedAttempts(attempts);
+  } else if (userAttempt && userAttempt.lockedUntil && now < userAttempt.lockedUntil) {
       const minutesRemaining = Math.ceil((userAttempt.lockedUntil - now) / (1000 * 60));
       return { success: false, message: `Account is locked. Please try again in ${minutesRemaining} minutes.` };
   }
@@ -155,10 +141,16 @@ export const loginUser = (email: string, password: string, type: 'user' | 'admin
 
 export const logout = () => {
   if (typeof window === 'undefined') return;
+  const user = getCurrentUser();
+  
+  // Clear user-specific data from localStorage and IndexedDB before removing the user key
+  if (user) {
+    logoutAndClearPromises(); // Clear DB connections and caches
+  }
+  
+  // Now, remove the user session keys
   localStorage.removeItem(CURRENT_USER_KEY);
   localStorage.removeItem(ADMIN_SESSION_KEY);
-  // This is the crucial fix: ensure all DB connections and caches are cleared on logout.
-  logoutAndClearPromises();
 };
 
 export const getCurrentUser = (): { email: string } | null => {
@@ -170,12 +162,21 @@ export const getCurrentUser = (): { email: string } | null => {
 export const changeUserPassword = (email: string, newPassword: string): boolean => {
     const users = getUsers();
     const userIndex = users.findIndex(u => u.email.toLowerCase() === email.toLowerCase());
+    
     if (userIndex === -1) {
-        return false;
+        return false; // User not found
     }
-    users[userIndex].passwordHash = bcrypt.hashSync(newPassword, 8);
+
+    // Generate the hash for the new password
+    const newPasswordHash = bcrypt.hashSync(newPassword, 8);
+    
+    // Update the user's password hash in the array
+    users[userIndex].passwordHash = newPasswordHash;
+    
+    // Save the updated users array back to localStorage
     saveUsers(users);
-    return true;
+    
+    return true; // Password changed successfully
 };
 
 // --- Admin Functions ---
@@ -216,5 +217,6 @@ export const deleteUserByAdmin = async (email: string): Promise<{ success: boole
 
 export const getAdminLoginUrl = (): string => {
     if (typeof window === 'undefined') return '/i1lbklewq-6b24678_vvw019-qo0liuuu_w5sc2467-8do1yyvvye7z2nnmai17yt8b13hnhm_o01-ilylcgylbgc99';
+    // This is the correct, updated admin login URL.
     return '/i1lbklewq-6b24678_vvw019-qo0liuuu_w5sc2467-8do1yyvvye7z2nnmai17yt8b13hnhm_o01-ilylcgylbgc99';
 };
