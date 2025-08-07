@@ -58,7 +58,7 @@ export default function LoginPage() {
         return;
     }
 
-    const result = loginUser(email, password);
+    const result = loginUser(email, password, 'user'); // Specify login type
     if (result.success) {
       if (rememberMe) {
         LocalStorageService.saveRememberedEmail(email);

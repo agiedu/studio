@@ -95,11 +95,16 @@ export const registerUser = (email: string, password: string): { success: boolea
   return { success: true, message: 'User registered successfully.' };
 };
 
-export const loginUser = (email: string, password: string): { success: boolean; message: string } => {
+export const loginUser = (email: string, password: string, type: 'user' | 'admin'): { success: boolean; message: string } => {
   const lowerCaseEmail = email.toLowerCase();
-  
+  const isAdminLoginAttempt = lowerCaseEmail === ADMIN_EMAIL;
+
   // Prevent admin login from the general user login page
-  if (lowerCaseEmail === ADMIN_EMAIL) {
+  if (type === 'user' && isAdminLoginAttempt) {
+    return { success: false, message: "该账户无法登录" };
+  }
+  // Prevent user login from the admin login page
+  if (type === 'admin' && !isAdminLoginAttempt) {
     return { success: false, message: "该账户无法登录" };
   }
 
