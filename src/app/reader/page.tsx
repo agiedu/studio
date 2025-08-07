@@ -1806,9 +1806,6 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
                 <CardContent
                   ref={scrollContainerRef}
                   className="flex-grow p-2 md:p-4 overflow-auto"
-                  onTouchStart={isMobile ? handleTouchStart : undefined}
-                  onTouchMove={isMobile ? handleTouchMove : undefined}
-                  onTouchEnd={isMobile ? handleTouchEnd : undefined}
                 >
                 {(isLoadingDoc || isEpubLoading || isRenderingPdfPage) && ttsAreaState === 'hidden' && (
                   <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
@@ -1835,6 +1832,9 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
                       transformOrigin: 'top left',
                       transition: 'transform 0.2s ease-out'
                     }}
+                    onTouchStart={isMobile ? handleTouchStart : undefined}
+                    onTouchMove={isMobile ? handleTouchMove : undefined}
+                    onTouchEnd={isMobile ? handleTouchEnd : undefined}
                   >
                    {mainContent}
                   </div>
