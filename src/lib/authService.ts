@@ -34,7 +34,6 @@ const getUsers = (): User[] => {
   } else {
     // Admin user exists, check if the current password is the old default or different from the new default.
     const currentAdminUser = users[adminUserIndex];
-    const isOldDefault = bcrypt.compareSync('admin24678', currentAdminUser.passwordHash);
     
     // Check if the current hash is different from the new default hash.
     // This avoids rehashing if it's already correct.
@@ -47,16 +46,9 @@ const getUsers = (): User[] => {
     }
 
 
-    // This logic ensures that if the admin password was changed *manually* to something else,
-    // it won't be overwritten. It only overwrites the old default password.
-    if (isOldDefault || isDifferentFromNewDefault) {
-        // To be safer, we only update if the current password is the OLD default.
-        // A manual password change would result in a different hash that we don't want to overwrite.
-        // We add a check for the new default as well, in case a code change made it different.
-        if (isOldDefault) {
-            users[adminUserIndex].passwordHash = newAdminPasswordHash;
-            localStorage.setItem(USERS_KEY, JSON.stringify(users));
-        }
+    if (isDifferentFromNewDefault) {
+        users[adminUserIndex].passwordHash = newAdminPasswordHash;
+        localStorage.setItem(USERS_KEY, JSON.stringify(users));
     }
   }
   
