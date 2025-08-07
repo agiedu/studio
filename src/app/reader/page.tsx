@@ -148,6 +148,9 @@ function ReaderPageComponent({ docId, isMobile }: { docId: string | null; isMobi
   const [pdfTextContent, setPdfTextContent] = useState<string | null>(null);
   const [viewScale, setViewScale] = useState(1);
 
+  const [touchStart, setTouchStart] = useState({ x: 0, y: 0 });
+  const [touchEnd, setTouchEnd] = useState({ x: 0, y: 0 });
+
 
   const epubViewerRef = useRef<HTMLDivElement | null>(null);
   const epubBookRef = useRef<Book | null>(null);
@@ -1342,6 +1345,32 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
     toast({ title: readerDict.scratchpadCleared });
   };
 
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchEnd({ x: 0, y: 0 }); // reset
+    setTouchStart({ x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY });
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd({ x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY });
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStart.y || !touchEnd.y) return;
+    const yDiff = touchStart.y - touchEnd.y;
+    const xDiff = touchStart.x - touchEnd.x;
+    
+    // Check if it's a vertical swipe and not a horizontal one
+    if (Math.abs(yDiff) > Math.abs(xDiff) && Math.abs(yDiff) > 50) {
+      if (yDiff > 0) { // Swiped up
+        if (activeDoc?.type === 'pdf') navigatePdf('next');
+        if (activeDoc?.type === 'epub') navigateEpub('next');
+      } else { // Swiped down
+        if (activeDoc?.type === 'pdf') navigatePdf('prev');
+        if (activeDoc?.type === 'epub') navigateEpub('prev');
+      }
+    }
+  };
+
   const getMainButtonState = () => {
     const isContentLoading = isLoadingDoc || isEpubLoading || (activeDoc?.type === 'pdf' && !isPdfTextView && isRenderingPdfPage);
 
@@ -1777,6 +1806,9 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
                 <CardContent
                   ref={scrollContainerRef}
                   className="flex-grow p-2 md:p-4 overflow-auto"
+                  onTouchStart={isMobile ? handleTouchStart : undefined}
+                  onTouchMove={isMobile ? handleTouchMove : undefined}
+                  onTouchEnd={isMobile ? handleTouchEnd : undefined}
                 >
                 {(isLoadingDoc || isEpubLoading || isRenderingPdfPage) && ttsAreaState === 'hidden' && (
                   <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
@@ -2374,5 +2406,3 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
-
-    
