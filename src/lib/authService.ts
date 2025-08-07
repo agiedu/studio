@@ -31,21 +31,39 @@ const getUsers = (): User[] => {
     users.push({ email: ADMIN_EMAIL, passwordHash: newAdminPasswordHash });
     localStorage.setItem(USERS_KEY, JSON.stringify(users));
   } else {
-    // Admin user exists, check if the password needs to be updated to the new default.
-    // We do this by checking if the current hash matches the *old* default password.
-    // This avoids overwriting a password that was manually changed by the admin.
+    // Admin user exists, check if the current password is the old default or different from the new default.
     const currentAdminUser = users[adminUserIndex];
-    const oldDefaultPassword = 'admin24678'; 
-    
-    // Only update if the current password is the old default.
-    if (bcrypt.compareSync(oldDefaultPassword, currentAdminUser.passwordHash)) {
-      users[adminUserIndex].passwordHash = newAdminPasswordHash;
-      localStorage.setItem(USERS_KEY, JSON.stringify(users));
+    const isOldDefault = bcrypt.compareSync('admin24678', currentAdminUser.passwordHash);
+    const isNotNewDefault = !bcrypt.compareSync(DEFAULT_ADMIN_PASSWORD, currentAdminUser.passwordHash);
+
+    // This logic ensures that if the admin password was changed *manually* to something else,
+    // it won't be overwritten. It only overwrites the old default password, or if for some reason
+    // the stored hash doesn't match the new default (e.g., after a code change).
+    if (isOldDefault || (currentAdminUser.passwordHash !== newAdminPasswordHash && !isKnownHash(currentAdminUser.passwordHash, users))) {
+        // To be safer, we only update if the current password is the OLD default.
+        // A manual password change would result in a different hash.
+        if (bcrypt.compareSync('admin24678', currentAdminUser.passwordHash)) {
+            users[adminUserIndex].passwordHash = newAdminPasswordHash;
+            localStorage.setItem(USERS_KEY, JSON.stringify(users));
+        }
     }
   }
   
   return users;
 };
+
+// Helper to check if a hash is a known (manually changed) hash vs a stale default
+function isKnownHash(hash: string, users: User[]): boolean {
+    // A simple heuristic: if it's not one of the default password hashes,
+    // we assume it was manually changed by the user.
+    const oldDefaultHash = users.find(u => u.email.toLowerCase() === ADMIN_EMAIL)?.passwordHash === bcrypt.hashSync('admin24678', 8);
+    const newDefaultHash = users.find(u => u.email.toLowerCase() === ADMIN_EMAIL)?.passwordHash === bcrypt.hashSync(DEFAULT_ADMIN_PASSWORD, 8);
+
+    // This is a simplification. A more robust system would track password change history.
+    // For this app's purpose, if it's not a known default, we treat it as intentional.
+    return !oldDefaultHash && !newDefaultHash;
+}
+
 
 const saveUsers = (users: User[]) => {
   if (typeof window === 'undefined') return;
@@ -79,6 +97,12 @@ export const registerUser = (email: string, password: string): { success: boolea
 
 export const loginUser = (email: string, password: string): { success: boolean; message: string } => {
   const lowerCaseEmail = email.toLowerCase();
+  
+  // Prevent admin login from the general user login page
+  if (lowerCaseEmail === ADMIN_EMAIL) {
+    return { success: false, message: "Admin login is not allowed here. Please use the designated admin login page." };
+  }
+
   const attempts = getFailedAttempts();
   const userAttempt = attempts[lowerCaseEmail];
   const now = Date.now();
