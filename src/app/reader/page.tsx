@@ -579,15 +579,18 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
                 );
               }
               const pageTexts = await Promise.all(pagePromises);
+              if (isStale) { pdf.destroy(); return; }
               const allText = pageTexts.join('\n\n').trim();
 
-              if (isStale) { pdf.destroy(); return; }
+              // A simple heuristic: if the total text length is less than a certain threshold per page, 
+              // it's likely a scanned/image-based PDF.
+              const isLikelyScanned = (allText.length / pdf.numPages) < 100;
 
-              if (allText.length > 0) {
+              if (allText.length > 0 && !isLikelyScanned) {
                 setPdfTextContent(allText);
                 setCurrentTextForTTS(allText);
                 setIsPdfTextView(true);
-                pdf.destroy(); 
+                pdf.destroy();
               } else {
                 setIsPdfTextView(false);
                 setPdfDocProxy(pdf);
