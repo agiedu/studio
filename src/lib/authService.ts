@@ -188,6 +188,6 @@ export const deleteUserByAdmin = async (email: string): Promise<{ success: boole
 };
 
 export const getAdminLoginUrl = (): string => {
-    if (typeof window === 'undefined') return '/login/i1lbklewq-6b24678_vvw019-qo0liuuu_w5sc2467-8do1yyvvye7z2nnmai17yt8b13hnhm_o01-ilylcgylbgc99';
-    return '/login/i1lbklewq-6b24678_vvw019-qo0liuuu_w5sc2467-8do1yyvvye7z2nnmai17yt8b13hnhm_o01-ilylcgylbgc99';
+    if (typeof window === 'undefined') return '/i1lbklewq-6b24678_vvw019-qo0liuuu_w5sc2467-8do1yyvvye7z2nnmai17yt8b13hnhm_o01-ilylcgylbgc99';
+    return '/i1lbklewq-6b24678_vvw019-qo0liuuu_w5sc2467-8do1yyvvye7z2nnmai17yt8b13hnhm_o01-ilylcgylbgc99';
 };
