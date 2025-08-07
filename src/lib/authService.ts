@@ -23,11 +23,25 @@ const getUsers = (): User[] => {
   const usersJson = localStorage.getItem(USERS_KEY);
   let users: User[] = usersJson ? JSON.parse(usersJson) : [];
 
-  const adminUserExists = users.some(u => u.email.toLowerCase() === ADMIN_EMAIL);
-  if (!adminUserExists) {
-    const passwordHash = bcrypt.hashSync(DEFAULT_ADMIN_PASSWORD, 8);
-    users.push({ email: ADMIN_EMAIL, passwordHash });
+  const adminUserIndex = users.findIndex(u => u.email.toLowerCase() === ADMIN_EMAIL);
+  const newAdminPasswordHash = bcrypt.hashSync(DEFAULT_ADMIN_PASSWORD, 8);
+
+  if (adminUserIndex === -1) {
+    // Admin user doesn't exist, create it.
+    users.push({ email: ADMIN_EMAIL, passwordHash: newAdminPasswordHash });
     localStorage.setItem(USERS_KEY, JSON.stringify(users));
+  } else {
+    // Admin user exists, check if the password needs to be updated to the new default.
+    // We do this by checking if the current hash matches the *old* default password.
+    // This avoids overwriting a password that was manually changed by the admin.
+    const currentAdminUser = users[adminUserIndex];
+    const oldDefaultPassword = 'admin24678'; 
+    
+    // Only update if the current password is the old default.
+    if (bcrypt.compareSync(oldDefaultPassword, currentAdminUser.passwordHash)) {
+      users[adminUserIndex].passwordHash = newAdminPasswordHash;
+      localStorage.setItem(USERS_KEY, JSON.stringify(users));
+    }
   }
   
   return users;
