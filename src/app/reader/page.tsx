@@ -1355,16 +1355,16 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
   };
 
   const handleTouchEnd = () => {
-    if (!touchStart.y || !touchEnd.y) return;
-    const yDiff = touchStart.y - touchEnd.y;
+    if (!touchStart.x || !touchEnd.x) return;
     const xDiff = touchStart.x - touchEnd.x;
-    
-    // Check if it's a vertical swipe and not a horizontal one
-    if (Math.abs(yDiff) > Math.abs(xDiff) && Math.abs(yDiff) > 50) {
-      if (yDiff > 0) { // Swiped up
+    const yDiff = touchStart.y - touchEnd.y;
+  
+    // Check if it's primarily a horizontal swipe
+    if (Math.abs(xDiff) > Math.abs(yDiff) && Math.abs(xDiff) > 50) {
+      if (xDiff > 0) { // Swiped left
         if (activeDoc?.type === 'pdf') navigatePdf('next');
         if (activeDoc?.type === 'epub') navigateEpub('next');
-      } else { // Swiped down
+      } else { // Swiped right
         if (activeDoc?.type === 'pdf') navigatePdf('prev');
         if (activeDoc?.type === 'epub') navigateEpub('prev');
       }
