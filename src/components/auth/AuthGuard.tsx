@@ -7,19 +7,20 @@ import { Loader2 } from 'lucide-react';
 
 // This guard protects pages that require a standard user to be logged in.
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
   const [isVerified, setIsVerified] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
         const user = getCurrentUser();
         if (!user) {
-          router.replace('/login');
+          // Force a full page reload to clear all state before redirecting.
+          // This is the critical fix to prevent data leakage between user sessions.
+          window.location.href = '/login';
         } else {
           setIsVerified(true);
         }
     }
-  }, [router]);
+  }, []);
 
   if (!isVerified) {
     return (
@@ -35,20 +36,18 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
 // This guard specifically protects the admin management pages.
 export function AdminAuthGuard({ children }: { children: React.ReactNode }) {
-    const router = useRouter();
     const [isVerified, setIsVerified] = useState(false);
   
     useEffect(() => {
       if (typeof window !== 'undefined') {
         if (!isAdminSessionActive()) {
-            // Redirect to the normal user login page if not an admin.
-            // This prevents non-admins from even knowing about the admin login URL.
-            router.replace('/login');
+            // Force a full page reload to clear all state before redirecting.
+            window.location.href = '/login';
         } else {
             setIsVerified(true);
         }
       }
-    }, [router]);
+    }, []);
   
     if (!isVerified) {
         return (
