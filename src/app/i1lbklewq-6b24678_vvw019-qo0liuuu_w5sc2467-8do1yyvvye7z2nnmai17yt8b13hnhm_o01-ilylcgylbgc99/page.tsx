@@ -68,16 +68,16 @@ export default function AdminLoginPage() {
       </div>
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>{loginDict.adminTitle}</CardTitle>
-          <CardDescription>{loginDict.adminDescription}</CardDescription>
+          <CardTitle></CardTitle>
+          <CardDescription></CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="email">{loginDict.adminEmailLabel}</Label>
+            <Label htmlFor="email"></Label>
             <Input
               id="email"
               type="email"
-              placeholder="admin@example.com"
+              placeholder=""
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -110,9 +110,7 @@ export default function AdminLoginPage() {
           <Button onClick={handleLogin} className="w-full">
             {dictionary.nav.login}
           </Button>
-          <p className="text-xs text-muted-foreground text-center pt-2">
-            {loginDict.defaultPasswordNote}
-          </p>
+          
         </CardContent>
       </Card>
     </div>
