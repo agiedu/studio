@@ -81,50 +81,6 @@ type SelectionForAnnotation = {
   startIndex: number;
 } | null;
 
-
-const HighlightableContent = React.forwardRef<HTMLDivElement, {
-    text: string;
-    textSegments: string[];
-    highlightedSegmentIndex: number;
-    isSpeaking: boolean;
-    isPaused: boolean;
-    className?: string;
-    children?: React.ReactNode;
-}>(({ text, textSegments, highlightedSegmentIndex, isSpeaking, isPaused, className, children }, ref) => {
-    if (!text) return <div ref={ref} className={cn("relative w-full h-full", className)}>{children}</div>;
-
-    let content;
-    if (isSpeaking || isPaused) {
-        if (highlightedSegmentIndex < 0 || !textSegments[highlightedSegmentIndex]) {
-            content = <>{text}</>;
-        } else {
-            const preText = textSegments.slice(0, highlightedSegmentIndex).join('');
-            const highlightedText = textSegments[highlightedSegmentIndex];
-            const postText = textSegments.slice(highlightedSegmentIndex + 1).join('');
-            content = (
-                <>
-                    {preText}
-                    <span className="text-green-600 bg-green-600/10">{highlightedText}</span>
-                    {postText}
-                </>
-            );
-        }
-    } else {
-        content = <>{text}</>;
-    }
-
-    return (
-        <div ref={ref} className={cn("relative w-full h-full", className)}>
-            <div className="w-full h-full whitespace-pre-wrap select-text">
-                {content}
-            </div>
-            {children}
-        </div>
-    );
-});
-HighlightableContent.displayName = 'HighlightableContent';
-
-
 function ReaderPageComponent({ docId, isMobile }: { docId: string | null; isMobile: boolean | undefined }) {
   const { toast } = useToast();
   const router = useRouter();
@@ -1002,6 +958,48 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
         if (audioPlayerRef.current === player) audioPlayerRef.current = null;
     };
   }, [ttsSettings.engine, isSpeaking, stopSpeech, toast, readerDict.audioError, readerDict.failedToPlay]);
+  
+  const HighlightableContent = React.forwardRef<HTMLDivElement, {
+    text: string;
+    textSegments: string[];
+    highlightedSegmentIndex: number;
+    isSpeaking: boolean;
+    isPaused: boolean;
+    className?: string;
+    children?: React.ReactNode;
+}>(({ text, textSegments, highlightedSegmentIndex, isSpeaking, isPaused, className, children }, ref) => {
+    if (!text) return <div ref={ref} className={cn("relative w-full h-full", className)}>{children}</div>;
+
+    let content;
+    if (isSpeaking || isPaused) {
+        if (highlightedSegmentIndex < 0 || !textSegments[highlightedSegmentIndex]) {
+            content = <>{text}</>;
+        } else {
+            const preText = textSegments.slice(0, highlightedSegmentIndex).join('');
+            const highlightedText = textSegments[highlightedSegmentIndex];
+            const postText = textSegments.slice(highlightedSegmentIndex + 1).join('');
+            content = (
+                <>
+                    {preText}
+                    <span className="text-green-600 bg-green-600/10">{highlightedText}</span>
+                    {postText}
+                </>
+            );
+        }
+    } else {
+        content = <>{text}</>;
+    }
+
+    return (
+        <div ref={ref} className={cn("relative w-full h-full", className)}>
+            <div className="w-full h-full whitespace-pre-wrap select-text">
+                {content}
+            </div>
+            {children}
+        </div>
+    );
+});
+HighlightableContent.displayName = 'HighlightableContent';
 
   useEffect(() => {
     if (isSpeaking && !isPaused && highlightedSegmentIndex > -1) {
@@ -1672,25 +1670,7 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
   const groupedLocalVoices = groupVoicesByLanguage(availableVoices);
 
   const mainContent = useMemo(() => {
-    if (!activeDoc) {
-        return (
-            <div className="w-full h-full relative">
-                <HighlightableContent
-                    ref={mainHighlightedContentRef}
-                    text={scratchpadText}
-                    textSegments={textSegments}
-                    highlightedSegmentIndex={highlightedSegmentIndex}
-                    isSpeaking={isSpeaking}
-                    isPaused={isPaused}
-                    className="w-full h-full min-h-[200px] whitespace-pre-wrap select-text text-sm p-2"
-                >
-                     <AnnotationMarkers containerRef={mainHighlightedContentRef} annotations={sortedAnnotations} text={scratchpadText} />
-                </HighlightableContent>
-            </div>
-        );
-    }
-
-    if (activeDoc.type === 'pdf' && isPdfTextView) {
+    if (activeDoc?.type === 'pdf' && isPdfTextView) {
         return (
              <div className="w-full h-full px-3 py-2 text-sm">
                 <HighlightableContent
@@ -1707,7 +1687,7 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
         );
     }
 
-    if (activeDoc.type === 'pdf' && !isPdfTextView) {
+    if (activeDoc?.type === 'pdf' && !isPdfTextView) {
         return (
             <div className="w-full text-center space-y-4">
                 {pdfPageImage && (
@@ -1724,7 +1704,7 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
         );
     }
     
-    if (activeDoc.type === 'epub') {
+    if (activeDoc?.type === 'epub') {
       return (
           <>
               <div 
@@ -1736,7 +1716,7 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
       );
   }
 
-    if (activeDoc.type === 'txt') {
+    if (activeDoc?.type === 'txt') {
         return (
             <div className="w-full h-full px-3 py-2 text-sm">
                 <HighlightableContent
@@ -1753,7 +1733,7 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
         );
     }
 
-    if (activeDoc.type === 'image') {
+    if (activeDoc?.type === 'image') {
         return (
             <div className="w-full text-center space-y-4">
                 {displayedImageSrc && (
@@ -1771,7 +1751,7 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
         );
     }
 
-    if (activeDoc.type === 'mobi') {
+    if (activeDoc?.type === 'mobi') {
         return (
             <div className="p-4 bg-background rounded-md shadow-inner text-center h-full flex flex-col justify-center items-center">
                 <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-2" />
@@ -1783,7 +1763,7 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
 
     return null;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeDoc, scratchpadText, isPdfTextView, pdfPageImage, currentPdfPageNum, displayedImageSrc, docId, currentTextForTTS, textSegments, highlightedSegmentIndex, isSpeaking, isPaused, readerDict.scratchpadPlaceholder, sortedAnnotations]);
+  }, [activeDoc, isPdfTextView, pdfPageImage, currentPdfPageNum, displayedImageSrc, docId, currentTextForTTS, textSegments, highlightedSegmentIndex, isSpeaking, isPaused, readerDict.scratchpadPlaceholder, sortedAnnotations]);
 
   if (showInitialLoader) { 
     return <div className="flex items-center justify-center h-full flex-grow"><Loader2 className="h-12 w-12 animate-spin text-primary" /><p className="ml-4 text-lg">{readerDict.loadingDocument}</p></div>; 
@@ -1795,6 +1775,7 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
          <div 
             className="flex-grow flex flex-col p-2 md:p-4 min-h-0 min-w-0 h-full"
         >
+             {activeDoc ? (
             <Card className="flex-grow flex flex-col min-h-0 shadow-inner relative transition-all duration-300"
                 style={{
                   height: ttsAreaState === 'hidden' ? '100%' : (ttsAreaState === 'caption' ? 'calc(100% - 6rem)' : '0'),
@@ -1806,6 +1787,9 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
                 <CardContent
                   ref={scrollContainerRef}
                   className="flex-grow p-2 md:p-4 overflow-auto relative"
+                  onTouchStart={handleTouchStart}
+                  onTouchMove={handleTouchMove}
+                  onTouchEnd={handleTouchEnd}
                 >
                 {(isLoadingDoc || isEpubLoading || isRenderingPdfPage) && ttsAreaState === 'hidden' && (
                   <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
@@ -1833,18 +1817,28 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
                     }}
                   >
                    {mainContent}
-                   <div
-                    className={cn(
-                        "absolute inset-0 z-10",
-                        isMobile ? "pointer-events-auto" : "pointer-events-none"
-                    )}
-                    onTouchStart={handleTouchStart}
-                    onTouchMove={handleTouchMove}
-                    onTouchEnd={handleTouchEnd}
-                    />
                 </div>
                 </CardContent>
             </Card>
+             ) : (
+                <Card className="flex-grow flex flex-col">
+                    <CardHeader>
+                        <CardTitle>{readerDict.scratchpad}</CardTitle>
+                    </CardHeader>
+                    <CardContent className="flex-grow">
+                        <Textarea
+                            ref={mainTextAreaRef}
+                            value={scratchpadText}
+                            onChange={(e) => {
+                                setScratchpadText(e.target.value);
+                                setCurrentTextForTTS(e.target.value);
+                            }}
+                            className="w-full h-full resize-none bg-background text-foreground text-sm"
+                            placeholder={readerDict.scratchpadPlaceholder}
+                        />
+                    </CardContent>
+                </Card>
+            )}
         </div>
         
         <div
