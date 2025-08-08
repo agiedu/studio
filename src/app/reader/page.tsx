@@ -1760,10 +1760,33 @@ HighlightableContent.displayName = 'HighlightableContent';
             </div>
         );
     }
+    
+    // Scratchpad View
+    if (!activeDoc) {
+      return (
+        <Card className="flex-grow flex flex-col h-full">
+            <CardHeader>
+                <CardTitle>{readerDict.scratchpad}</CardTitle>
+            </CardHeader>
+            <CardContent className="flex-grow">
+                <Textarea
+                    ref={mainTextAreaRef}
+                    value={scratchpadText}
+                    onChange={(e) => {
+                        setScratchpadText(e.target.value);
+                        setCurrentTextForTTS(e.target.value);
+                    }}
+                    className="w-full h-full resize-none bg-background text-foreground text-sm"
+                    placeholder={readerDict.scratchpadPlaceholder}
+                />
+            </CardContent>
+        </Card>
+      );
+    }
 
     return null;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeDoc, isPdfTextView, pdfPageImage, currentPdfPageNum, displayedImageSrc, docId, currentTextForTTS, textSegments, highlightedSegmentIndex, isSpeaking, isPaused, readerDict.scratchpadPlaceholder, sortedAnnotations]);
+  }, [activeDoc, isPdfTextView, pdfPageImage, currentPdfPageNum, displayedImageSrc, docId, currentTextForTTS, textSegments, highlightedSegmentIndex, isSpeaking, isPaused, readerDict.scratchpadPlaceholder, sortedAnnotations, scratchpadText]);
 
   if (showInitialLoader) { 
     return <div className="flex items-center justify-center h-full flex-grow"><Loader2 className="h-12 w-12 animate-spin text-primary" /><p className="ml-4 text-lg">{readerDict.loadingDocument}</p></div>; 
@@ -1787,9 +1810,6 @@ HighlightableContent.displayName = 'HighlightableContent';
                 <CardContent
                   ref={scrollContainerRef}
                   className="flex-grow p-2 md:p-4 overflow-auto relative"
-                  onTouchStart={handleTouchStart}
-                  onTouchMove={handleTouchMove}
-                  onTouchEnd={handleTouchEnd}
                 >
                 {(isLoadingDoc || isEpubLoading || isRenderingPdfPage) && ttsAreaState === 'hidden' && (
                   <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
@@ -1818,26 +1838,19 @@ HighlightableContent.displayName = 'HighlightableContent';
                   >
                    {mainContent}
                 </div>
+                 <div
+                    onTouchStart={handleTouchStart}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                    className={cn(
+                        "absolute inset-0 z-10",
+                        isMobile ? "pointer-events-auto" : "pointer-events-none"
+                    )}
+                />
                 </CardContent>
             </Card>
              ) : (
-                <Card className="flex-grow flex flex-col">
-                    <CardHeader>
-                        <CardTitle>{readerDict.scratchpad}</CardTitle>
-                    </CardHeader>
-                    <CardContent className="flex-grow">
-                        <Textarea
-                            ref={mainTextAreaRef}
-                            value={scratchpadText}
-                            onChange={(e) => {
-                                setScratchpadText(e.target.value);
-                                setCurrentTextForTTS(e.target.value);
-                            }}
-                            className="w-full h-full resize-none bg-background text-foreground text-sm"
-                            placeholder={readerDict.scratchpadPlaceholder}
-                        />
-                    </CardContent>
-                </Card>
+                 mainContent
             )}
         </div>
         
@@ -2405,3 +2418,4 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
+
