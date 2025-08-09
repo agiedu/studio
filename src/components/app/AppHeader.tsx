@@ -50,7 +50,7 @@ export function AppHeader() {
   };
 
   const getLinkClass = (path: string) => {
-    const isActive = pathname.startsWith(path);
+    const isActive = path === '/' ? pathname === path : pathname.startsWith(path);
     return cn(
       "flex items-center gap-2 justify-start",
       isActive && "bg-accent text-accent-foreground rounded-md"
