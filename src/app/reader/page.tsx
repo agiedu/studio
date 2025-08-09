@@ -105,7 +105,7 @@ function ReaderPageComponent({ docId, isMobile }: { docId: string | null; isMobi
   const [viewScale, setViewScale] = useState(1);
 
   const [touchStart, setTouchStart] = useState({ x: 0, y: 0 });
-  const [touchEnd, setTouchEnd] = useState({ x: 0, y: 0 });
+  const [isScrolling, setIsScrolling] = useState(false);
 
 
   const epubViewerRef = useRef<HTMLDivElement | null>(null);
@@ -1344,21 +1344,39 @@ HighlightableContent.displayName = 'HighlightableContent';
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
-    setTouchEnd({ x: 0, y: 0 }); // reset
+    setIsScrolling(false);
     setTouchStart({ x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY });
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    setTouchEnd({ x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY });
+      const touchMoveX = e.targetTouches[0].clientX;
+      const touchMoveY = e.targetTouches[0].clientY;
+      const xDiff = touchStart.x - touchMoveX;
+      const yDiff = touchStart.y - touchMoveY;
+
+      // If vertical scroll is more significant, or if we've already started scrolling,
+      // let the browser handle it for scrolling and text selection.
+      if (isScrolling || Math.abs(yDiff) > Math.abs(xDiff) + 5) {
+          setIsScrolling(true);
+          return;
+      }
+      
+      // If we are here, it's primarily a horizontal swipe. Prevent default to handle page turning.
+      e.preventDefault();
   };
 
-  const handleTouchEnd = () => {
-    if (!touchStart.x || !touchEnd.x) return;
-    const xDiff = touchStart.x - touchEnd.x;
-    const yDiff = touchStart.y - touchEnd.y;
-  
-    // Check if it's primarily a horizontal swipe
-    if (Math.abs(xDiff) > Math.abs(yDiff) && Math.abs(xDiff) > 50) {
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (isScrolling) {
+        setIsScrolling(false);
+        return;
+    }
+
+    const touchEndX = e.changedTouches[0].clientX;
+    const xDiff = touchStart.x - touchEndX;
+
+    const swipeThreshold = 50; // Minimum distance for a swipe
+
+    if (Math.abs(xDiff) > swipeThreshold) {
       if (xDiff > 0) { // Swiped left
         if (activeDoc?.type === 'pdf') navigatePdf('next');
         if (activeDoc?.type === 'epub') navigateEpub('next');
@@ -1797,6 +1815,9 @@ HighlightableContent.displayName = 'HighlightableContent';
       <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)] overflow-hidden relative">
          <div 
             className="flex-grow flex flex-col p-2 md:p-4 min-h-0 min-w-0 h-full"
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
         >
              {activeDoc ? (
             <Card className="flex-grow flex flex-col min-h-0 shadow-inner relative transition-all duration-300"
@@ -1838,15 +1859,6 @@ HighlightableContent.displayName = 'HighlightableContent';
                   >
                    {mainContent}
                 </div>
-                 <div
-                    onTouchStart={handleTouchStart}
-                    onTouchMove={handleTouchMove}
-                    onTouchEnd={handleTouchEnd}
-                    className={cn(
-                        "absolute inset-0 z-10",
-                        isMobile ? "pointer-events-auto" : "pointer-events-none"
-                    )}
-                />
                 </CardContent>
             </Card>
              ) : (
@@ -2418,4 +2430,3 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
-
