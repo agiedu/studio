@@ -4,7 +4,7 @@
 import { useState, useEffect, useContext } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { BookOpenText, Library, Star, User, LogOut, ShieldCheck, NotebookText, Home, Film, Menu } from 'lucide-react';
+import { BookOpenText, Library, Star, User, LogOut, ShieldCheck, NotebookText, Home, Film, Menu, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { MangaTalkLogo } from '@/components/icons/MangaTalkLogo';
 import { cn } from '@/lib/utils';
@@ -61,52 +61,65 @@ export function AppHeader() {
       return null;
   }
   
-  const navLinks = user ? (
+  const navLinks = (
       <>
         <Button variant="ghost" asChild size="sm" className={getLinkClass('/')}>
           <Link href="/">
             <Home className="mr-1 h-4 w-4" /> {dictionary.nav.home}
           </Link>
         </Button>
-        <Button variant="ghost" asChild size="sm" className={getLinkClass('/library')}>
-          <Link href="/library">
-            <Library className="mr-1 h-4 w-4" /> {dictionary.nav.library}
-          </Link>
-        </Button>
-        <Button variant="ghost" asChild size="sm" className={getLinkClass('/reader')}>
-          <Link href="/reader">
-            <BookOpenText className="mr-1 h-4 w-4" /> {dictionary.nav.reader}
-          </Link>
-        </Button>
-         <Button variant="ghost" asChild size="sm" className={getLinkClass('/media')}>
-          <Link href="/media">
-            <Film className="mr-1 h-4 w-4" /> {dictionary.nav.media}
-          </Link>
-        </Button>
-        <Button variant="ghost" asChild size="sm" className={getLinkClass('/favorites')}>
-          <Link href="/favorites">
-            <Star className="mr-1 h-4 w-4" /> {dictionary.nav.favorites}
-          </Link>
-        </Button>
-        <Button variant="ghost" asChild size="sm" className={getLinkClass('/notes-favorites')}>
-          <Link href="/notes-favorites">
-            <NotebookText className="mr-1 h-4 w-4" /> {dictionary.nav.notes}
-          </Link>
-        </Button>
-        <Button variant="ghost" asChild size="sm" className={getLinkClass('/profile')}>
-          <Link href="/profile">
-            <User className="mr-1 h-4 w-4" /> {dictionary.nav.profile}
-          </Link>
-        </Button>
-        {isAdmin && (
-           <Button variant="ghost" asChild size="sm" className={getLinkClass('/admin/management')}>
-              <Link href="/admin/management">
-                  <ShieldCheck className="mr-1 h-4 w-4" /> {dictionary.nav.admin}
-              </Link>
-          </Button>
+        {user ? (
+            <>
+                <Button variant="ghost" asChild size="sm" className={getLinkClass('/library')}>
+                <Link href="/library">
+                    <Library className="mr-1 h-4 w-4" /> {dictionary.nav.library}
+                </Link>
+                </Button>
+                <Button variant="ghost" asChild size="sm" className={getLinkClass('/reader')}>
+                <Link href="/reader">
+                    <BookOpenText className="mr-1 h-4 w-4" /> {dictionary.nav.reader}
+                </Link>
+                </Button>
+                <Button variant="ghost" asChild size="sm" className={getLinkClass('/media')}>
+                <Link href="/media">
+                    <Film className="mr-1 h-4 w-4" /> {dictionary.nav.media}
+                </Link>
+                </Button>
+                <Button variant="ghost" asChild size="sm" className={getLinkClass('/favorites')}>
+                <Link href="/favorites">
+                    <Star className="mr-1 h-4 w-4" /> {dictionary.nav.favorites}
+                </Link>
+                </Button>
+                <Button variant="ghost" asChild size="sm" className={getLinkClass('/notes-favorites')}>
+                <Link href="/notes-favorites">
+                    <NotebookText className="mr-1 h-4 w-4" /> {dictionary.nav.notes}
+                </Link>
+                </Button>
+                <Button variant="ghost" asChild size="sm" className={getLinkClass('/profile')}>
+                <Link href="/profile">
+                    <User className="mr-1 h-4 w-4" /> {dictionary.nav.profile}
+                </Link>
+                </Button>
+                {isAdmin && (
+                <Button variant="ghost" asChild size="sm" className={getLinkClass('/admin/management')}>
+                    <Link href="/admin/management">
+                        <ShieldCheck className="mr-1 h-4 w-4" /> {dictionary.nav.admin}
+                    </Link>
+                </Button>
+                )}
+                 <Button variant="ghost" size="sm" onClick={handleLogout} className="flex items-center gap-2 justify-start">
+                    <LogOut className="mr-1 h-4 w-4" /> {dictionary.nav.logout}
+                </Button>
+            </>
+        ) : (
+            <Button variant="ghost" asChild size="sm" className={getLinkClass('/login')}>
+                <Link href="/login">
+                    <LogIn className="mr-1 h-4 w-4" /> {dictionary.nav.login}
+                </Link>
+            </Button>
         )}
       </>
-    ) : null;
+    );
 
 
   return (
@@ -117,7 +130,7 @@ export function AppHeader() {
             <MangaTalkLogo className="h-8 w-8" />
             <h1 className="text-xl md:text-2xl font-bold font-headline text-primary">MangaTalk</h1>
           </Link>
-          {isMobile === false && (
+          {!isMobile && (
             <nav className="hidden md:flex items-center gap-1 md:gap-2">
                 {navLinks}
             </nav>
@@ -125,7 +138,7 @@ export function AppHeader() {
         </div>
         
         <div className="flex items-center gap-2">
-          {user && isMobile && (
+          {isMobile && (
             <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
               <SheetTrigger asChild>
                 <Button variant="ghost" size="icon">
@@ -144,13 +157,7 @@ export function AppHeader() {
             </Sheet>
           )}
 
-          {user && !isMobile && (
-              <Button variant="ghost" size="sm" onClick={handleLogout}>
-                  <LogOut className="mr-1 h-4 w-4" /> 
-                  <span className={cn(isMobile && "hidden")}>{dictionary.nav.logout}</span>
-              </Button>
-          )}
-          {!user && (
+          {!user && !isMobile && (
                <Button variant="ghost" size="sm" asChild>
                   <Link href="/login">{dictionary.nav.login}</Link>
               </Button>

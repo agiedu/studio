@@ -127,7 +127,7 @@ export default function HomePage() {
                                     <Link href="/login">{dictionary.nav.login}</Link>
                                 </Button>
                                 <Button asChild>
-                                    <Link href="/register">Register</Link>
+                                    <Link href="/register">{dictionary.home.register}</Link>
                                 </Button>
                             </>
                         )}
