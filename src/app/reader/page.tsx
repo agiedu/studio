@@ -105,7 +105,8 @@ function ReaderPageComponent({ docId, isMobile }: { docId: string | null; isMobi
   const [viewScale, setViewScale] = useState(1);
 
   const [touchStart, setTouchStart] = useState({ x: 0, y: 0 });
-  const [isScrolling, setIsScrolling] = useState(false);
+  const [isTextSelectionMode, setIsTextSelectionMode] = useState(false);
+  const longPressTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
 
   const epubViewerRef = useRef<HTMLDivElement | null>(null);
@@ -582,7 +583,8 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
                   const rendition = book.renderTo("epub-viewer", { width: "100%", height: "100%", flow: "paginated", spread: "none" });
                   epubRenditionRef.current = rendition;
 
-                  rendition.on('displayed', (view: any) => {
+                  rendition.on('displayed', async (view: any) => {
+                     await book.ready;
                      const toc = book.navigation.toc;
                      if(isMountedRef.current) setEpubToc(toc);
                   });
@@ -1344,47 +1346,57 @@ HighlightableContent.displayName = 'HighlightableContent';
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
-    setIsScrolling(false);
+    if (longPressTimeoutRef.current) {
+        clearTimeout(longPressTimeoutRef.current);
+    }
+    longPressTimeoutRef.current = setTimeout(() => {
+        setIsTextSelectionMode(true);
+        longPressTimeoutRef.current = null;
+    }, 200); // 200ms for long press detection
+    
     setTouchStart({ x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY });
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-      const touchMoveX = e.targetTouches[0].clientX;
-      const touchMoveY = e.targetTouches[0].clientY;
-      const xDiff = touchStart.x - touchMoveX;
-      const yDiff = touchStart.y - touchMoveY;
-
-      // If vertical scroll is more significant, or if we've already started scrolling,
-      // let the browser handle it for scrolling and text selection.
-      if (isScrolling || Math.abs(yDiff) > Math.abs(xDiff) + 5) {
-          setIsScrolling(true);
+      if (longPressTimeoutRef.current) {
+          clearTimeout(longPressTimeoutRef.current);
+          longPressTimeoutRef.current = null;
+      }
+      if (isTextSelectionMode) {
+          // If in text selection mode, do not interfere with native behavior.
           return;
       }
       
-      // If we are here, it's primarily a horizontal swipe. Prevent default to handle page turning.
       e.preventDefault();
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
-    if (isScrolling) {
-        setIsScrolling(false);
+    if (longPressTimeoutRef.current) {
+        clearTimeout(longPressTimeoutRef.current);
+        longPressTimeoutRef.current = null;
+    }
+    // If it was a text selection, just reset the mode.
+    if (isTextSelectionMode) {
+        setIsTextSelectionMode(false);
         return;
     }
 
     const touchEndX = e.changedTouches[0].clientX;
     const xDiff = touchStart.x - touchEndX;
-
-    const swipeThreshold = 50; // Minimum distance for a swipe
+    const swipeThreshold = 50; 
 
     if (Math.abs(xDiff) > swipeThreshold) {
       if (xDiff > 0) { // Swiped left
-        if (activeDoc?.type === 'pdf') navigatePdf('next');
+        if (activeDoc?.type === 'pdf' && !isPdfTextView) navigatePdf('next');
         if (activeDoc?.type === 'epub') navigateEpub('next');
       } else { // Swiped right
-        if (activeDoc?.type === 'pdf') navigatePdf('prev');
-        if (activeDoc?.type === 'epub') navigateEpub('prev');
+        if (activeDoc?.type === 'pdf' && !isPdfTextView) navigatePdf('prev');
+        if (activeDoc?.type === 'epub') navigateEpub('next');
       }
     }
+    
+    // Always reset text selection mode on touch end.
+    setIsTextSelectionMode(false);
   };
 
   const getMainButtonState = () => {
