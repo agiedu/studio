@@ -44,9 +44,10 @@ export function AppHeader() {
 
   const handleLogout = () => {
     logout();
-    setUser(null);
-    setIsAdmin(false);
-    router.push('/');
+    // Force a full page reload to the homepage.
+    // This is the most reliable way to clear all state and avoid client/server mismatches
+    // that can cause "Failed to fetch" errors on navigation after logout.
+    window.location.href = '/';
   };
 
   const getLinkClass = (path: string) => {
@@ -57,7 +58,7 @@ export function AppHeader() {
     );
   };
   
-  if (pathname === '/' || pathname.startsWith('/login') || pathname.startsWith('/register')) {
+  if (pathname === '/' || pathname.startsWith('/login') || pathname.startsWith('/register') || pathname.startsWith('/i1lbklewq-6b24678_vvw019-qo0liuuu_w5sc2467-8do1yyvvye7z2nnmai17yt8b13hnhm_o01-ilylcgylbgc99')) {
       return null;
   }
   
