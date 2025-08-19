@@ -51,13 +51,14 @@ export class MobiParser {
     const textRecords = records.slice(1, palmDocHeader.textRecords + 1);
     const rawText = this.extractTextFromRecords(bytes, textRecords, records[palmDocHeader.textRecords + 1]?.offset);
     const decompressedText = this.decompressText(rawText, palmDocHeader.compression);
-    const cleanText = this.cleanHtmlContent(decompressedText);
+    // Modified to keep HTML formatting
+    const formattedContent = this.cleanHtmlContent(decompressedText);
 
     return {
       title: mobiHeader.title || 'Untitled MOBI',
-      content: cleanText,
+      content: formattedContent, // Return formatted HTML content
       author: mobiHeader.author || 'Unknown Author',
-      totalLength: cleanText.length
+      totalLength: formattedContent.length
     };
   }
 
@@ -186,18 +187,15 @@ fallbackText = [];
   }
 
   private static cleanHtmlContent(htmlContent: string): string {
-    const cleanText = htmlContent
+    // This function is now designed to preserve most HTML tags for formatting,
+    // only removing potentially disruptive ones like <script> and <style>.
+    const cleanContent = htmlContent
       .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
       .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
-      .replace(/<[^>]+>/g, '')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&amp;/g, '&')
-      .replace(/\s+/g, ' ')
-      .replace(/\n\s*\n/g, '\n\n')
+      // We no longer strip all other HTML tags.
+      // The reader component will be responsible for rendering the HTML.
       .trim();
-    return cleanText;
+    return cleanContent;
   }
 
   // Helper methods to read multi-byte numbers from the byte array
@@ -214,5 +212,3 @@ fallbackText = [];
     );
   }
 }
-
-    

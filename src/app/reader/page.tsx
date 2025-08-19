@@ -10,7 +10,6 @@ import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist';
 // Use dynamic imports for epubjs types to avoid build issues
 import type Book from 'epubjs/types/book';
 import type Rendition from 'epubjs/types/rendition';
-
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -58,6 +57,7 @@ import { edgeTTSLanguageVoices } from '@/lib/edge-tts-voices';
 import { LanguageContext } from '@/context/LanguageContext';
 import { getDictionary } from '@/lib/i18n';
 import { useIsMobile } from '@/hooks/use-mobile';
+import DOMPurify from 'dompurify';
 
 const PUNCTUATION_REGEX = /[.,?!,。？！，、\n\r"“„”'‘’`*_{}\[\]()#&@:;~<>/\\|\-—–^%$《》]/g;
 
@@ -125,6 +125,7 @@ function ReaderPageComponent({ docId, isMobile }: { docId: string | null; isMobi
 
 
   const [txtContent, setTxtContent] = useState<string>("");
+  const [mobiHtmlContent, setMobiHtmlContent] = useState<string>("");
   const [displayedImageSrc, setDisplayedImageSrc] = useState<string | null>(null);
   const currentImageObjectUrlRef = useRef<string | null>(null);
   
@@ -662,9 +663,15 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
           case 'mobi':
             try {
                 const mobiBook = await MobiParser.parseMobi(doc.fileData);
-                const mobiText = mobiBook.content;
-                setTxtContent(mobiText);
-                setCurrentTextForTTS(mobiText);
+                const sanitizedHtml = DOMPurify.sanitize(mobiBook.content);
+                setMobiHtmlContent(sanitizedHtml);
+                
+                // For TTS, we need plain text. Let's create it from the HTML.
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = sanitizedHtml;
+                const textForTTS = tempDiv.textContent || tempDiv.innerText || '';
+                setCurrentTextForTTS(textForTTS);
+
             } catch (mobiError: any) {
                 console.error("Error parsing MOBI:", mobiError);
                 setDocErrorMessage(`Error parsing MOBI: ${mobiError.message}`);
@@ -690,6 +697,7 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
     setActiveDoc(null);
     setIsLoadingDoc(true);
     setTxtContent("");
+    setMobiHtmlContent("");
     setDisplayedImageSrc(null);
     setIsEpubLoading(false);
     setCurrentTextForTTS("");
@@ -1762,7 +1770,7 @@ HighlightableContent.displayName = 'HighlightableContent';
       );
   }
 
-    if (activeDoc?.type === 'txt' || activeDoc?.type === 'mobi') {
+    if (activeDoc?.type === 'txt') {
         return (
             <div className="w-full h-full px-3 py-2 text-sm">
                 <HighlightableContent
@@ -1776,6 +1784,15 @@ HighlightableContent.displayName = 'HighlightableContent';
                     <AnnotationMarkers containerRef={mainHighlightedContentRef} annotations={sortedAnnotations} text={currentTextForTTS} />
                 </HighlightableContent>
             </div>
+        );
+    }
+
+    if (activeDoc?.type === 'mobi') {
+        return (
+            <div 
+                className="w-full h-full p-4 md:p-6 text-sm"
+                dangerouslySetInnerHTML={{ __html: mobiHtmlContent }}
+            />
         );
     }
 
@@ -1822,7 +1839,7 @@ HighlightableContent.displayName = 'HighlightableContent';
 
     return null;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeDoc, isPdfTextView, pdfPageImage, currentPdfPageNum, displayedImageSrc, docId, currentTextForTTS, textSegments, highlightedSegmentIndex, isSpeaking, isPaused, readerDict.scratchpadPlaceholder, sortedAnnotations, scratchpadText]);
+  }, [activeDoc, isPdfTextView, pdfPageImage, currentPdfPageNum, displayedImageSrc, docId, currentTextForTTS, textSegments, highlightedSegmentIndex, isSpeaking, isPaused, readerDict.scratchpadPlaceholder, sortedAnnotations, scratchpadText, mobiHtmlContent]);
 
   if (showInitialLoader) { 
     return <div className="flex items-center justify-center h-full flex-grow"><Loader2 className="h-12 w-12 animate-spin text-primary" /><p className="ml-4 text-lg">{readerDict.loadingDocument}</p></div>; 
@@ -2448,5 +2465,3 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
-
-    
