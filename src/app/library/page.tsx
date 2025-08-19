@@ -105,6 +105,7 @@ function LibraryPageContent() {
     setIsUploading(true);
     const docId = `doc_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
     let newDocument: StoredMangaDocument | null = null;
+    const lowerCaseName = file.name.toLowerCase();
 
     try {
       const fileBuffer = await file.arrayBuffer();
@@ -127,11 +128,11 @@ function LibraryPageContent() {
             toast({ variant: "default", title: "PDF Info", description: libraryDict.pdfPageCountIssue.replace('{name}', file.name).replace('{message}', pdfError.message) });
             newDocument = { ...commonDocProps, type: 'pdf', numPages: undefined, ocrTextPerPage: {} }; // Save even if page count fails
           }
-      } else if (file.type === 'application/epub+zip' || file.name.toLowerCase().endsWith('.epub')) {
+      } else if (file.type === 'application/epub+zip' || lowerCaseName.endsWith('.epub')) {
         newDocument = { ...commonDocProps, type: 'epub', originalType: 'application/epub+zip' };
-      } else if (file.type === 'application/x-mobipocket-ebook' || file.name.toLowerCase().endsWith('.mobi')) {
-        newDocument = { ...commonDocProps, type: 'mobi', originalType: 'application/x-mobipocket-ebook' };
-      } else if (file.type === 'text/plain' || file.name.toLowerCase().endsWith('.txt')) {
+      } else if (file.type === 'application/x-mobipocket-ebook' || lowerCaseName.endsWith('.mobi') || lowerCaseName.endsWith('.azw') || lowerCaseName.endsWith('.azw3')) {
+        newDocument = { ...commonDocProps, type: 'mobi', originalType: file.type || 'application/x-mobipocket-ebook' };
+      } else if (file.type === 'text/plain' || lowerCaseName.endsWith('.txt')) {
         newDocument = { ...commonDocProps, type: 'txt', originalType: 'text/plain' };
       } else {
         toast({ variant: "destructive", title: libraryDict.unsupportedFileType, description: libraryDict.unsupportedFileTypeError.replace('{type}', file.type || 'unknown').replace('{name}', file.name) });
@@ -228,7 +229,7 @@ function LibraryPageContent() {
                 ref={fileInputRef}
                 id="doc-upload-library"
                 type="file"
-                accept="application/epub+zip,application/pdf,text/plain,image/*,application/x-mobipocket-ebook"
+                accept="application/epub+zip,application/pdf,text/plain,image/*,application/x-mobipocket-ebook,.mobi,.azw,.azw3"
                 onChange={handleFileUpload}
                 disabled={isUploading || isLoading}
               />
@@ -336,4 +337,5 @@ export default function LibraryPage() {
     )
 }
 
+    
     
