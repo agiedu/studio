@@ -65,6 +65,12 @@ type SpeechOrigin = 'main' | 'repeat' | null;
 
 type TtsAreaState = 'hidden' | 'caption' | 'fullscreen';
 
+type TocItem = {
+  id: string;
+  label: string;
+  level: number;
+};
+
 
 const groupVoicesByLanguage = (voices: TTSVoice[]) => {
   return voices.reduce((acc, voice) => {
@@ -106,9 +112,6 @@ function ReaderPageComponent({ docId, isMobile }: { docId: string | null; isMobi
   const [viewScale, setViewScale] = useState(1);
 
   const [touchStart, setTouchStart] = useState({ x: 0, y: 0 });
-  const [isTextSelectionMode, setIsTextSelectionMode] = useState(false);
-  const longPressTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
 
   const epubViewerRef = useRef<HTMLDivElement | null>(null);
   const epubBookRef = useRef<Book | null>(null);
@@ -126,12 +129,14 @@ function ReaderPageComponent({ docId, isMobile }: { docId: string | null; isMobi
 
   const [txtContent, setTxtContent] = useState<string>("");
   const [mobiHtmlContent, setMobiHtmlContent] = useState<string>("");
+  const [mobiToc, setMobiToc] = useState<TocItem[]>([]);
   const [displayedImageSrc, setDisplayedImageSrc] = useState<string | null>(null);
   const currentImageObjectUrlRef = useRef<string | null>(null);
   
   const [scratchpadText, setScratchpadText] = useState<string>('');
   const [scratchpadAnnotations, setScratchpadAnnotations] = useState<Annotation[]>([]);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const lastSpokenTextRef = useRef<string>('');
 
   const [isPerformingOcr, setIsPerformingOcr] = useState(false);
   const [currentTextForTTS, setCurrentTextForTTS] = useState<string>("");
@@ -665,12 +670,19 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
                 const mobiBook = await MobiParser.parseMobi(doc.fileData);
                 const sanitizedHtml = DOMPurify.sanitize(mobiBook.content);
                 setMobiHtmlContent(sanitizedHtml);
-                
-                // For TTS, we need plain text. Let's create it from the HTML.
-                const tempDiv = document.createElement('div');
-                tempDiv.innerHTML = sanitizedHtml;
-                const textForTTS = tempDiv.textContent || tempDiv.innerText || '';
-                setCurrentTextForTTS(textForTTS);
+                 // Also set for TTS area to maintain formatting
+                setCurrentTextForTTS(sanitizedHtml);
+
+                // Extract TOC from the processed HTML
+                const parser = new DOMParser();
+                const htmlDoc = parser.parseFromString(sanitizedHtml, 'text/html');
+                const headings = htmlDoc.querySelectorAll('h1, h2, h3');
+                const toc: TocItem[] = Array.from(headings).map(h => ({
+                    id: h.id,
+                    label: h.textContent || '',
+                    level: parseInt(h.tagName.substring(1), 10)
+                }));
+                setMobiToc(toc);
 
             } catch (mobiError: any) {
                 console.error("Error parsing MOBI:", mobiError);
@@ -698,6 +710,7 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
     setIsLoadingDoc(true);
     setTxtContent("");
     setMobiHtmlContent("");
+    setMobiToc([]);
     setDisplayedImageSrc(null);
     setIsEpubLoading(false);
     setCurrentTextForTTS("");
@@ -740,7 +753,7 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
       setEpubPageIsImage(false);
       epubImageForOcrRef.current = null;
     };
-  }, [docId, router, processEpubView, stopSpeech, readerDict.mobiNotSupported]);
+  }, [docId, router, processEpubView, stopSpeech]);
 
 
   useEffect(() => {
@@ -958,7 +971,8 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
 
 
   useEffect(() => {
-    const player = new Audio(); audioPlayerRef.current = player;
+    let player = new Audio(); 
+    audioPlayerRef.current = player;
     const handleAudioEnded = () => { 
         if (audioPlayerRef.current === player && isSpeaking && isMountedRef.current) {
           if (ttsSettings.engine === 'local') {
@@ -973,7 +987,9 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
     player.addEventListener('ended', handleAudioEnded); player.addEventListener('playing', handleAudioPlaying); player.addEventListener('error', handleAudioError);
     return () => {
         player.removeEventListener('ended', handleAudioEnded); player.removeEventListener('playing', handleAudioPlaying); player.removeEventListener('error', handleAudioError);
-        if (player.src && !player.paused) player.pause(); player.src = "";
+        if (player.src && !player.paused) player.pause();
+        player.src = "";
+        player = null;
         if (audioPlayerRef.current === player) audioPlayerRef.current = null;
     };
   }, [ttsSettings.engine, isSpeaking, stopSpeech, toast, readerDict.audioError, readerDict.failedToPlay]);
@@ -986,8 +1002,17 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
     isPaused: boolean;
     className?: string;
     children?: React.ReactNode;
-}>(({ text, textSegments, highlightedSegmentIndex, isSpeaking, isPaused, className, children }, ref) => {
+    isHtml?: boolean;
+}>(({ text, textSegments, highlightedSegmentIndex, isSpeaking, isPaused, className, children, isHtml }, ref) => {
     if (!text) return <div ref={ref} className={cn("relative w-full h-full", className)}>{children}</div>;
+    if (isHtml) {
+        return (
+            <div ref={ref} className={cn("relative w-full h-full", className)}>
+                <div className="w-full h-full whitespace-pre-wrap select-text" dangerouslySetInnerHTML={{ __html: text }} />
+                {children}
+            </div>
+        );
+    }
 
     let content;
     if (isSpeaking || isPaused) {
@@ -1164,6 +1189,7 @@ HighlightableContent.displayName = 'HighlightableContent';
         return;
     }
     
+    lastSpokenTextRef.current = cleanedText;
     setIsLoadingTTS(true);
 
     if (ttsSettings.engine === 'local') {
@@ -1362,42 +1388,15 @@ HighlightableContent.displayName = 'HighlightableContent';
     toast({ title: readerDict.scratchpadCleared });
   };
 
-  const handleTouchStart = (e: React.TouchEvent) => {
-    if (longPressTimeoutRef.current) {
-        clearTimeout(longPressTimeoutRef.current);
-    }
-    longPressTimeoutRef.current = setTimeout(() => {
-        setIsTextSelectionMode(true);
-        longPressTimeoutRef.current = null;
-    }, 200); // 200ms for long press detection
-    
-    setTouchStart({ x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY });
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+      setTouchStart({ x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY });
   };
 
-  const handleTouchMove = (e: React.TouchEvent) => {
-      if (longPressTimeoutRef.current) {
-          clearTimeout(longPressTimeoutRef.current);
-          longPressTimeoutRef.current = null;
-      }
-      if (isTextSelectionMode) {
-          // If in text selection mode, do not interfere with native behavior.
-          return;
-      }
-      
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
       e.preventDefault();
   };
 
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (longPressTimeoutRef.current) {
-        clearTimeout(longPressTimeoutRef.current);
-        longPressTimeoutRef.current = null;
-    }
-    // If it was a text selection, just reset the mode.
-    if (isTextSelectionMode) {
-        setIsTextSelectionMode(false);
-        return;
-    }
-
+  const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
     const touchEndX = e.changedTouches[0].clientX;
     const xDiff = touchStart.x - touchEndX;
     const swipeThreshold = 50; 
@@ -1408,12 +1407,9 @@ HighlightableContent.displayName = 'HighlightableContent';
         if (activeDoc?.type === 'epub') navigateEpub('next');
       } else { // Swiped right
         if (activeDoc?.type === 'pdf' && !isPdfTextView) navigatePdf('prev');
-        if (activeDoc?.type === 'epub') navigateEpub('next');
+        if (activeDoc?.type === 'epub') navigateEpub('prev');
       }
     }
-    
-    // Always reset text selection mode on touch end.
-    setIsTextSelectionMode(false);
   };
 
   const getMainButtonState = () => {
@@ -1664,15 +1660,13 @@ HighlightableContent.displayName = 'HighlightableContent';
                 updatedDoc.ocrTextPerPage[pageNum] = currentTextForTTS;
                 docNeedsSave = true;
             } else if (updatedDoc.type === 'txt' || (updatedDoc.type === 'pdf' && isPdfTextView) || updatedDoc.type === 'mobi') {
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = currentTextForTTS;
+                const textContentForSave = tempDiv.textContent || tempDiv.innerText || '';
+
                 const encoder = new TextEncoder();
-                updatedDoc.fileData = encoder.encode(currentTextForTTS);
-                if (updatedDoc.type === 'mobi') {
-                    // For MOBI, we are essentially overwriting the fileData with plain text.
-                    // This is a simplification. A more robust solution would re-package the MOBI,
-                    // but for the scope of editing the displayed text, this is a pragmatic approach.
-                    // We might change its type to 'txt' to reflect the new state.
-                    // For now, we'll just save the text content.
-                }
+                updatedDoc.fileData = encoder.encode(textContentForSave);
+                
                 docNeedsSave = true;
             }
             
@@ -1708,11 +1702,17 @@ HighlightableContent.displayName = 'HighlightableContent';
     return readerDict.expandTTS;
   };
 
-  const handleTocItemClick = (href: string) => {
-    if (epubRenditionRef.current) {
-      stopSpeech(true);
-      epubRenditionRef.current.display(href);
-      setIsTocOpen(false); // Close TOC after navigation
+  const handleTocItemClick = (hrefOrId: string) => {
+    if (activeDoc?.type === 'epub' && epubRenditionRef.current) {
+        stopSpeech(true);
+        epubRenditionRef.current.display(hrefOrId);
+        setIsTocOpen(false); // Close TOC after navigation
+    } else if (activeDoc?.type === 'mobi' && scrollContainerRef.current) {
+        const element = document.getElementById(hrefOrId);
+        if (element) {
+            element.scrollIntoView({ behavior: 'smooth' });
+            setIsTocOpen(false);
+        }
     }
   };
   
@@ -1743,7 +1743,11 @@ HighlightableContent.displayName = 'HighlightableContent';
 
     if (activeDoc?.type === 'pdf' && !isPdfTextView) {
         return (
-            <div className="w-full text-center space-y-4">
+            <div className="w-full h-full"
+                 onTouchStart={handleTouchStart}
+                 onTouchMove={handleTouchMove}
+                 onTouchEnd={handleTouchEnd}
+            >
                 {pdfPageImage && (
                     <NextImage
                         src={pdfPageImage}
@@ -1751,7 +1755,7 @@ HighlightableContent.displayName = 'HighlightableContent';
                         width={0}
                         height={0}
                         style={{ width: 'auto', height: 'auto', maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }}
-                        className="shadow-lg border rounded-md"
+                        className="shadow-lg border rounded-md mx-auto"
                     />
                 )}
             </div>
@@ -1798,15 +1802,15 @@ HighlightableContent.displayName = 'HighlightableContent';
 
     if (activeDoc?.type === 'image') {
         return (
-            <div className="w-full text-center space-y-4">
+            <div className="w-full h-full flex items-center justify-center">
                 {displayedImageSrc && (
                     <NextImage
                         src={displayedImageSrc}
                         alt={activeDoc.title || 'Uploaded Image'}
                         width={800}
                         height={600}
-                        style={{ objectFit: 'contain' }}
-                        className="max-w-full max-h-[calc(100%-4rem)] shadow-lg border rounded-md inline-block"
+                        style={{ objectFit: 'contain', width: 'auto', height: 'auto', maxHeight: '100%', maxWidth: '100%' }}
+                        className="shadow-lg border rounded-md"
                         data-ai-hint="illustration abstract"
                     />
                 )}
@@ -1850,9 +1854,6 @@ HighlightableContent.displayName = 'HighlightableContent';
       <div className="flex flex-col lg:flex-row w-full h-[calc(100vh-4rem)] overflow-hidden relative">
          <div 
             className="flex-grow flex flex-col p-2 md:p-4 min-h-0 min-w-0 h-full"
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
         >
              {activeDoc ? (
             <Card className="flex-grow flex flex-col min-h-0 shadow-inner relative transition-all duration-300"
@@ -1885,12 +1886,7 @@ HighlightableContent.displayName = 'HighlightableContent';
                 )}
                 
                 <div
-                    className="w-full h-full p-2 md:p-4 flex flex-col items-start justify-start overflow-auto relative"
-                    style={{
-                      transform: `scale(${viewScale})`,
-                      transformOrigin: 'top left',
-                      transition: 'transform 0.2s ease-out'
-                    }}
+                    className="w-full h-full flex flex-col items-center justify-center overflow-auto"
                   >
                    {mainContent}
                 </div>
@@ -1928,6 +1924,7 @@ HighlightableContent.displayName = 'HighlightableContent';
                                 highlightedSegmentIndex={highlightedSegmentIndex}
                                 isSpeaking={isSpeaking}
                                 isPaused={isPaused}
+                                isHtml={activeDoc?.type === 'mobi'}
                             >
                                <AnnotationMarkers containerRef={ttsBoxHighlightedContentRef} annotations={sortedAnnotations} text={currentTextForTTS} />
                             </HighlightableContent>
@@ -1979,12 +1976,13 @@ HighlightableContent.displayName = 'HighlightableContent';
                     <Button 
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => {
-                        const selection = getSelectedText();
-                        if (selection.text.trim()) {
-                            speakTextOnce(selection.text);
-                        } else {
-                            toast({ title: readerDict.noSelection, description: readerDict.selectToRepeat });
-                        }
+                            const selection = getSelectedText();
+                            const textToSpeak = selection.text.trim() || lastSpokenTextRef.current;
+                            if (textToSpeak) {
+                                speakTextOnce(textToSpeak);
+                            } else {
+                                toast({ title: readerDict.noSelection, description: readerDict.selectToRepeat });
+                            }
                         }}
                         variant="outline" 
                         size="icon" 
@@ -2036,7 +2034,7 @@ HighlightableContent.displayName = 'HighlightableContent';
                             {isPerformingOcr ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanText className="h-4 w-4" />}
                         </Button>
                     )}
-                    {activeDoc?.type === 'epub' && epubToc.length > 0 && (
+                    {(activeDoc?.type === 'epub' && epubToc.length > 0 || activeDoc?.type === 'mobi' && mobiToc.length > 0) && (
                         <Popover open={isTocOpen} onOpenChange={setIsTocOpen}>
                             <PopoverTrigger asChild>
                                 <Button variant="outline" size="icon" className="h-9 w-9" title="Table of Contents">
@@ -2054,12 +2052,23 @@ HighlightableContent.displayName = 'HighlightableContent';
                                     </CardHeader>
                                     <CardContent className="max-h-80 overflow-y-auto">
                                         <ul className="space-y-1">
-                                            {epubToc.map((item, index) => (
+                                             {activeDoc?.type === 'epub' && epubToc.map((item, index) => (
                                                 <li key={index}>
                                                     <Button
                                                         variant="link"
                                                         className="p-0 h-auto text-left whitespace-normal text-blue-600"
                                                         onClick={() => handleTocItemClick(item.href)}
+                                                    >
+                                                        {item.label.trim()}
+                                                    </Button>
+                                                </li>
+                                            ))}
+                                            {activeDoc?.type === 'mobi' && mobiToc.map((item) => (
+                                                <li key={item.id} style={{ marginLeft: `${(item.level - 1) * 1}rem` }}>
+                                                    <Button
+                                                        variant="link"
+                                                        className="p-0 h-auto text-left whitespace-normal text-blue-600"
+                                                        onClick={() => handleTocItemClick(item.id)}
                                                     >
                                                         {item.label.trim()}
                                                     </Button>

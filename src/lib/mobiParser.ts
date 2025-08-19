@@ -1,11 +1,10 @@
-
 // A client-side parser for MOBI format ebooks, based on the user-provided reference.
 // This parser extracts basic metadata and text content. It does not handle all MOBI features.
 
 // Type Definitions
 export interface MobiBook {
   title: string;
-  content: string;
+  content: string; // This will now be HTML content
   author: string;
   totalLength: number;
 }
@@ -51,8 +50,8 @@ export class MobiParser {
     const textRecords = records.slice(1, palmDocHeader.textRecords + 1);
     const rawText = this.extractTextFromRecords(bytes, textRecords, records[palmDocHeader.textRecords + 1]?.offset);
     const decompressedText = this.decompressText(rawText, palmDocHeader.compression);
-    // Modified to keep HTML formatting
-    const formattedContent = this.cleanHtmlContent(decompressedText);
+    // Modified to keep HTML formatting and add IDs to headings for TOC
+    const formattedContent = this.processHtmlContent(decompressedText);
 
     return {
       title: mobiHeader.title || 'Untitled MOBI',
@@ -130,14 +129,10 @@ export class MobiParser {
   
   private static decompressText(bytes: Uint8Array, compression: number): string {
     if (compression === 1) { // No compression
-        // Fallback for simple text decoding if needed
         try {
             return new TextDecoder('utf-8').decode(bytes);
         } catch (e) {
-            // If UTF-8 fails, try a more lenient encoding
-            const
- 
-fallbackText = [];
+            const fallbackText = [];
             for(let i = 0; i < bytes.length; i++) {
                 fallbackText.push(String.fromCharCode(bytes[i]));
             }
@@ -181,20 +176,30 @@ fallbackText = [];
           }
       }
     }
-    // Convert the array of char codes to a string
     // Using TextDecoder is more robust for multi-byte characters
     return new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(result));
   }
 
-  private static cleanHtmlContent(htmlContent: string): string {
+  private static processHtmlContent(htmlContent: string): string {
     // This function is now designed to preserve most HTML tags for formatting,
     // only removing potentially disruptive ones like <script> and <style>.
-    const cleanContent = htmlContent
+    // It also adds unique IDs to heading tags for TOC functionality.
+    let cleanContent = htmlContent
       .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
       .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
-      // We no longer strip all other HTML tags.
-      // The reader component will be responsible for rendering the HTML.
       .trim();
+
+    // Add unique IDs to h1, h2, h3 tags for TOC linking
+    let tocIndex = 0;
+    cleanContent = cleanContent.replace(/<h([1-3])([^>]*)>/gi, (match, level, attrs) => {
+        const id = `toc-item-${tocIndex++}`;
+        if (attrs.toLowerCase().includes('id=')) {
+            // If an ID already exists, don't add another one to avoid invalid HTML
+            return match;
+        }
+        return `<h${level} id="${id}"${attrs}>`;
+    });
+      
     return cleanContent;
   }
 
