@@ -69,6 +69,7 @@ type TocItem = {
   id: string;
   label: string;
   level: number;
+  href: string;
 };
 
 
@@ -668,19 +669,19 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
           case 'mobi':
             try {
                 const mobiBook = await MobiParser.parseMobi(doc.fileData);
-                const sanitizedHtml = DOMPurify.sanitize(mobiBook.content);
+                const sanitizedHtml = mobiBook.content; // Already sanitized in parser
                 setMobiHtmlContent(sanitizedHtml);
-                 // Also set for TTS area to maintain formatting
-                setCurrentTextForTTS(sanitizedHtml);
-
-                // Extract TOC from the processed HTML
                 const parser = new DOMParser();
                 const htmlDoc = parser.parseFromString(sanitizedHtml, 'text/html');
+                const plainText = htmlDoc.body.textContent || "";
+                setCurrentTextForTTS(plainText);
+
                 const headings = htmlDoc.querySelectorAll('h1, h2, h3');
                 const toc: TocItem[] = Array.from(headings).map(h => ({
                     id: h.id,
                     label: h.textContent || '',
-                    level: parseInt(h.tagName.substring(1), 10)
+                    level: parseInt(h.tagName.substring(1), 10),
+                    href: `#${h.id}` // Use the ID as the href anchor
                 }));
                 setMobiToc(toc);
 
@@ -1708,7 +1709,8 @@ HighlightableContent.displayName = 'HighlightableContent';
         epubRenditionRef.current.display(hrefOrId);
         setIsTocOpen(false); // Close TOC after navigation
     } else if (activeDoc?.type === 'mobi' && scrollContainerRef.current) {
-        const element = document.getElementById(hrefOrId);
+        // For MOBI, href is the anchor ID (e.g., "#toc-item-0")
+        const element = document.getElementById(hrefOrId.substring(1));
         if (element) {
             element.scrollIntoView({ behavior: 'smooth' });
             setIsTocOpen(false);
@@ -2052,23 +2054,12 @@ HighlightableContent.displayName = 'HighlightableContent';
                                     </CardHeader>
                                     <CardContent className="max-h-80 overflow-y-auto">
                                         <ul className="space-y-1">
-                                             {activeDoc?.type === 'epub' && epubToc.map((item, index) => (
-                                                <li key={index}>
+                                             {(activeDoc?.type === 'epub' ? epubToc : mobiToc).map((item, index) => (
+                                                <li key={index} style={{ paddingLeft: `${(item.level - 1) * 1}rem` }}>
                                                     <Button
                                                         variant="link"
                                                         className="p-0 h-auto text-left whitespace-normal text-blue-600"
                                                         onClick={() => handleTocItemClick(item.href)}
-                                                    >
-                                                        {item.label.trim()}
-                                                    </Button>
-                                                </li>
-                                            ))}
-                                            {activeDoc?.type === 'mobi' && mobiToc.map((item) => (
-                                                <li key={item.id} style={{ marginLeft: `${(item.level - 1) * 1}rem` }}>
-                                                    <Button
-                                                        variant="link"
-                                                        className="p-0 h-auto text-left whitespace-normal text-blue-600"
-                                                        onClick={() => handleTocItemClick(item.id)}
                                                     >
                                                         {item.label.trim()}
                                                     </Button>

@@ -1,5 +1,6 @@
 // A client-side parser for MOBI format ebooks, based on the user-provided reference.
 // This parser extracts basic metadata and text content. It does not handle all MOBI features.
+import DOMPurify from 'dompurify';
 
 // Type Definitions
 export interface MobiBook {
@@ -63,9 +64,8 @@ export class MobiParser {
 
   private static isPDBFile(bytes: Uint8Array): boolean {
     if (bytes.length < 78) return false;
-    const type = new TextDecoder().decode(bytes.slice(60, 64));
-    const creator = new TextDecoder().decode(bytes.slice(64, 68));
-    return type === 'BOOK' && creator === 'MOBI';
+    const type = new TextDecoder().decode(bytes.slice(60, 68));
+    return type === 'BOOKMOBI';
   }
 
   private static parsePDBRecords(bytes: Uint8Array): PDBRecord[] {
@@ -181,26 +181,24 @@ export class MobiParser {
   }
 
   private static processHtmlContent(htmlContent: string): string {
-    // This function is now designed to preserve most HTML tags for formatting,
-    // only removing potentially disruptive ones like <script> and <style>.
-    // It also adds unique IDs to heading tags for TOC functionality.
-    let cleanContent = htmlContent
-      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
-      .trim();
+    // Sanitize the HTML content, but preserve basic formatting and images.
+    // Also add unique IDs to heading tags for TOC functionality.
+    const cleanContent = DOMPurify.sanitize(htmlContent, {
+        USE_PROFILES: { html: true }
+    });
 
     // Add unique IDs to h1, h2, h3 tags for TOC linking
     let tocIndex = 0;
-    cleanContent = cleanContent.replace(/<h([1-3])([^>]*)>/gi, (match, level, attrs) => {
-        const id = `toc-item-${tocIndex++}`;
-        if (attrs.toLowerCase().includes('id=')) {
-            // If an ID already exists, don't add another one to avoid invalid HTML
-            return match;
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(cleanContent, 'text/html');
+    
+    doc.querySelectorAll('h1, h2, h3').forEach(h => {
+        if (!h.id) {
+            h.id = `toc-item-${tocIndex++}`;
         }
-        return `<h${level} id="${id}"${attrs}>`;
     });
       
-    return cleanContent;
+    return doc.body.innerHTML;
   }
 
   // Helper methods to read multi-byte numbers from the byte array
