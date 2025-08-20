@@ -1153,8 +1153,10 @@ HighlightableContent.displayName = 'HighlightableContent';
         if (voiceToUse) utterance.voice = voiceToUse;
 
         utterance.onend = () => {
-            segmentIndexRef.current++;
-            setTimeout(() => _startSpeech(origin, 0, true), 50); 
+            if (utteranceRef.current === utterance && isSpeakingRef.current && !isPausedRef.current) {
+              segmentIndexRef.current++;
+              setTimeout(() => _startSpeech(origin, 0, true), 50); 
+            }
         };
         utterance.onerror = (event) => {
             if (isMountedRef.current && event.error !== 'canceled' && event.error !== 'interrupted') {

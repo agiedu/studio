@@ -336,6 +336,3 @@ export default function LibraryPage() {
         </AuthGuard>
     )
 }
-
-    
-    
