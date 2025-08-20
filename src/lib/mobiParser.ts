@@ -184,19 +184,8 @@ export class MobiParser {
     const cleanContent = DOMPurify.sanitize(htmlContent, {
         USE_PROFILES: { html: true }
     });
-
-    // Add unique IDs to h1, h2, h3 tags for TOC linking
-    let tocIndex = 0;
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(cleanContent, 'text/html');
-    
-    doc.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach(h => {
-        if (!h.id) {
-            h.id = `toc-item-${tocIndex++}`;
-        }
-    });
       
-    return doc.body.innerHTML;
+    return cleanContent;
   }
 
   // Helper methods to read multi-byte numbers from the byte array

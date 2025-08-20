@@ -677,16 +677,6 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
                 const htmlDoc = parser.parseFromString(sanitizedHtml, 'text/html');
                 const plainText = htmlDoc.body.textContent || "";
                 setCurrentTextForTTS(plainText);
-
-                const headings = htmlDoc.querySelectorAll('h1, h2, h3, h4, h5, h6');
-                const toc: TocItem[] = Array.from(headings).map(h => ({
-                    id: h.id,
-                    label: h.textContent || '',
-                    level: parseInt(h.tagName.substring(1), 10),
-                    href: `#${h.id}` // Use the ID as the href anchor
-                }));
-                setMobiToc(toc);
-
             } catch (mobiError: any) {
                 console.error("Error parsing MOBI:", mobiError);
                 setDocErrorMessage(`Error parsing MOBI: ${mobiError.message}`);
@@ -1941,7 +1931,7 @@ HighlightableContent.displayName = 'HighlightableContent';
                         ) : (
                              <HighlightableContent
                                 ref={ttsBoxHighlightedContentRef}
-                                text={currentTextForTTS}
+                                text={activeDoc?.type === 'mobi' ? mobiHtmlContent : currentTextForTTS}
                                 textSegments={textSegments}
                                 highlightedSegmentIndex={highlightedSegmentIndex}
                                 isSpeaking={isSpeaking}
