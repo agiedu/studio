@@ -26,13 +26,15 @@ export async function performOCR(
 
 export async function getCloudSpeech(
   text: string,
-  language: string, // Kept for backward compatibility with Reader page
-  voice?: string // Optional voice name for specific voice selection
+  language: string, // Language is now used to select the voice
+  voice?: string // The specific voice ID, e.g., "en-US-JennyNeural"
 ): Promise<{ audioUrl: string } | { error: string }> {
   if (!text) {
     return { error: "No text provided for Cloud TTS." };
   }
   try {
+    // The `voice` parameter now correctly holds the full voice ID.
+    // The `language` parameter is implicitly handled by the voice ID.
     const input: CloudTTSInput = { text, voice };
     const result = await cloudTTS(input);
     return { audioUrl: result.audioUrl };

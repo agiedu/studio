@@ -130,13 +130,10 @@ export class MobiParser {
   private static decompressText(bytes: Uint8Array, compression: number): string {
     if (compression === 1) { // No compression
         try {
-            return new TextDecoder('utf-8').decode(bytes);
+            return new TextDecoder('utf-8', {fatal: false}).decode(bytes);
         } catch (e) {
-            const fallbackText = [];
-            for(let i = 0; i < bytes.length; i++) {
-                fallbackText.push(String.fromCharCode(bytes[i]));
-            }
-            return fallbackText.join('');
+            console.warn("UTF-8 decoding failed, falling back to ISO-8859-1");
+            return new TextDecoder('iso-8859-1').decode(bytes);
         }
     } else if (compression === 2) { // PalmDOC compression
       return this.palmDocDecompress(bytes);
@@ -169,7 +166,7 @@ export class MobiParser {
           const distance = (((byte << 8) | nextByte) >> 3) & 0x7FF;
           const length = (nextByte & 0x07) + 3;
 
-          if (distance > result.length) continue;
+          if (distance > result.length || distance === 0) continue;
           
           for (let j = 0; j < length; j++) {
             result.push(result[result.length - distance]);
@@ -192,7 +189,7 @@ export class MobiParser {
     const parser = new DOMParser();
     const doc = parser.parseFromString(cleanContent, 'text/html');
     
-    doc.querySelectorAll('h1, h2, h3').forEach(h => {
+    doc.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach(h => {
         if (!h.id) {
             h.id = `toc-item-${tocIndex++}`;
         }

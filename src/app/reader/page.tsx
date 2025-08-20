@@ -676,7 +676,7 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
                 const plainText = htmlDoc.body.textContent || "";
                 setCurrentTextForTTS(plainText);
 
-                const headings = htmlDoc.querySelectorAll('h1, h2, h3');
+                const headings = htmlDoc.querySelectorAll('h1, h2, h3, h4, h5, h6');
                 const toc: TocItem[] = Array.from(headings).map(h => ({
                     id: h.id,
                     label: h.textContent || '',
@@ -1005,11 +1005,15 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
     children?: React.ReactNode;
     isHtml?: boolean;
 }>(({ text, textSegments, highlightedSegmentIndex, isSpeaking, isPaused, className, children, isHtml }, ref) => {
-    if (!text) return <div ref={ref} className={cn("relative w-full h-full", className)}>{children}</div>;
     if (isHtml) {
+        // For HTML content, we directly render it and overlay annotations.
+        // Highlighting is more complex and disabled for this mode for now.
         return (
             <div ref={ref} className={cn("relative w-full h-full", className)}>
-                <div className="w-full h-full whitespace-pre-wrap select-text" dangerouslySetInnerHTML={{ __html: text }} />
+                <div 
+                    className="prose prose-sm md:prose-base max-w-none w-full h-full whitespace-pre-wrap select-text" 
+                    dangerouslySetInnerHTML={{ __html: text }} 
+                />
                 {children}
             </div>
         );
@@ -1020,16 +1024,17 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
         if (highlightedSegmentIndex < 0 || !textSegments[highlightedSegmentIndex]) {
             content = <>{text}</>;
         } else {
-            const preText = textSegments.slice(0, highlightedSegmentIndex).join('');
-            const highlightedText = textSegments[highlightedSegmentIndex];
-            const postText = textSegments.slice(highlightedSegmentIndex + 1).join('');
-            content = (
-                <>
-                    {preText}
-                    <span className="text-green-600 bg-green-600/10">{highlightedText}</span>
-                    {postText}
-                </>
-            );
+            let currentIndex = 0;
+            content = textSegments.map((segment, index) => {
+                const segmentStart = currentIndex;
+                const segmentEnd = segmentStart + segment.length;
+                currentIndex = segmentEnd;
+
+                if (index === highlightedSegmentIndex) {
+                    return <span key={index} className="text-green-600 bg-green-600/10">{segment}</span>;
+                }
+                return segment;
+            });
         }
     } else {
         content = <>{text}</>;
@@ -1795,10 +1800,18 @@ HighlightableContent.displayName = 'HighlightableContent';
 
     if (activeDoc?.type === 'mobi') {
         return (
-            <div 
-                className="w-full h-full p-4 md:p-6 text-sm"
-                dangerouslySetInnerHTML={{ __html: mobiHtmlContent }}
-            />
+             <HighlightableContent
+                ref={mainHighlightedContentRef}
+                text={mobiHtmlContent}
+                textSegments={textSegments}
+                highlightedSegmentIndex={highlightedSegmentIndex}
+                isSpeaking={isSpeaking}
+                isPaused={isPaused}
+                isHtml={true}
+                className="p-4 md:p-6 text-sm"
+              >
+                <AnnotationMarkers containerRef={mainHighlightedContentRef} annotations={sortedAnnotations} text={currentTextForTTS} />
+            </HighlightableContent>
         );
     }
 
@@ -2059,7 +2072,7 @@ HighlightableContent.displayName = 'HighlightableContent';
                                                     <Button
                                                         variant="link"
                                                         className="p-0 h-auto text-left whitespace-normal text-blue-600"
-                                                        onClick={() => handleTocItemClick(item.href)}
+                                                        onClick={() => handleTocItemClick(item.href || item.id)}
                                                     >
                                                         {item.label.trim()}
                                                     </Button>
@@ -2121,7 +2134,7 @@ HighlightableContent.displayName = 'HighlightableContent';
                                 </div>
                                 </>
                             )}
-                            {(!activeDoc || (activeDoc?.type && ['pdf', 'image', 'epub'].includes(activeDoc.type))) && (
+                            {(!activeDoc || (activeDoc?.type && ['pdf', 'image', 'epub', 'mobi'].includes(activeDoc.type))) && (
                                 <>
                                 <Separator/>
                                 <div className="space-y-2">
