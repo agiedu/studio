@@ -162,6 +162,7 @@ function ReaderPageComponent({ docId, isMobile }: { docId: string | null; isMobi
 
   const isMountedRef = useRef(false);
   const isSpeakingRef = useRef(false);
+  const isPausedRef = useRef(false);
   const segmentIndexRef = useRef(0);
   
   const [selectionForAnnotation, setSelectionForAnnotation] = useState<SelectionForAnnotation>(null);
@@ -406,6 +407,7 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
 
   const stopSpeech = useCallback((resetUIState = true) => {
     isSpeakingRef.current = false;
+    isPausedRef.current = false;
     if (isMountedRef.current) {
         setHighlightedSegmentIndex(-1);
     }
@@ -1106,6 +1108,7 @@ HighlightableContent.displayName = 'HighlightableContent';
         setIsSpeaking(true);
         isSpeakingRef.current = true;
         setIsPaused(false);
+        isPausedRef.current = false;
         setSpeechOrigin(origin);
         
         let charCount = 0;
@@ -1246,10 +1249,12 @@ HighlightableContent.displayName = 'HighlightableContent';
     
     if (isSpeaking) {
       if (isPaused) {
+        isPausedRef.current = false;
         if (ttsSettings.engine === 'local' && window.speechSynthesis) { window.speechSynthesis.resume(); } 
         else { audioPlayerRef.current?.play().catch(() => stopSpeech(true)); }
         setIsPaused(false);
       } else {
+        isPausedRef.current = true;
         if (ttsSettings.engine === 'local' && window.speechSynthesis) { window.speechSynthesis.pause(); } 
         else { audioPlayerRef.current?.pause(); }
         setIsPaused(true);
