@@ -1,7 +1,13 @@
-
 // A client-side parser for MOBI format ebooks, based on the user-provided reference.
 // This parser extracts basic metadata and text content. It does not handle all MOBI features.
 import DOMPurify from 'dompurify';
+
+type TocItem = {
+  id: string;
+  label: string;
+  level: number;
+  href: string;
+};
 
 // Type Definitions
 export interface MobiBook {
@@ -9,6 +15,7 @@ export interface MobiBook {
   content: string; // This will now be HTML content
   author: string;
   totalLength: number;
+  toc: TocItem[];
 }
 
 interface PDBRecord {
@@ -53,13 +60,14 @@ export class MobiParser {
     const rawText = this.extractTextFromRecords(bytes, textRecords, records[palmDocHeader.textRecords + 1]?.offset);
     const decompressedText = this.decompressText(rawText, palmDocHeader.compression);
     // Modified to keep HTML formatting and add IDs to headings for TOC
-    const formattedContent = this.processHtmlContent(decompressedText);
+    const {html, toc} = this.processHtmlContent(decompressedText);
 
     return {
       title: mobiHeader.title || 'Untitled MOBI',
-      content: formattedContent, // Return formatted HTML content
+      content: html, // Return formatted HTML content
       author: mobiHeader.author || 'Unknown Author',
-      totalLength: formattedContent.length
+      totalLength: html.length,
+      toc: toc,
     };
   }
 
@@ -178,15 +186,33 @@ export class MobiParser {
     return new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(result));
   }
 
-  private static processHtmlContent(htmlContent: string): string {
+  private static processHtmlContent(htmlContent: string): { html: string, toc: TocItem[] } {
     // Sanitize the HTML content, but preserve basic formatting and images.
-    // Also add unique IDs to heading tags for TOC functionality.
-    const cleanContent = DOMPurify.sanitize(htmlContent, {
+    const cleanHtml = DOMPurify.sanitize(htmlContent, {
         USE_PROFILES: { html: true }
     });
-      
-    return cleanContent;
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(cleanHtml, 'text/html');
+    const headings = doc.querySelectorAll('h1, h2, h3, h4, h5, h6');
+    const toc: TocItem[] = [];
+
+    headings.forEach((heading, index) => {
+        const id = `toc-item-${index}`;
+        heading.setAttribute('id', id);
+        toc.push({
+            id: id,
+            label: heading.textContent || `Chapter ${index + 1}`,
+            level: parseInt(heading.tagName.substring(1), 10),
+            href: `#${id}`,
+        });
+    });
+
+    const finalHtml = new XMLSerializer().serializeToString(doc);
+
+    return { html: finalHtml, toc };
   }
+
 
   // Helper methods to read multi-byte numbers from the byte array
   private static readUint16(bytes: Uint8Array, offset: number): number {

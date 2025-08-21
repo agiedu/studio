@@ -57,7 +57,7 @@ export interface StoredEpubDocument extends StoredDocumentBase {
 
 export interface StoredMobiDocument extends StoredDocumentBase {
   type: 'mobi';
-  // Placeholder; direct rendering is complex.
+  // Now stores HTML content and TOC
 }
 
 export interface StoredTxtDocument extends StoredDocumentBase {

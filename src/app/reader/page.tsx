@@ -671,11 +671,9 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
           case 'mobi':
             try {
                 const mobiBook = await MobiParser.parseMobi(doc.fileData);
-                const sanitizedHtml = mobiBook.content; // Already sanitized in parser
-                setMobiHtmlContent(sanitizedHtml);
-                const parser = new DOMParser();
-                const htmlDoc = parser.parseFromString(sanitizedHtml, 'text/html');
-                const plainText = htmlDoc.body.textContent || "";
+                setMobiHtmlContent(mobiBook.content);
+                setMobiToc(mobiBook.toc); // Set the TOC
+                const plainText = new DOMParser().parseFromString(mobiBook.content, 'text/html').body.textContent || "";
                 setCurrentTextForTTS(plainText);
             } catch (mobiError: any) {
                 console.error("Error parsing MOBI:", mobiError);
@@ -1712,7 +1710,7 @@ HighlightableContent.displayName = 'HighlightableContent';
         setIsTocOpen(false); // Close TOC after navigation
     } else if (activeDoc?.type === 'mobi' && scrollContainerRef.current) {
         // For MOBI, href is the anchor ID (e.g., "#toc-item-0")
-        const element = document.getElementById(hrefOrId.substring(1));
+        const element = scrollContainerRef.current.querySelector(hrefOrId);
         if (element) {
             element.scrollIntoView({ behavior: 'smooth' });
             setIsTocOpen(false);
@@ -2131,7 +2129,7 @@ HighlightableContent.displayName = 'HighlightableContent';
                                 </div>
                                 </>
                             )}
-                            {(!activeDoc || (activeDoc?.type && ['pdf', 'image', 'epub', 'mobi'].includes(activeDoc.type))) && (
+                            {(activeDoc?.type && ['pdf', 'image', 'epub', 'mobi'].includes(activeDoc.type)) && (
                                 <>
                                 <Separator/>
                                 <div className="space-y-2">
