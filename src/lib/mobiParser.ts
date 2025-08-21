@@ -208,7 +208,8 @@ export class MobiParser {
         });
     });
 
-    const finalHtml = new XMLSerializer().serializeToString(doc);
+    // We serialize the *body* content to avoid getting a full HTML document structure
+    const finalHtml = doc.body.innerHTML;
 
     return { html: finalHtml, toc };
   }

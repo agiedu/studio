@@ -1356,6 +1356,19 @@ HighlightableContent.displayName = 'HighlightableContent';
     });
   };
 
+  const navigateMobi = (direction: 'prev' | 'next') => {
+    if (!scrollContainerRef.current) return;
+    const container = scrollContainerRef.current;
+    const scrollAmount = container.clientHeight * 0.9; // Scroll by 90% of the visible height
+
+    if (direction === 'next') {
+        container.scrollBy({ top: scrollAmount, behavior: 'smooth' });
+    } else {
+        container.scrollBy({ top: -scrollAmount, behavior: 'smooth' });
+    }
+  };
+
+
   const handleViewScaleChange = (newScale: number) => { 
       if (isRenderingPdfPage || isLoadingDoc) return; 
       stopSpeech(true); 
@@ -2105,15 +2118,17 @@ HighlightableContent.displayName = 'HighlightableContent';
                                 </p>
                             </div>
                             
-                            {activeDoc?.type === 'pdf' && !isPdfTextView && pdfTotalPages > 0 && (
+                            {(activeDoc?.type === 'pdf' && !isPdfTextView && pdfTotalPages > 0 || activeDoc?.type === 'mobi') && (
                                 <>
                                 <Separator/>
                                 <div className="flex items-center justify-between">
-                                    <Button onClick={() => navigatePdf('prev')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum <= 1} size="icon" variant="outline" aria-label="Previous Page"><ChevronLeft className="h-4 w-4"/></Button>
-                                    <Button variant="ghost" className="h-9 tabular-nums bg-yellow-200 hover:bg-yellow-300" onClick={() => openJumpDialog('pdf', currentPdfPageNum, pdfTotalPages)}>
-                                        {currentPdfPageNum} / {pdfTotalPages}
-                                    </Button>
-                                    <Button onClick={() => navigatePdf('next')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum >= pdfTotalPages} size="icon" variant="outline" aria-label="Next Page"><ChevronRight className="h-4 w-4"/></Button>
+                                    <Button onClick={() => activeDoc.type === 'pdf' ? navigatePdf('prev') : navigateMobi('prev')} disabled={isLoadingDoc || isRenderingPdfPage || (activeDoc.type === 'pdf' && currentPdfPageNum <= 1)} size="icon" variant="outline" aria-label="Previous Page"><ChevronLeft className="h-4 w-4"/></Button>
+                                    {activeDoc.type === 'pdf' && 
+                                        <Button variant="ghost" className="h-9 tabular-nums bg-yellow-200 hover:bg-yellow-300" onClick={() => openJumpDialog('pdf', currentPdfPageNum, pdfTotalPages)}>
+                                            {currentPdfPageNum} / {pdfTotalPages}
+                                        </Button>
+                                    }
+                                    <Button onClick={() => activeDoc.type === 'pdf' ? navigatePdf('next') : navigateMobi('next')} disabled={isLoadingDoc || isRenderingPdfPage || (activeDoc.type === 'pdf' && currentPdfPageNum >= pdfTotalPages)} size="icon" variant="outline" aria-label="Next Page"><ChevronRight className="h-4 w-4"/></Button>
                                 </div>
                                 </>
                             )}
