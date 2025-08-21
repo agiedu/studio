@@ -1,4 +1,3 @@
-
 // A client-side parser for MOBI format ebooks, based on the user-provided reference.
 // This parser extracts basic metadata and text content. It does not handle all MOBI features.
 import DOMPurify from 'dompurify';
