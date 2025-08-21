@@ -2116,17 +2116,27 @@ HighlightableContent.displayName = 'HighlightableContent';
                                 </p>
                             </div>
                             
-                            {(activeDoc?.type === 'pdf' && !isPdfTextView && pdfTotalPages > 0 || activeDoc?.type === 'mobi') && (
+                            {(activeDoc?.type === 'pdf' && !isPdfTextView) && (
                                 <>
                                 <Separator/>
                                 <div className="flex items-center justify-between">
-                                    <Button onClick={() => activeDoc.type === 'pdf' ? navigatePdf('prev') : navigateMobi('prev')} disabled={isLoadingDoc || isRenderingPdfPage || (activeDoc.type === 'pdf' && currentPdfPageNum <= 1)} size="icon" variant="outline" aria-label="Previous Page"><ChevronLeft className="h-4 w-4"/></Button>
-                                    {activeDoc.type === 'pdf' && 
+                                    <Button onClick={() => navigatePdf('prev')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum <= 1} size="icon" variant="outline" aria-label="Previous Page"><ChevronLeft className="h-4 w-4"/></Button>
+                                    {pdfTotalPages > 0 && 
                                         <Button variant="ghost" className="h-9 tabular-nums bg-yellow-200 hover:bg-yellow-300" onClick={() => openJumpDialog('pdf', currentPdfPageNum, pdfTotalPages)}>
                                             {currentPdfPageNum} / {pdfTotalPages}
                                         </Button>
                                     }
-                                    <Button onClick={() => activeDoc.type === 'pdf' ? navigatePdf('next') : navigateMobi('next')} disabled={isLoadingDoc || isRenderingPdfPage || (activeDoc.type === 'pdf' && currentPdfPageNum >= pdfTotalPages)} size="icon" variant="outline" aria-label="Next Page"><ChevronRight className="h-4 w-4"/></Button>
+                                    <Button onClick={() => navigatePdf('next')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum >= pdfTotalPages} size="icon" variant="outline" aria-label="Next Page"><ChevronRight className="h-4 w-4"/></Button>
+                                </div>
+                                </>
+                            )}
+                            {activeDoc?.type === 'mobi' && (
+                                <>
+                                <Separator/>
+                                <div className="flex items-center justify-between">
+                                    <Button onClick={() => navigateMobi('prev')} size="icon" variant="outline" aria-label="Previous Page"><ChevronLeft className="h-4 w-4"/></Button>
+                                    <span className="text-sm text-muted-foreground">Scroll Navigation</span>
+                                    <Button onClick={() => navigateMobi('next')} size="icon" variant="outline" aria-label="Next Page"><ChevronRight className="h-4 w-4"/></Button>
                                 </div>
                                 </>
                             )}
