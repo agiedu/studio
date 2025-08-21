@@ -1099,16 +1099,21 @@ HighlightableContent.displayName = 'HighlightableContent';
         isPausedRef.current = false;
         setSpeechOrigin(origin);
         
-        let charCount = 0;
-        let startSegment = 0;
-        for (let i = 0; i < textSegments.length; i++) {
-            if (startIndex < (charCount + textSegments[i].length)) {
-                startSegment = i;
-                break;
+        // This is the restored logic to handle starting from a selection.
+        if (startIndex > 0) {
+            let charCount = 0;
+            let startSegment = 0;
+            for (let i = 0; i < textSegments.length; i++) {
+                if (startIndex < charCount + textSegments[i].length) {
+                    startSegment = i;
+                    break;
+                }
+                charCount += textSegments[i].length;
             }
-            charCount += textSegments[i].length;
+            segmentIndexRef.current = startSegment;
+        } else {
+            segmentIndexRef.current = 0;
         }
-        segmentIndexRef.current = startSegment;
     }
     
     if (!isSpeakingRef.current || segmentIndexRef.current >= textSegments.length) {
