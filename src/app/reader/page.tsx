@@ -1125,15 +1125,17 @@ HighlightableContent.displayName = 'HighlightableContent';
 
     const currentIndex = segmentIndexRef.current;
     const segmentText = textSegments[currentIndex].replace(PUNCTUATION_REGEX, ' ').trim();
-
+    
+    if (isMountedRef.current) {
+      setHighlightedSegmentIndex(currentIndex);
+    }
+    
     if (!segmentText) { 
         segmentIndexRef.current++;
         _startSpeech(origin, 0, true);
         return;
     }
     
-    if (isMountedRef.current) setHighlightedSegmentIndex(currentIndex);
-
     if (ttsSettings.engine === 'local') {
         if (typeof window === 'undefined' || !window.speechSynthesis) {
             toast({ variant: "destructive", title: readerDict.ttsError, description: readerDict.browserNotSupported });
@@ -2478,3 +2480,5 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
+
+    
