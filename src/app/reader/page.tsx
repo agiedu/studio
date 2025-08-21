@@ -996,16 +996,12 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
     isHtml?: boolean;
 }>(({ text, textSegments, highlightedSegmentIndex, isSpeaking, isPaused, className, children, isHtml }, ref) => {
     if (isHtml) {
-        // For HTML content, we directly render it and overlay annotations.
-        // Highlighting is more complex and disabled for this mode for now.
         return (
-            <div ref={ref} className={cn("relative w-full h-full", className)}>
-                <div 
-                    className="prose prose-sm md:prose-base max-w-none w-full h-full whitespace-pre-wrap select-text" 
-                    dangerouslySetInnerHTML={{ __html: text }} 
-                />
-                {children}
-            </div>
+            <div
+                ref={ref}
+                className={cn("prose prose-sm md:prose-base max-w-none w-full h-full whitespace-pre-wrap select-text relative", className)}
+                dangerouslySetInnerHTML={{ __html: text }}
+            />
         );
     }
 
@@ -1726,13 +1722,15 @@ HighlightableContent.displayName = 'HighlightableContent';
     if (activeDoc?.type === 'epub' && epubRenditionRef.current) {
         stopSpeech(true);
         epubRenditionRef.current.display(hrefOrId);
-        setIsTocOpen(false); // Close TOC after navigation
-    } else if (activeDoc?.type === 'mobi' && scrollContainerRef.current) {
-        // For MOBI, href is the anchor ID (e.g., "#toc-item-0")
-        const element = scrollContainerRef.current.querySelector(hrefOrId);
+        setIsTocOpen(false);
+    } else if (activeDoc?.type === 'mobi' && mainHighlightedContentRef.current) {
+        // Corrected: use the ref that holds the rendered HTML content.
+        const element = mainHighlightedContentRef.current.querySelector(hrefOrId);
         if (element) {
             element.scrollIntoView({ behavior: 'smooth' });
             setIsTocOpen(false);
+        } else {
+            console.warn(`TOC item with selector "${hrefOrId}" not found in MOBI content.`);
         }
     }
   };
@@ -2494,5 +2492,3 @@ export default function ReaderPage() {
         </AuthGuard>
     )
 }
-
-    
