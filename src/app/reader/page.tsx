@@ -996,6 +996,23 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
     isHtml?: boolean;
 }>(({ text, textSegments, highlightedSegmentIndex, isSpeaking, isPaused, className, children, isHtml }, ref) => {
     if (isHtml) {
+        // For MOBI, render as paginated columns, not as a single scrollable block
+        if (activeDoc?.type === 'mobi') {
+             return (
+                <div
+                    ref={ref}
+                    className={cn("w-full h-full text-sm", className)}
+                    style={{
+                        columnWidth: scrollContainerRef.current ? `${scrollContainerRef.current.clientWidth}px` : '100vw',
+                        columnGap: '2rem', // Space between pages
+                        height: '100%',
+                        overflow: 'hidden', // Hide the default vertical scrollbar
+                    }}
+                    dangerouslySetInnerHTML={{ __html: text }}
+                />
+            );
+        }
+        // Fallback for other potential HTML content
         return (
             <div
                 ref={ref}
@@ -1353,14 +1370,14 @@ HighlightableContent.displayName = 'HighlightableContent';
   };
 
   const navigateMobi = (direction: 'prev' | 'next') => {
-    if (!scrollContainerRef.current) return;
-    const container = scrollContainerRef.current;
-    const scrollAmount = container.clientHeight * 0.9; // Scroll by 90% of the visible height
+    if (!mainHighlightedContentRef.current) return;
+    const container = mainHighlightedContentRef.current;
+    const scrollAmount = container.clientWidth; // Scroll by one screen width
 
     if (direction === 'next') {
-        container.scrollBy({ top: scrollAmount, behavior: 'smooth' });
+        container.scrollBy({ left: scrollAmount, behavior: 'smooth' });
     } else {
-        container.scrollBy({ top: -scrollAmount, behavior: 'smooth' });
+        container.scrollBy({ left: -scrollAmount, behavior: 'smooth' });
     }
   };
 
@@ -1421,9 +1438,11 @@ HighlightableContent.displayName = 'HighlightableContent';
       if (xDiff > 0) { // Swiped left
         if (activeDoc?.type === 'pdf' && !isPdfTextView) navigatePdf('next');
         if (activeDoc?.type === 'epub') navigateEpub('next');
+        if (activeDoc?.type === 'mobi') navigateMobi('next');
       } else { // Swiped right
         if (activeDoc?.type === 'pdf' && !isPdfTextView) navigatePdf('prev');
         if (activeDoc?.type === 'epub') navigateEpub('prev');
+        if (activeDoc?.type === 'mobi') navigateMobi('prev');
       }
     }
   };
@@ -1719,21 +1738,32 @@ HighlightableContent.displayName = 'HighlightableContent';
   };
 
   const handleTocItemClick = (hrefOrId: string) => {
-    if (activeDoc?.type === 'epub' && epubRenditionRef.current) {
-        stopSpeech(true);
-        epubRenditionRef.current.display(hrefOrId);
-        setIsTocOpen(false);
-    } else if (activeDoc?.type === 'mobi' && mainHighlightedContentRef.current) {
-        // Corrected: use the ref that holds the rendered HTML content.
-        const element = mainHighlightedContentRef.current.querySelector(hrefOrId);
-        if (element) {
-            element.scrollIntoView({ behavior: 'smooth' });
-            setIsTocOpen(false);
-        } else {
-            console.warn(`TOC item with selector "${hrefOrId}" not found in MOBI content.`);
-        }
+    if (!mainHighlightedContentRef.current) return;
+  
+    // For EPUB, the href might already have a '#'
+    const selector = hrefOrId.startsWith('#') ? hrefOrId : `#${hrefOrId}`;
+    const element = mainHighlightedContentRef.current.querySelector(selector);
+  
+    if (element) {
+      const container = mainHighlightedContentRef.current;
+      const pageWidth = container.clientWidth;
+      
+      // Calculate which "page" (column) the element is in
+      const elementOffsetLeft = (element as HTMLElement).offsetLeft;
+      const pageIndex = Math.floor(elementOffsetLeft / pageWidth);
+      
+      // Scroll to the beginning of that page
+      container.scrollTo({
+        left: pageIndex * pageWidth,
+        behavior: 'smooth',
+      });
+  
+      setIsTocOpen(false);
+    } else {
+      console.warn(`TOC item with selector "${selector}" not found in MOBI content.`);
     }
   };
+  
   
   const mainButtonState = getMainButtonState();
   
@@ -1820,7 +1850,7 @@ HighlightableContent.displayName = 'HighlightableContent';
                 isSpeaking={isSpeaking}
                 isPaused={isPaused}
                 isHtml={true}
-                className="p-4 md:p-6 text-sm"
+                className="p-4 md:p-6"
               >
                 <AnnotationMarkers containerRef={mainHighlightedContentRef} annotations={sortedAnnotations} text={currentTextForTTS} />
             </HighlightableContent>
@@ -1893,7 +1923,7 @@ HighlightableContent.displayName = 'HighlightableContent';
             >
                 <CardContent
                   ref={scrollContainerRef}
-                  className="flex-grow p-2 md:p-4 overflow-auto relative"
+                  className="flex-grow p-2 md:p-4 overflow-hidden relative" // Changed overflow to hidden
                 >
                 {(isLoadingDoc || isEpubLoading || isRenderingPdfPage) && ttsAreaState === 'hidden' && (
                   <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
@@ -1914,6 +1944,9 @@ HighlightableContent.displayName = 'HighlightableContent';
                 
                 <div
                     className="w-full h-full flex flex-col items-center justify-center overflow-auto"
+                    onTouchStart={handleTouchStart}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
                   >
                    {mainContent}
                 </div>
@@ -1946,12 +1979,12 @@ HighlightableContent.displayName = 'HighlightableContent';
                         ) : (
                              <HighlightableContent
                                 ref={ttsBoxHighlightedContentRef}
-                                text={activeDoc?.type === 'mobi' ? mobiHtmlContent : currentTextForTTS}
+                                text={activeDoc?.type === 'mobi' ? currentTextForTTS : currentTextForTTS}
                                 textSegments={textSegments}
                                 highlightedSegmentIndex={highlightedSegmentIndex}
                                 isSpeaking={isSpeaking}
                                 isPaused={isPaused}
-                                isHtml={activeDoc?.type === 'mobi'}
+                                isHtml={false} // TTS area should always be plain text
                             >
                                <AnnotationMarkers containerRef={ttsBoxHighlightedContentRef} annotations={sortedAnnotations} text={currentTextForTTS} />
                             </HighlightableContent>
@@ -2116,27 +2149,18 @@ HighlightableContent.displayName = 'HighlightableContent';
                                 </p>
                             </div>
                             
-                            {(activeDoc?.type === 'pdf' && !isPdfTextView) && (
+                            {(activeDoc?.type === 'pdf' && !isPdfTextView || activeDoc?.type === 'mobi') && (
                                 <>
                                 <Separator/>
                                 <div className="flex items-center justify-between">
-                                    <Button onClick={() => navigatePdf('prev')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum <= 1} size="icon" variant="outline" aria-label="Previous Page"><ChevronLeft className="h-4 w-4"/></Button>
-                                    {pdfTotalPages > 0 && 
+                                    <Button onClick={() => activeDoc?.type === 'pdf' ? navigatePdf('prev') : navigateMobi('prev')} disabled={isLoadingDoc || isRenderingPdfPage || (activeDoc?.type === 'pdf' && currentPdfPageNum <= 1)} size="icon" variant="outline" aria-label="Previous Page"><ChevronLeft className="h-4 w-4"/></Button>
+                                    {activeDoc?.type === 'pdf' && pdfTotalPages > 0 && 
                                         <Button variant="ghost" className="h-9 tabular-nums bg-yellow-200 hover:bg-yellow-300" onClick={() => openJumpDialog('pdf', currentPdfPageNum, pdfTotalPages)}>
                                             {currentPdfPageNum} / {pdfTotalPages}
                                         </Button>
                                     }
-                                    <Button onClick={() => navigatePdf('next')} disabled={isLoadingDoc || isRenderingPdfPage || currentPdfPageNum >= pdfTotalPages} size="icon" variant="outline" aria-label="Next Page"><ChevronRight className="h-4 w-4"/></Button>
-                                </div>
-                                </>
-                            )}
-                            {activeDoc?.type === 'mobi' && (
-                                <>
-                                <Separator/>
-                                <div className="flex items-center justify-between">
-                                    <Button onClick={() => navigateMobi('prev')} size="icon" variant="outline" aria-label="Previous Page"><ChevronLeft className="h-4 w-4"/></Button>
-                                    <span className="text-sm text-muted-foreground">Scroll Navigation</span>
-                                    <Button onClick={() => navigateMobi('next')} size="icon" variant="outline" aria-label="Next Page"><ChevronRight className="h-4 w-4"/></Button>
+                                    {activeDoc?.type === 'mobi' && <span className="text-sm text-muted-foreground">Page Navigation</span>}
+                                    <Button onClick={() => activeDoc?.type === 'pdf' ? navigatePdf('next') : navigateMobi('next')} disabled={isLoadingDoc || isRenderingPdfPage || (activeDoc?.type === 'pdf' && currentPdfPageNum >= pdfTotalPages)} size="icon" variant="outline" aria-label="Next Page"><ChevronRight className="h-4 w-4"/></Button>
                                 </div>
                                 </>
                             )}
