@@ -1124,11 +1124,10 @@ HighlightableContent.displayName = 'HighlightableContent';
     if (isMountedRef.current) setIsLoadingTTS(true);
 
     const currentIndex = segmentIndexRef.current;
-    const segmentText = textSegments[currentIndex].replace(PUNCTUATION_REGEX, ' ').trim();
-    
     if (isMountedRef.current) {
       setHighlightedSegmentIndex(currentIndex);
     }
+    const segmentText = textSegments[currentIndex].replace(PUNCTUATION_REGEX, ' ').trim();
     
     if (!segmentText) { 
         segmentIndexRef.current++;
@@ -1184,7 +1183,7 @@ HighlightableContent.displayName = 'HighlightableContent';
         }
       }
     }
-  }, [ttsSettings, stopSpeech, toast, textSegments, currentTextForTTS, readerDict]);
+  }, [ttsSettings, stopSpeech, toast, textSegments, currentTextForTTS, readerDict, isSpeaking]);
 
   const speakTextOnce = useCallback(async (text: string) => {
     stopSpeech(true); 
