@@ -38,11 +38,8 @@ export function ContentProtection() {
   // Effect to prevent being loaded in an iframe
   useEffect(() => {
     // This is a client-side attempt to break out of an iframe.
-    // The most effective protection is the 'Content-Security-Policy' header set by the server,
-    // but this provides a fallback for client-rendered pages.
-    if (typeof window !== 'undefined' && window.self !== window.top) {
-      // If the page is in an iframe, redirect the top-level window to this page.
-      // This effectively "breaks out" of the frame.
+    // It should only run in production to avoid console warnings in dev environments.
+    if (process.env.NODE_ENV === 'production' && typeof window !== 'undefined' && window.self !== window.top) {
       try {
         window.top.location.replace(window.self.location.href);
       } catch (e) {
