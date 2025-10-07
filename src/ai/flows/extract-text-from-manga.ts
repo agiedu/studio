@@ -45,7 +45,7 @@ export async function extractTextFromManga(
 
 const extractTextPrompt = ai.definePrompt({
   name: 'extractTextPrompt',
-  model: 'googleai/gemini-1.5-flash-latest', // Explicitly use the vision model
+  model: 'googleai/gemini-pro-vision', // Use the correct vision model for OCR
   input: {schema: PromptInputSchema}, // Use the extended schema
   output: {schema: ExtractTextFromMangaOutputSchema},
   prompt: `You are an expert OCR reader, skilled at extracting text from images of manga pages. Extract the text from the following manga page image:
