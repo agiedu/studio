@@ -1737,30 +1737,28 @@ HighlightableContent.displayName = 'HighlightableContent';
     return readerDict.expandTTS;
   };
 
-  const handleTocItemClick = (hrefOrId: string) => {
-    if (!mainHighlightedContentRef.current) return;
-  
-    // For EPUB, the href might already have a '#'
-    const selector = hrefOrId.startsWith('#') ? hrefOrId : `#${hrefOrId}`;
-    const element = mainHighlightedContentRef.current.querySelector(selector);
-  
-    if (element) {
-      const container = mainHighlightedContentRef.current;
-      const pageWidth = container.clientWidth;
-      
-      // Calculate which "page" (column) the element is in
-      const elementOffsetLeft = (element as HTMLElement).offsetLeft;
-      const pageIndex = Math.floor(elementOffsetLeft / pageWidth);
-      
-      // Scroll to the beginning of that page
-      container.scrollTo({
-        left: pageIndex * pageWidth,
-        behavior: 'smooth',
-      });
-  
-      setIsTocOpen(false);
-    } else {
-      console.warn(`TOC item with selector "${selector}" not found in MOBI content.`);
+  const handleTocItemClick = (href: string) => {
+    if (activeDoc?.type === 'epub' && epubRenditionRef.current) {
+        epubRenditionRef.current.display(href);
+        setIsTocOpen(false);
+    } else if (activeDoc?.type === 'mobi' && mainHighlightedContentRef.current) {
+        const selector = href.startsWith('#') ? href : `#${href}`;
+        const element = mainHighlightedContentRef.current.querySelector(selector);
+        
+        if (element) {
+            const container = mainHighlightedContentRef.current;
+            const pageWidth = container.clientWidth;
+            const elementOffsetLeft = (element as HTMLElement).offsetLeft;
+            const pageIndex = Math.floor(elementOffsetLeft / pageWidth);
+            
+            container.scrollTo({
+                left: pageIndex * pageWidth,
+                behavior: 'smooth',
+            });
+            setIsTocOpen(false);
+        } else {
+            console.warn(`TOC item with selector "${selector}" not found in MOBI content.`);
+        }
     }
   };
   
