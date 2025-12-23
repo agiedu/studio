@@ -763,7 +763,9 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
             const page: PDFPageProxy = await pdfDocProxy.getPage(currentPdfPageNum);
             if (isStale) { if (page) page.cleanup(); return; }
             
-            const viewport = page.getViewport({ scale: viewScale });
+            // Use a fixed high-resolution scale for rendering the canvas
+            const renderScale = 2.0;
+            const viewport = page.getViewport({ scale: renderScale });
             const canvas = document.createElement('canvas'); const context = canvas.getContext('2d');
             canvas.height = viewport.height; canvas.width = viewport.width;
             
@@ -800,7 +802,7 @@ const getSelectedText = useCallback((): { text: string; startIndex: number | nul
 
     renderPage();
     return () => { isStale = true; };
-  }, [pdfDocProxy, currentPdfPageNum, viewScale, activeDoc, isPdfTextView, stopSpeech, readerDict.loadingContent, readerDict.ocrPage]);
+  }, [pdfDocProxy, currentPdfPageNum, activeDoc, isPdfTextView, stopSpeech, readerDict.loadingContent, readerDict.ocrPage]);
 
 
   const handlePerformOcr = useCallback(async () => {
@@ -1790,7 +1792,7 @@ HighlightableContent.displayName = 'HighlightableContent';
 
     if (activeDoc?.type === 'pdf' && !isPdfTextView) {
         return (
-            <div className="w-full h-full"
+            <div className="w-full h-full relative"
                  onTouchStart={handleTouchStart}
                  onTouchMove={handleTouchMove}
                  onTouchEnd={handleTouchEnd}
@@ -1799,18 +1801,13 @@ HighlightableContent.displayName = 'HighlightableContent';
                     <NextImage
                         src={pdfPageImage}
                         alt={`Page ${currentPdfPageNum}`}
-                        width={0}
-                        height={0}
+                        layout="fill"
+                        objectFit="contain"
+                        className="transition-transform duration-200"
                         style={{ 
-                            width: 'auto', 
-                            height: 'auto', 
-                            maxHeight: '100%', 
-                            maxWidth: '100%', 
-                            objectFit: 'contain',
                             transform: `scale(${viewScale})`,
-                            transformOrigin: 'center'
+                            transformOrigin: 'top left',
                         }}
-                        className="shadow-lg border rounded-md mx-auto transition-transform duration-200"
                     />
                 )}
             </div>
@@ -1820,18 +1817,15 @@ HighlightableContent.displayName = 'HighlightableContent';
     if (activeDoc?.type === 'epub') {
         const viewerStyle: React.CSSProperties = {
             transform: `scale(${viewScale})`,
-            transformOrigin: 'center',
-            transition: 'transform 0.2s ease-out'
+            transformOrigin: 'top left',
+            transition: 'transform 0.2s ease-out',
+            width: `${100 / viewScale}%`,
+            height: `${100 / viewScale}%`,
         };
         return (
-            <>
-                <div 
-                    id="epub-viewer"
-                    ref={epubViewerRef}
-                    className="w-full h-full"
-                    style={viewerStyle}
-                />
-            </>
+            <div className="w-full h-full">
+                <div id="epub-viewer" ref={epubViewerRef} style={viewerStyle} />
+            </div>
         );
     }
 
@@ -1885,6 +1879,7 @@ HighlightableContent.displayName = 'HighlightableContent';
                             maxHeight: '100%', 
                             maxWidth: '100%',
                             transform: `scale(${viewScale})`,
+                            transformOrigin: 'top left',
                             transition: 'transform 0.2s ease-out'
                         }}
                         className="shadow-lg border rounded-md"
@@ -1943,7 +1938,7 @@ HighlightableContent.displayName = 'HighlightableContent';
             >
                 <CardContent
                   ref={scrollContainerRef}
-                  className="flex-grow p-2 md:p-4 overflow-hidden relative" // Changed overflow to hidden
+                  className="flex-grow p-0 overflow-auto relative"
                 >
                 {(isLoadingDoc || isEpubLoading || isRenderingPdfPage) && ttsAreaState === 'hidden' && (
                   <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
@@ -1963,10 +1958,14 @@ HighlightableContent.displayName = 'HighlightableContent';
                 )}
                 
                 <div
-                    className="w-full h-full flex flex-col items-center justify-center overflow-auto"
+                    className="w-full h-full flex items-center justify-center"
                     onTouchStart={handleTouchStart}
                     onTouchMove={handleTouchMove}
                     onTouchEnd={handleTouchEnd}
+                    style={{
+                        width: viewScale > 1 ? `${viewScale * 100}%` : '100%',
+                        height: viewScale > 1 ? `${viewScale * 100}%` : '100%',
+                    }}
                   >
                    {mainContent}
                 </div>
