@@ -1803,8 +1803,16 @@ HighlightableContent.displayName = 'HighlightableContent';
                         alt={`Page ${currentPdfPageNum}`}
                         width={0}
                         height={0}
-                        style={{ width: 'auto', height: 'auto', maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }}
-                        className="shadow-lg border rounded-md mx-auto"
+                        style={{ 
+                            width: 'auto', 
+                            height: 'auto', 
+                            maxHeight: '100%', 
+                            maxWidth: '100%', 
+                            objectFit: 'contain',
+                            transform: `scale(${viewScale})`,
+                            transformOrigin: 'center'
+                        }}
+                        className="shadow-lg border rounded-md mx-auto transition-transform duration-200"
                     />
                 )}
             </div>
@@ -1812,16 +1820,22 @@ HighlightableContent.displayName = 'HighlightableContent';
     }
     
     if (activeDoc?.type === 'epub') {
-      return (
-          <>
-              <div 
-                  id="epub-viewer"
-                  ref={epubViewerRef}
-                  className="w-full h-full"
-              />
-          </>
-      );
-  }
+        const viewerStyle: React.CSSProperties = {
+            transform: `scale(${viewScale})`,
+            transformOrigin: 'center',
+            transition: 'transform 0.2s ease-out'
+        };
+        return (
+            <>
+                <div 
+                    id="epub-viewer"
+                    ref={epubViewerRef}
+                    className="w-full h-full"
+                    style={viewerStyle}
+                />
+            </>
+        );
+    }
 
     if (activeDoc?.type === 'txt') {
         return (
@@ -1866,7 +1880,15 @@ HighlightableContent.displayName = 'HighlightableContent';
                         alt={activeDoc.title || 'Uploaded Image'}
                         width={800}
                         height={600}
-                        style={{ objectFit: 'contain', width: 'auto', height: 'auto', maxHeight: '100%', maxWidth: '100%' }}
+                        style={{ 
+                            objectFit: 'contain', 
+                            width: 'auto', 
+                            height: 'auto', 
+                            maxHeight: '100%', 
+                            maxWidth: '100%',
+                            transform: `scale(${viewScale})`,
+                            transition: 'transform 0.2s ease-out'
+                        }}
                         className="shadow-lg border rounded-md"
                         data-ai-hint="illustration abstract"
                     />
@@ -1900,7 +1922,7 @@ HighlightableContent.displayName = 'HighlightableContent';
 
     return null;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeDoc, isPdfTextView, pdfPageImage, currentPdfPageNum, displayedImageSrc, docId, currentTextForTTS, textSegments, highlightedSegmentIndex, isSpeaking, isPaused, readerDict.scratchpadPlaceholder, sortedAnnotations, scratchpadText, mobiHtmlContent]);
+  }, [activeDoc, isPdfTextView, pdfPageImage, currentPdfPageNum, displayedImageSrc, docId, currentTextForTTS, textSegments, highlightedSegmentIndex, isSpeaking, isPaused, readerDict.scratchpadPlaceholder, sortedAnnotations, scratchpadText, mobiHtmlContent, viewScale]);
 
   if (showInitialLoader) { 
     return <div className="flex items-center justify-center h-full flex-grow"><Loader2 className="h-12 w-12 animate-spin text-primary" /><p className="ml-4 text-lg">{readerDict.loadingDocument}</p></div>; 
@@ -2182,7 +2204,7 @@ HighlightableContent.displayName = 'HighlightableContent';
                                 </div>
                                 </>
                             )}
-                            {(activeDoc?.type && ['pdf', 'image', 'epub', 'mobi'].includes(activeDoc.type)) && (
+                            {(activeDoc?.type && ['pdf', 'image', 'epub'].includes(activeDoc.type)) && (
                                 <>
                                 <Separator/>
                                 <div className="space-y-2">
@@ -2216,7 +2238,7 @@ HighlightableContent.displayName = 'HighlightableContent';
                                  <Separator/>
                                 <div className="flex items-center gap-2">
                                     <Label className="flex-shrink-0 text-xs">Zoom</Label>
-                                    <Slider value={[viewScale]} min={0.25} max={5} step={0.25} onValueChange={([val]) => handleViewScaleChange(val)} disabled={isRenderingPdfPage} />
+                                    <Slider value={[viewScale]} min={0.25} max={5} step={0.25} onValueChange={([val]) => handleViewScaleChange(val)} disabled={isRenderingPdfPage || isLoadingDoc} />
                                 </div>
                                 </>
                             )}
