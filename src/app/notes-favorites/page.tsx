@@ -85,6 +85,7 @@ function NotesFavoritesPageContent() {
   const commonDict = dictionary.common;
   const notesFavDict = dictionary.notesFavorites;
   const favDict = dictionary.favorites;
+  const mediaDict = dictionary.media;
 
   const {
     play,
@@ -394,29 +395,6 @@ function NotesFavoritesPageContent() {
                             <SheetTitle>{favDict.globalSettingsTitle}</SheetTitle>
                         </SheetHeader>
                         <div className="py-4 space-y-4">
-                             <div className="mb-4">
-                                <Label className="font-medium text-sm">{notesFavDict.playbackMode}</Label>
-                                <RadioGroup
-                                    value={playbackMode}
-                                    onValueChange={(v) => {
-                                    setPlaybackMode(v as PlaybackMode);
-                                    }}
-                                    className="flex items-center gap-4 mt-2"
-                                >
-                                    <div className="flex items-center space-x-2">
-                                    <RadioGroupItem value="default" id="mode-default" />
-                                    <Label htmlFor="mode-default" className="flex items-center gap-1 cursor-pointer"><Play className="h-4 w-4"/>{commonDict.default}</Label>
-                                    </div>
-                                    <div className="flex items-center space-x-2">
-                                    <RadioGroupItem value="loop-single" id="mode-loop" />
-                                    <Label htmlFor="mode-loop" className="flex items-center gap-1 cursor-pointer"><Repeat1 className="h-4 w-4"/>{notesFavDict.loopSingle}</Label>
-                                    </div>
-                                    <div className="flex items-center space-x-2">
-                                    <RadioGroupItem value="sequential" id="mode-sequential" />
-                                    <Label htmlFor="mode-sequential" className="flex items-center gap-1 cursor-pointer"><ListOrdered className="h-4 w-4"/>{notesFavDict.listLoopMode}</Label>
-                                    </div>
-                                </RadioGroup>
-                            </div>
                             <Separator className="my-6" />
                             {renderTtsPanel('original', notesFavDict.originalTextSettings, originalTextTtsSettings)}
                             <Separator className="my-6" />
@@ -427,18 +405,44 @@ function NotesFavoritesPageContent() {
              </div>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center justify-center gap-4 my-4 p-2 rounded-lg bg-muted/50">
-                <Button variant="ghost" size="icon" onClick={previous} disabled={!hasPrevious() || isLoading}><SkipBack className="h-5 w-5"/></Button>
-                <Button variant="ghost" size="icon" onClick={handleGlobalPlayPause} disabled={isLoading || favoriteNotes.length === 0}>
-                {isLoading ? <Loader2 className="h-6 w-6 animate-spin"/> : isPlaying && !isPaused ? <Pause className="h-6 w-6"/> : <Play className="h-6 w-6"/>}
-                </Button>
-                <Button variant="ghost" size="icon" onClick={next} disabled={!hasNext() || isLoading}><SkipForward className="h-5 w-5"/></Button>
+            <div className="p-4 border rounded-md bg-muted/20 space-y-4">
+              <h3 className="text-lg font-medium">{mediaDict.playbackControls}</h3>
+              <div>
+                  <Label className="font-medium text-sm">{mediaDict.playbackMode}</Label>
+                  <RadioGroup
+                    value={playbackMode}
+                    onValueChange={(v) => {
+                      setPlaybackMode(v as PlaybackMode);
+                    }}
+                    className="flex items-center gap-4 mt-2"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="default" id="mode-default-notes" />
+                      <Label htmlFor="mode-default-notes" className="flex items-center gap-1 cursor-pointer"><Play className="h-4 w-4"/>{commonDict.default}</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="loop-single" id="mode-loop-notes" />
+                      <Label htmlFor="mode-loop-notes" className="flex items-center gap-1 cursor-pointer"><Repeat1 className="h-4 w-4"/>{notesFavDict.loopSingle}</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="sequential" id="mode-sequential-notes" />
+                      <Label htmlFor="mode-sequential-notes" className="flex items-center gap-1 cursor-pointer"><ListOrdered className="h-4 w-4"/>{notesFavDict.listLoopMode}</Label>
+                    </div>
+                  </RadioGroup>
+              </div>
+              <div className="flex items-center justify-center gap-4 p-2 rounded-lg bg-background/50">
+                  <Button variant="ghost" size="icon" onClick={previous} disabled={!hasPrevious() || isLoading}><SkipBack className="h-5 w-5"/></Button>
+                  <Button variant="ghost" size="icon" onClick={handleGlobalPlayPause} disabled={isLoading || favoriteNotes.length === 0}>
+                  {isLoading ? <Loader2 className="h-6 w-6 animate-spin"/> : isPlaying && !isPaused ? <Pause className="h-6 w-6"/> : <Play className="h-6 w-6"/>}
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={next} disabled={!hasNext() || isLoading}><SkipForward className="h-5 w-5"/></Button>
+              </div>
             </div>
             
             {favoriteNotes.length === 0 ? (
               <p className="text-center text-muted-foreground flex items-center justify-center gap-2 py-8"><Info className="h-5 w-5" />{notesFavDict.emptyList}</p>
             ) : (
-              <ul className="space-y-3">
+              <ul className="space-y-3 mt-4">
                 {paginatedItems.map(item => {
                   const isCurrentlyPlayingThisItem = currentItem?.item.id === item.id;
                   let buttonIcon = <Play className="h-4 w-4" />;

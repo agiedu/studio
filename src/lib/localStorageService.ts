@@ -1,6 +1,5 @@
 
-
-import type { TTSSettings, FavoriteItem, MangaDocumentDisplayInfo, NoteFavoriteItem, Annotation, MediaFavoriteItem } from '@/types';
+import type { TTSSettings, FavoriteItem, MangaDocumentDisplayInfo, NoteFavoriteItem, Annotation, MediaFavoriteItem, PlaybackMode } from '@/types';
 import { getCurrentUser } from './authService';
 
 // --- KEY GENERATION ---
@@ -326,8 +325,6 @@ export const clearRememberedEmail = (): void => {
 };
 
 // Playback Modes
-type PlaybackMode = 'default' | 'loop-single' | 'sequential';
-
 export const loadFavoritesPlaybackMode = (): PlaybackMode => {
     const key = getUserKey(FAVORITES_PLAYBACK_MODE_KEY);
     if (!key) return 'default';
