@@ -49,7 +49,7 @@ export default function AdminLoginPage() {
         return;
     }
 
-    const result = loginUser(email, password);
+    const result = loginUser(email, password, 'admin');
     if (result.success) {
       toast({ title: loginDict.loginSuccessful, description: loginDict.redirectingToAdmin });
       router.push('/admin/management');

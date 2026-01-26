@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useContext } from 'react';
@@ -69,16 +68,16 @@ export default function AdminLoginPage() {
       </div>
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle></CardTitle>
-          <CardDescription></CardDescription>
+          <CardTitle>{loginDict.adminTitle}</CardTitle>
+          <CardDescription>{loginDict.adminDescription}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="email"></Label>
+            <Label htmlFor="email">{loginDict.adminEmailLabel}</Label>
             <Input
               id="email"
               type="email"
-              placeholder=""
+              placeholder="admin@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
