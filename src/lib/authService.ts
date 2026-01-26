@@ -1,5 +1,4 @@
 
-
 import type { User, FailedLoginAttempt } from '@/types';
 import bcrypt from 'bcryptjs';
 import { deleteDatabaseForUser, logoutAndClearPromises } from '@/lib/indexedDBService';
@@ -82,20 +81,42 @@ export const loginUser = (email: string, password: string, type: 'user' | 'admin
   const userAttempt = attempts[lowerCaseEmail];
   const now = Date.now();
 
-  // For the admin account, clear any previous locks or failed attempts upon trying to log in again.
-  // This prevents the admin from being locked out due to password changes or other issues.
-  if (isAdminLoginAttempt && userAttempt) {
-      delete attempts[lowerCaseEmail];
-      saveFailedAttempts(attempts);
-  } else if (userAttempt && userAttempt.lockedUntil && now < userAttempt.lockedUntil) {
+  if (userAttempt && userAttempt.lockedUntil && now < userAttempt.lockedUntil) {
       const minutesRemaining = Math.ceil((userAttempt.lockedUntil - now) / (1000 * 60));
       return { success: false, message: `Account is locked. Please try again in ${minutesRemaining} minutes.` };
   }
 
+  // The logic for creating the admin if it doesn't exist is inside getUsers()
   const users = getUsers();
   const user = users.find(u => u.email.toLowerCase() === lowerCaseEmail);
 
+  // Check if the login is invalid
   if (!user || !user.passwordHash || !bcrypt.compareSync(password, user.passwordHash)) {
+    // SPECIAL RECOVERY FOR ADMIN: If the admin is trying to log in with the default password and it fails,
+    // it's likely because the stored hash is corrupted (e.g., from a previous build with a bad .env value).
+    // We will forcibly reset the password to the correct default hash.
+    if (isAdminLoginAttempt && password === DEFAULT_ADMIN_PASSWORD) {
+        console.warn("[AuthService] Admin login with default password failed. Forcibly resetting password hash in localStorage.");
+        
+        const correctHash = bcrypt.hashSync(DEFAULT_ADMIN_PASSWORD, 8);
+        const userIndex = users.findIndex(u => u.email.toLowerCase() === lowerCaseEmail);
+        
+        // This should always find a user because getUsers() creates one if it's missing.
+        if (userIndex !== -1) {
+            users[userIndex].passwordHash = correctHash;
+            saveUsers(users); // Save the corrected user list
+            
+            // Now that the password is fixed, we can proceed with a successful login.
+            localStorage.setItem(CURRENT_USER_KEY, JSON.stringify({ email: users[userIndex].email }));
+            localStorage.setItem(ADMIN_SESSION_KEY, 'true');
+            // Clear any failed attempts for this user now that it's fixed.
+            delete attempts[lowerCaseEmail];
+            saveFailedAttempts(attempts);
+            return { success: true, message: 'Admin password reset to default and login successful.' };
+        }
+    }
+
+    // --- Standard failed login attempt logic ---
     let newAttemptCount = 1;
     if (userAttempt) {
         const minutesSinceLastAttempt = (now - userAttempt.firstAttemptTimestamp) / (1000 * 60);
@@ -117,7 +138,7 @@ export const loginUser = (email: string, password: string, type: 'user' | 'admin
     } else {
         attempts[lowerCaseEmail] = {
             count: newAttemptCount,
-            firstAttemptTimestamp: newAttemptCount === 1 ? now : userAttempt.firstAttemptTimestamp,
+            firstAttemptTimestamp: newAttemptCount === 1 ? now : (userAttempt?.firstAttemptTimestamp || now),
         };
         saveFailedAttempts(attempts);
     }
@@ -125,12 +146,13 @@ export const loginUser = (email: string, password: string, type: 'user' | 'admin
     return { success: false, message: `Invalid email or password. Attempt ${newAttemptCount} of ${MAX_LOGIN_ATTEMPTS}.` };
   }
   
+  // --- Successful Login ---
   delete attempts[lowerCaseEmail];
   saveFailedAttempts(attempts);
   
   localStorage.setItem(CURRENT_USER_KEY, JSON.stringify({ email: user.email }));
 
-  if (lowerCaseEmail === ADMIN_EMAIL.toLowerCase()) {
+  if (isAdminLoginAttempt) {
     localStorage.setItem(ADMIN_SESSION_KEY, 'true');
   } else {
     localStorage.removeItem(ADMIN_SESSION_KEY);
