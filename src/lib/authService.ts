@@ -10,8 +10,8 @@ const CURRENT_USER_KEY = 'mangaTalk_currentUser';
 const ADMIN_SESSION_KEY = 'mangaTalk_adminSession';
 const FAILED_LOGIN_ATTEMPTS_KEY = 'mangaTalk_failedLoginAttempts';
 
-const ADMIN_EMAIL = 'laotouerle@outlook.com';
-const DEFAULT_ADMIN_PASSWORD = 'wvvCg95S$8Bvvw1!l0OD*,~-rtnnm@a`&8A4Z299';
+const ADMIN_EMAIL = process.env.NEXT_PUBLIC_ADMIN_EMAIL || 'laotouerle@outlook.com';
+const DEFAULT_ADMIN_PASSWORD = process.env.NEXT_PUBLIC_DEFAULT_ADMIN_PASSWORD || 'wvvCg95S$8Bvvw1!l0OD*,~-rtnnm@a`&8A4Z299';
 
 // --- Brute-force protection settings ---
 const MAX_LOGIN_ATTEMPTS = 5; 
@@ -25,9 +25,9 @@ const getUsers = (): User[] => {
   const usersJson = localStorage.getItem(USERS_KEY);
   let users: User[] = usersJson ? JSON.parse(usersJson) : [];
 
-  const adminUserIndex = users.findIndex(u => u.email.toLowerCase() === ADMIN_EMAIL);
+  const adminUserIndex = users.findIndex(u => u.email.toLowerCase() === ADMIN_EMAIL.toLowerCase());
 
-  if (adminUserIndex === -1) {
+  if (adminUserIndex === -1 && ADMIN_EMAIL) {
     const newAdminPasswordHash = bcrypt.hashSync(DEFAULT_ADMIN_PASSWORD, 8);
     users.push({ email: ADMIN_EMAIL, passwordHash: newAdminPasswordHash });
     localStorage.setItem(USERS_KEY, JSON.stringify(users));
@@ -69,7 +69,7 @@ export const registerUser = (email: string, password: string): { success: boolea
 
 export const loginUser = (email: string, password: string, type: 'user' | 'admin'): { success: boolean; message: string } => {
   const lowerCaseEmail = email.toLowerCase();
-  const isAdminLoginAttempt = lowerCaseEmail === ADMIN_EMAIL;
+  const isAdminLoginAttempt = lowerCaseEmail === ADMIN_EMAIL.toLowerCase();
 
   if (type === 'user' && isAdminLoginAttempt) {
     return { success: false, message: "该账户无法登录" };
@@ -130,7 +130,7 @@ export const loginUser = (email: string, password: string, type: 'user' | 'admin
   
   localStorage.setItem(CURRENT_USER_KEY, JSON.stringify({ email: user.email }));
 
-  if (lowerCaseEmail === ADMIN_EMAIL) {
+  if (lowerCaseEmail === ADMIN_EMAIL.toLowerCase()) {
     localStorage.setItem(ADMIN_SESSION_KEY, 'true');
   } else {
     localStorage.removeItem(ADMIN_SESSION_KEY);
@@ -185,18 +185,18 @@ export const isAdminSessionActive = (): boolean => {
     if (typeof window === 'undefined') return false;
     const session = localStorage.getItem(ADMIN_SESSION_KEY);
     const currentUser = getCurrentUser();
-    return session === 'true' && !!currentUser && currentUser.email.toLowerCase() === ADMIN_EMAIL;
+    return session === 'true' && !!currentUser && currentUser.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
 };
 
 export const getAllUsersForAdmin = (): Omit<User, 'passwordHash'>[] => {
     if (!isAdminSessionActive()) return [];
     return getUsers()
-      .filter(u => u.email.toLowerCase() !== ADMIN_EMAIL)
+      .filter(u => u.email.toLowerCase() !== ADMIN_EMAIL.toLowerCase())
       .map(({ email }) => ({ email }));
 };
 
 export const deleteUserByAdmin = async (email: string): Promise<{ success: boolean; message?: string }> => {
-    if (!isAdminSessionActive() || email.toLowerCase() === ADMIN_EMAIL) {
+    if (!isAdminSessionActive() || email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
         return { success: false, message: "Permission denied." };
     }
 
