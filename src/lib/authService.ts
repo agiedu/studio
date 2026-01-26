@@ -12,6 +12,7 @@ const FAILED_LOGIN_ATTEMPTS_KEY = 'mangaTalk_failedLoginAttempts';
 const ADMIN_EMAIL = process.env.NEXT_PUBLIC_ADMIN_EMAIL || 'laotouerle@outlook.com';
 const DEFAULT_ADMIN_PASSWORD = process.env.NEXT_PUBLIC_DEFAULT_ADMIN_PASSWORD || 'wvvCg95S$8Bvvw1!l0OD*,~-rtnnm@a&8A4Z299';
 
+
 // --- Brute-force protection settings ---
 const MAX_LOGIN_ATTEMPTS = 5; 
 const LOCKOUT_PERIOD_MINUTES = 10;
@@ -22,24 +23,32 @@ const LOCKOUT_DURATION_MINUTES = 30;
 const getUsers = (): User[] => {
   if (typeof window === 'undefined') return [];
   const usersJson = localStorage.getItem(USERS_KEY);
-  let users: User[] = usersJson ? JSON.parse(usersJson) : [];
-
-  const adminUserIndex = users.findIndex(u => u.email.toLowerCase() === ADMIN_EMAIL.toLowerCase());
-
-  if (adminUserIndex === -1 && ADMIN_EMAIL) {
-    const newAdminPasswordHash = bcrypt.hashSync(DEFAULT_ADMIN_PASSWORD, 8);
-    users.push({ email: ADMIN_EMAIL, passwordHash: newAdminPasswordHash });
-    localStorage.setItem(USERS_KEY, JSON.stringify(users));
-  }
-  
-  return users;
+  return usersJson ? JSON.parse(usersJson) : [];
 };
-
 
 const saveUsers = (users: User[]) => {
   if (typeof window === 'undefined') return;
   localStorage.setItem(USERS_KEY, JSON.stringify(users));
 };
+
+/**
+ * Ensures the admin user exists in the user list, creating it if necessary.
+ * This function should be called before any operation that relies on the admin user existing.
+ */
+const ensureAdminUserExists = () => {
+    if (typeof window === 'undefined' || !ADMIN_EMAIL) return;
+    
+    let users = getUsers();
+    const adminUserIndex = users.findIndex(u => u.email.toLowerCase() === ADMIN_EMAIL.toLowerCase());
+
+    if (adminUserIndex === -1) {
+        console.log("[AuthService] Admin user not found, creating with default password.");
+        const newAdminPasswordHash = bcrypt.hashSync(DEFAULT_ADMIN_PASSWORD, 8);
+        users.push({ email: ADMIN_EMAIL, passwordHash: newAdminPasswordHash });
+        saveUsers(users);
+    }
+};
+
 
 const getFailedAttempts = (): Record<string, FailedLoginAttempt> => {
     if (typeof window === 'undefined') return {};
@@ -56,6 +65,7 @@ const saveFailedAttempts = (attempts: Record<string, FailedLoginAttempt>) => {
 // --- User & Auth Functions ---
 
 export const registerUser = (email: string, password: string): { success: boolean; message: string } => {
+  ensureAdminUserExists(); // Make sure admin account is set up before adding new users.
   const users = getUsers();
   if (users.find(u => u.email.toLowerCase() === email.toLowerCase())) {
     return { success: false, message: 'User with this email already exists.' };
@@ -86,37 +96,30 @@ export const loginUser = (email: string, password: string, type: 'user' | 'admin
       return { success: false, message: `Account is locked. Please try again in ${minutesRemaining} minutes.` };
   }
 
-  // The logic for creating the admin if it doesn't exist is inside getUsers()
+  ensureAdminUserExists(); // Ensure admin user is available for login.
   const users = getUsers();
   const user = users.find(u => u.email.toLowerCase() === lowerCaseEmail);
 
-  // Check if the login is invalid
   if (!user || !user.passwordHash || !bcrypt.compareSync(password, user.passwordHash)) {
-    // --- START OF SELF-HEALING BLOCK ---
-    // Check if this is an admin login attempt with the correct default password.
-    // This handles cases where the stored hash is corrupted due to a bad env var on a previous deployment.
-    if (isAdminLoginAttempt && password === DEFAULT_ADMIN_PASSWORD) {
-        console.warn("[AuthService] Admin login with default password failed. Forcibly resetting password hash in localStorage.");
-        
-        const correctHash = bcrypt.hashSync(DEFAULT_ADMIN_PASSWORD, 8);
-        const userIndex = users.findIndex(u => u.email.toLowerCase() === lowerCaseEmail);
-        
-        // This should always find a user because getUsers() creates one if it's missing.
-        if (userIndex !== -1) {
-            users[userIndex].passwordHash = correctHash;
-            saveUsers(users); // Save the corrected user list
-            
-            // Now that the password is fixed, we can proceed with a successful login.
-            localStorage.setItem(CURRENT_USER_KEY, JSON.stringify({ email: users[userIndex].email }));
-            localStorage.setItem(ADMIN_SESSION_KEY, 'true');
-            // Clear any failed attempts for this user now that it's fixed.
-            delete attempts[lowerCaseEmail];
-            saveFailedAttempts(attempts);
-            return { success: true, message: 'Admin password reset to default and login successful.' };
-        }
-    }
-    // --- END OF SELF-HEALING BLOCK ---
-
+      // Self-healing for admin password corruption on new deployments
+      if (isAdminLoginAttempt && password === DEFAULT_ADMIN_PASSWORD) {
+          console.warn("[AuthService] Admin default password login failed. Attempting self-heal.");
+          const correctHash = bcrypt.hashSync(DEFAULT_ADMIN_PASSWORD, 8);
+          const userIndex = users.findIndex(u => u.email.toLowerCase() === lowerCaseEmail);
+          
+          if (userIndex !== -1) {
+              users[userIndex].passwordHash = correctHash;
+              saveUsers(users);
+              
+              // Now that the password is fixed, proceed with a successful login.
+              localStorage.setItem(CURRENT_USER_KEY, JSON.stringify({ email: users[userIndex].email }));
+              if (isAdminLoginAttempt) localStorage.setItem(ADMIN_SESSION_KEY, 'true');
+              delete attempts[lowerCaseEmail];
+              saveFailedAttempts(attempts);
+              return { success: true, message: 'Admin password recovered and login successful.' };
+          }
+      }
+    
     // --- Standard failed login attempt logic ---
     let newAttemptCount = 1;
     if (userAttempt) {
@@ -243,3 +246,4 @@ export const getAdminLoginUrl = (): string => {
     // This is the correct, updated admin login URL.
     return '/i1lbklewq-6b24678_vvw019-qo0liuuu_w5sc2467-8do1yyvvye7z2nnmai17yt8b13hnhm_o01-ilylcgylbgc99';
 };
+
