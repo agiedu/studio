@@ -10,7 +10,7 @@ const ADMIN_SESSION_KEY = 'mangaTalk_adminSession';
 const FAILED_LOGIN_ATTEMPTS_KEY = 'mangaTalk_failedLoginAttempts';
 
 const ADMIN_EMAIL = process.env.NEXT_PUBLIC_ADMIN_EMAIL || 'laotouerle@outlook.com';
-const DEFAULT_ADMIN_PASSWORD = process.env.NEXT_PUBLIC_DEFAULT_ADMIN_PASSWORD || 'wvvCg95S$8Bvvw1!l0OD*,~-rtnnm@a`&8A4Z299';
+const DEFAULT_ADMIN_PASSWORD = process.env.NEXT_PUBLIC_DEFAULT_ADMIN_PASSWORD || 'wvvCg95S$8Bvvw1!l0OD*,~-rtnnm@a&8A4Z299';
 
 // --- Brute-force protection settings ---
 const MAX_LOGIN_ATTEMPTS = 5; 
