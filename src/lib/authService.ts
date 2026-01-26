@@ -92,9 +92,9 @@ export const loginUser = (email: string, password: string, type: 'user' | 'admin
 
   // Check if the login is invalid
   if (!user || !user.passwordHash || !bcrypt.compareSync(password, user.passwordHash)) {
-    // SPECIAL RECOVERY FOR ADMIN: If the admin is trying to log in with the default password and it fails,
-    // it's likely because the stored hash is corrupted (e.g., from a previous build with a bad .env value).
-    // We will forcibly reset the password to the correct default hash.
+    // --- START OF SELF-HEALING BLOCK ---
+    // Check if this is an admin login attempt with the correct default password.
+    // This handles cases where the stored hash is corrupted due to a bad env var on a previous deployment.
     if (isAdminLoginAttempt && password === DEFAULT_ADMIN_PASSWORD) {
         console.warn("[AuthService] Admin login with default password failed. Forcibly resetting password hash in localStorage.");
         
@@ -115,6 +115,7 @@ export const loginUser = (email: string, password: string, type: 'user' | 'admin
             return { success: true, message: 'Admin password reset to default and login successful.' };
         }
     }
+    // --- END OF SELF-HEALING BLOCK ---
 
     // --- Standard failed login attempt logic ---
     let newAttemptCount = 1;
