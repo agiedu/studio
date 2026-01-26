@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef, useMemo, useContext } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo, useContext, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import NextImage from 'next/image';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -2534,7 +2534,7 @@ HighlightableContent.displayName = 'HighlightableContent';
 }
 
 
-export default function ReaderPage() {
+function ReaderContent() {
     const searchParams = useSearchParams();
     const docId = searchParams.get('docId');
     const isMobile = useIsMobile();
@@ -2544,4 +2544,12 @@ export default function ReaderPage() {
             <ReaderPageComponent docId={docId} isMobile={isMobile} />
         </AuthGuard>
     )
+}
+
+export default function ReaderPage() {
+  return (
+    <Suspense fallback={<div className="flex h-screen w-full items-center justify-center bg-background"><Loader2 className="h-8 w-8 animate-spin text-primary" /><p className="ml-2">加载中...</p></div>}>
+      <ReaderContent />
+    </Suspense>
+  );
 }
