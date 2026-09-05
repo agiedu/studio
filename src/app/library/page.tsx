@@ -1,0 +1,338 @@
+
+"use client";
+
+import { useState, useEffect, useRef, useContext } from 'react';
+import Link from 'next/link';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
+import { UploadCloud, Info, Trash2, BookOpen, FileText, Image as ImageIcon, RefreshCw, Loader2, Save, FileType2, Book } from 'lucide-react';
+import * as IndexedDBService from '@/lib/indexedDBService';
+import * as LocalStorageService from '@/lib/localStorageService';
+import type { StoredMangaDocument } from '@/types';
+import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { AuthGuard } from '@/components/auth/AuthGuard';
+import { LanguageContext } from '@/context/LanguageContext';
+import { getDictionary } from '@/lib/i18n';
+
+function arrayBufferToBlob(buffer: ArrayBuffer, type: string): Blob {
+  return new Blob([buffer], { type });
+}
+
+function truncateTitle(title: string, maxWords: number = 4): string {
+    const words = title.split(/\s+/);
+    if (words.length > maxWords) {
+        // Simple middle truncation
+        const start = words.slice(0, Math.floor(maxWords / 2)).join(' ');
+        const end = words.slice(words.length - Math.floor(maxWords / 2)).join(' ');
+        return `${start} ... ${end}`;
+    }
+    return title;
+}
+
+
+function LibraryPageContent() {
+  const { toast } = useToast();
+  // Initialize with empty/loading state to match server render and prevent hydration errors
+  const [storedDocuments, setStoredDocuments] = useState<StoredMangaDocument[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isSavingToDevice, setIsSavingToDevice] = useState<string | null>(null);
+  const [docToDelete, setDocToDelete] = useState<StoredMangaDocument | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const { locale } = useContext(LanguageContext);
+  const dictionary = getDictionary(locale);
+  const commonDict = dictionary.common;
+  const libraryDict = dictionary.library;
+
+  const fetchDocuments = async (forceRefresh: boolean = false, operationLabel: string = "Fetching documents") => {
+    // Only show the full-page loader on a hard refresh, not on the initial background sync
+    if (forceRefresh) {
+      setIsLoading(true);
+    }
+    try {
+      const docs = await IndexedDBService.getAllDocuments(forceRefresh);
+      setStoredDocuments(docs);
+    } catch (error: any) {
+      toast({ variant: "destructive", title: libraryDict.errorLoadingDocuments, description: libraryDict.errorLoadingDocumentsMessage.replace('{message}', error.message) });
+    } finally {
+      // After any fetch, loading should be false.
+      setIsLoading(false);
+    }
+  };
+
+  // This effect runs once on the client after hydration
+  useEffect(() => {
+    // To avoid hydration mismatch, we populate initial state from localStorage on the client.
+    const cachedDocs = LocalStorageService.loadDocumentMetadata() as StoredMangaDocument[];
+    if (cachedDocs.length > 0) {
+      setStoredDocuments(cachedDocs);
+      setIsLoading(false); // We have something to show, so no need for the main loader
+    }
+
+    // Now, fetch the full, up-to-date list from IndexedDB in the background.
+    // This will update the list if it has changed and also handles the initial
+    // load case where localStorage is empty.
+    fetchDocuments();
+
+    if (typeof window !== 'undefined') {
+      // Use the version of pdf.worker.min.mjs that is installed with pdfjs-dist
+      GlobalWorkerOptions.workerSrc = new URL(
+        'pdfjs-dist/build/pdf.worker.min.mjs',
+        import.meta.url
+      ).toString();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty dependency array ensures this runs only once on mount
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    const docId = `doc_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+    let newDocument: StoredMangaDocument | null = null;
+    const lowerCaseName = file.name.toLowerCase();
+
+    try {
+      const fileBuffer = await file.arrayBuffer();
+      const commonDocProps = {
+        id: docId,
+        title: file.name,
+        fileData: fileBuffer,
+        originalType: file.type,
+        createdAt: Date.now(),
+      };
+
+      if (file.type.startsWith('image/')) {
+        newDocument = { ...commonDocProps, type: 'image', extractedText: undefined };
+      } else if (file.type === 'application/pdf') {
+         try {
+            const pdfLoadingTask = getDocument({ data: fileBuffer.slice(0) }); // Use slice(0) to create a copy for pdf.js
+            const pdfInstance = await pdfLoadingTask.promise;
+            newDocument = { ...commonDocProps, type: 'pdf', numPages: pdfInstance.numPages, ocrTextPerPage: {} };
+          } catch (pdfError: any) {
+            toast({ variant: "default", title: "PDF Info", description: libraryDict.pdfPageCountIssue.replace('{name}', file.name).replace('{message}', pdfError.message) });
+            newDocument = { ...commonDocProps, type: 'pdf', numPages: undefined, ocrTextPerPage: {} }; // Save even if page count fails
+          }
+      } else if (file.type === 'application/epub+zip' || lowerCaseName.endsWith('.epub')) {
+        newDocument = { ...commonDocProps, type: 'epub', originalType: 'application/epub+zip' };
+      } else if (file.type === 'application/x-mobipocket-ebook' || lowerCaseName.endsWith('.mobi') || lowerCaseName.endsWith('.azw') || lowerCaseName.endsWith('.azw3')) {
+        newDocument = { ...commonDocProps, type: 'mobi', originalType: file.type || 'application/x-mobipocket-ebook' };
+      } else if (file.type === 'text/plain' || lowerCaseName.endsWith('.txt')) {
+        newDocument = { ...commonDocProps, type: 'txt', originalType: 'text/plain' };
+      } else {
+        toast({ variant: "destructive", title: libraryDict.unsupportedFileType, description: libraryDict.unsupportedFileTypeError.replace('{type}', file.type || 'unknown').replace('{name}', file.name) });
+        setIsUploading(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        return;
+      }
+
+      if (newDocument) {
+        await IndexedDBService.saveDocument(newDocument);
+        toast({ title: libraryDict.documentSaved, description: libraryDict.documentSavedMessage.replace('{title}', newDocument.title) });
+        await fetchDocuments(true, "Post-upload document fetch");
+      }
+    } catch (error: any) {
+      toast({ variant: "destructive", title: libraryDict.uploadError, description: libraryDict.uploadErrorMessage.replace('{name}', file.name).replace('{message}', error.message) });
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""; // Reset file input
+      }
+    }
+  };
+
+  const performDelete = async () => {
+    if (!docToDelete) return;
+
+    const docIdToDelete = docToDelete.id;
+    const docTitleToDelete = docToDelete.title;
+    setDocToDelete(null);
+
+    try {
+        await IndexedDBService.deleteDocumentById(docIdToDelete);
+        const lastActiveId = await IndexedDBService.getLastActiveDocId();
+        if (lastActiveId === docIdToDelete) {
+            await IndexedDBService.saveLastActiveDocId(null);
+        }
+        await fetchDocuments(true, "Data refresh after deletion");
+        toast({ title: commonDict.success, description: libraryDict.deletionSuccess.replace('{title}', docTitleToDelete) });
+    } catch (error: any) {
+        console.error("Deletion failed:", error);
+        toast({ variant: "destructive", title: libraryDict.deletionFailed, description: error.message || "An unknown error occurred." });
+    }
+  };
+
+  const handleSaveToDevice = async (doc: StoredMangaDocument) => {
+    if (!doc.fileData || !doc.title || !doc.originalType) {
+        toast({variant: "destructive", title: commonDict.error, description: libraryDict.saveErrorIncomplete});
+        return;
+    }
+    setIsSavingToDevice(doc.id);
+
+    try {
+      const blob = arrayBufferToBlob(doc.fileData, doc.originalType);
+      
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = doc.title;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({ title: libraryDict.downloadStarted, description: libraryDict.downloadStartedMessage.replace('{title}', doc.title) });
+      
+    } catch (error: any) {
+      toast({ variant: "destructive", title: commonDict.error, description: libraryDict.saveToDeviceFailed.replace('{title}', doc.title).replace('{message}', error.message) });
+    } finally {
+        setIsSavingToDevice(null);
+    }
+  };
+  
+  const getDocumentIcon = (docType: StoredMangaDocument['type']) => {
+    switch (docType) {
+      case 'image': return <ImageIcon className="h-8 w-8 text-primary flex-shrink-0" />;
+      case 'pdf': return <FileType2 className="h-8 w-8 text-primary flex-shrink-0" />; 
+      case 'epub': return <BookOpen className="h-8 w-8 text-primary flex-shrink-0" />;
+      case 'mobi': return <Book className="h-8 w-8 text-primary flex-shrink-0" />; 
+      case 'txt': return <FileText className="h-8 w-8 text-primary flex-shrink-0" />;
+      default: return <FileText className="h-8 w-8 text-primary flex-shrink-0" />; 
+    }
+  };
+  
+  return (
+    <>
+      <div className="container mx-auto p-4 md:p-6 space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><UploadCloud className="text-primary" />{libraryDict.addDocumentTitle}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid w-full max-w-md items-center gap-1.5">
+              <Label htmlFor="doc-upload-library">{libraryDict.fileInputLabel}</Label>
+              <Input
+                ref={fileInputRef}
+                id="doc-upload-library"
+                type="file"
+                accept="application/epub+zip,application/pdf,text/plain,image/*,application/x-mobipocket-ebook,.mobi,.azw,.azw3"
+                onChange={handleFileUpload}
+                disabled={isUploading || isLoading}
+              />
+            </div>
+            {isUploading && <p className="mt-2 text-sm text-muted-foreground flex items-center"><Loader2 className="mr-2 h-4 w-4 animate-spin" />{libraryDict.processingAndSaving}</p>}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><BookOpen className="text-primary" />{libraryDict.storedDocumentsTitle}</CardTitle>
+            <CardDescription>
+              {libraryDict.storedDocumentsDescription}
+            </CardDescription>
+            <Button variant="outline" size="sm" onClick={() => fetchDocuments(true, "Manual refresh of document list")} disabled={isLoading || isUploading} className="mt-2 w-fit">
+              <RefreshCw className={`mr-2 h-4 w-4 ${isLoading && !isUploading ? 'animate-spin' : ''}`} />{libraryDict.refreshList}
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {isLoading && <p className="text-muted-foreground flex items-center"><Loader2 className="mr-2 h-4 w-4 animate-spin" />{libraryDict.loadingDocuments}</p>}
+            {!isLoading && storedDocuments.length === 0 && (
+              <p className="text-muted-foreground">{libraryDict.noDocumentsFound}</p>
+            )}
+            {storedDocuments.length > 0 && (
+              <ul className="space-y-3">
+                {storedDocuments.map(doc => (
+                    <li key={doc.id} className="p-3 border rounded-md flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-card hover:shadow-md transition-shadow">
+                      <div className="flex items-center gap-3 flex-grow min-w-0">
+                        {getDocumentIcon(doc.type)}
+                        <div className="min-w-0">
+                           <p className="text-base font-medium" title={doc.title}>
+                                {truncateTitle(doc.title || 'Untitled Document')}
+                            </p>
+                          <p className="text-xs text-muted-foreground">
+                            {libraryDict.documentType}: {doc.originalType || doc.type} | {libraryDict.storedDate}: {new Date(doc.createdAt || 0).toLocaleDateString()}
+                            {doc.type === 'pdf' && doc.numPages !== undefined && ` | ${commonDict.pages}: ${doc.numPages}`}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 self-end sm:self-center flex-shrink-0">
+                        <Button size="icon" variant="outline" asChild disabled={isUploading || isLoading} title={libraryDict.openInReader}>
+                           <Link href={`/reader?docId=${doc.id}`}>
+                              <BookOpen className="h-4 w-4" />
+                           </Link>
+                        </Button>
+                        <Button
+                            size="icon"
+                            variant="outline"
+                            onClick={() => handleSaveToDevice(doc)}
+                            disabled={isSavingToDevice === doc.id || isUploading || isLoading}
+                            title={libraryDict.saveToDevice}
+                        >
+                            {isSavingToDevice === doc.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setDocToDelete(doc)}
+                          disabled={isUploading || isLoading}
+                          aria-label="Delete Document"
+                          title="Delete Document"
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </li>
+                  )
+                )}
+              </ul>
+            )}
+          </CardContent>
+          {storedDocuments.length > 0 && (
+            <CardFooter>
+              <p className="text-xs text-muted-foreground">{libraryDict.indexedDBNote}</p>
+            </CardFooter>
+          )}
+        </Card>
+        
+        <AlertDialog open={!!docToDelete} onOpenChange={(isOpen) => !isOpen && setDocToDelete(null)}>
+          <AlertDialogContent>
+              <AlertDialogHeader>
+              <AlertDialogTitle>{commonDict.areYouSure}</AlertDialogTitle>
+              <AlertDialogDescription>
+                  {libraryDict.deleteConfirmation.replace('{title}', docToDelete?.title || '')}
+              </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+              <AlertDialogCancel>{commonDict.cancel}</AlertDialogCancel>
+              <AlertDialogAction onClick={performDelete}>
+                  {commonDict.continue}
+              </AlertDialogAction>
+              </AlertDialogFooter>
+          </AlertDialogContent>
+      </AlertDialog>
+      </div>
+    </>
+  );
+}
+
+export default function LibraryPage() {
+    return (
+        <AuthGuard>
+            <LibraryPageContent />
+        </AuthGuard>
+    )
+}
